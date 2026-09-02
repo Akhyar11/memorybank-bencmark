@@ -141,7 +141,7 @@ def main():
 
     print("Initialising model parameters...")
     variables = model.init(
-        init_rng, dummy_input, dummy_mask, dummy_p, dummy_p, dummy_target,
+        init_rng, dummy_input, dummy_mask, dummy_p, dummy_p, dummy_p, dummy_target,
         method=model.init_all
     )
 

@@ -1,0 +1,38 @@
+{
+  "source": "/home/akhyar/Dokumen/Code/python/MemoryBank/",
+  "locked_components": [
+    "MemoryBank",
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "i_proj",
+    "fusion_proj",
+    "mem_keys",
+    "mem_vals",
+    "mem_importance",
+    "mem_confidence",
+    "mem_created_at",
+    "mem_last_access",
+    "mem_access_count",
+    "mem_state"
+  ],
+  "locked_flow": [
+    "decay_memory",
+    "read",
+    "write",
+    "fuse",
+    "__call__"
+  ],
+  "allowed_changes": [
+    "memory_capacity",
+    "memory_dim",
+    "hidden_size",
+    "embed_dim",
+    "num_hidden_layers",
+    "num_attention_heads",
+    "head_dim",
+    "intermediate_size",
+    "num_experts",
+    "batch_size"
+  ]
+}

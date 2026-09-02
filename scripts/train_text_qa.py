@@ -101,8 +101,10 @@ def main():
                                     mutable=['memory'], rngs={'dropout': dropout_rng})
             
             # Auto-regressive loss (Teacher Forcing)
+            # logits here are actually final_probs from the Pointer-Generator
             mask = (batch['target_ids'] != pad_id)
-            loss = optax.softmax_cross_entropy_with_integer_labels(logits, batch['target_ids'])
+            target_probs = jnp.take_along_axis(logits, batch['target_ids'][..., None], axis=-1)[..., 0]
+            loss = -jnp.log(target_probs + 1e-8)
             loss = (loss * mask).sum() / jnp.maximum(mask.sum(), 1.0)
             
             # Contrastive Loss on Memory Retrieval
@@ -139,16 +141,15 @@ def main():
             retrieval_sim = jnp.sum(h_fused_norm * h_f_norm, axis=-1)
             retrieval_loss = 1.0 - jnp.mean(retrieval_sim)
             
-            # Oracle Decode Loss: latih decoder langsung dari h_fact_eos (oracle supervision)
-            oracle_logits = model.apply(
+            oracle_probs = model.apply(
                 {'params': params, 'memory': blank_memory},
                 batch['write_ids'], batch['write_mask'],
                 batch['query_ids'], batch['query_mask'],
-                batch['target_ids'],
-                deterministic=False, method=model.decode_oracle,
-                rngs={'dropout': dropout_rng}
+                batch['target_ids'], deterministic=False,
+                method=model.decode_oracle, rngs={'dropout': dropout_rng}
             )
-            oracle_loss = optax.softmax_cross_entropy_with_integer_labels(oracle_logits, batch['target_ids'])
+            oracle_target_probs = jnp.take_along_axis(oracle_probs, batch['target_ids'][..., None], axis=-1)[..., 0]
+            oracle_loss = -jnp.log(oracle_target_probs + 1e-8)
             oracle_loss = (oracle_loss * mask).sum() / jnp.maximum(mask.sum(), 1.0)
             
             total_loss = loss + 10.0 * aux_loss + 2.0 * contrast_loss + 5.0 * retrieval_loss + 3.0 * oracle_loss + 5.0 * qf_contrastive_loss

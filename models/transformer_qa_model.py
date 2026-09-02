@@ -106,7 +106,17 @@ class TransformerQAModel(nn.Module):
             for _ in range(self.num_layers)
         ]
         self.decoder_out = nn.Dense(self.vocab_size)
+        self.p_gen_layer = nn.Dense(1)
         self.dropout = nn.Dropout(rate=self.dropout_rate)
+
+    def pad_truncate_ids(self, ids):
+        n_tok = self.config.tokens_per_slot
+        seq_len = ids.shape[1]
+        if seq_len >= n_tok:
+            return ids[:, :n_tok]
+        else:
+            pad_len = n_tok - seq_len
+            return jnp.pad(ids, ((0,0), (0, pad_len)))
 
     def encode_fact(self, input_ids, mask=None, deterministic=False):
         x = self.embedding(input_ids)
@@ -151,10 +161,11 @@ class TransformerQAModel(nn.Module):
             
         return query_tokens, h_eos
 
-    def decode_h_fused(self, mem, target_ids, deterministic=False):
+    def decode_h_fused(self, mem, mem_token_ids, target_ids, deterministic=False):
         batch_size, seq_len = target_ids.shape
         next_token = jnp.full((batch_size, 1), 2, dtype=jnp.int32)
-        all_logits = []
+        all_probs = []
+        batch_indices = jnp.arange(batch_size)[:, None]
         
         for t in range(seq_len):
             if t == 0:
@@ -171,28 +182,43 @@ class TransformerQAModel(nn.Module):
             for dec in self.decoders:
                 y = dec(y, mem, causal_mask=causal_mask, deterministic=deterministic)
                 
-            logits_seq = self.decoder_out(y)
-            logits_t = logits_seq[:, -1, :]
-            all_logits.append(logits_t)
+            y_t = y[:, -1:, :] # (batch, 1, dim)
+            vocab_logits = self.decoder_out(y_t)
+            vocab_dist = jax.nn.softmax(vocab_logits, axis=-1)
+            
+            attn_scores = jnp.matmul(y_t, mem.transpose((0, 2, 1))) / jnp.sqrt(self.embed_dim)
+            attn_dist = jax.nn.softmax(attn_scores, axis=-1)
+            
+            p_gen = nn.sigmoid(self.p_gen_layer(y_t))
+            scaled_vocab = p_gen * vocab_dist
+            scaled_attn = (1.0 - p_gen) * attn_dist
+            
+            final_dist_t = scaled_vocab.at[batch_indices, 0, mem_token_ids].add(scaled_attn[:, 0, :])
+            final_dist_t = final_dist_t / (jnp.sum(final_dist_t, axis=-1, keepdims=True) + 1e-8)
+            
+            all_probs.append(final_dist_t[:, 0, :])
             
             next_token = jax.lax.stop_gradient(
-                jnp.argmax(logits_t, axis=-1, keepdims=True)
+                jnp.argmax(final_dist_t[:, 0, :], axis=-1, keepdims=True)
             )
             
-        return jnp.stack(all_logits, axis=1)
+        return jnp.stack(all_probs, axis=1)
 
     def write_only(self, input_ids, mask, is_eos, write_prob, deterministic=False):
         fact_tokens = self.encode_fact(input_ids, mask, deterministic=deterministic)
-        return self.bank.write(fact_tokens, is_eos, write_prob), fact_tokens
+        fact_token_ids = self.pad_truncate_ids(input_ids)
+        return self.bank.write(fact_tokens, fact_token_ids, is_eos, write_prob), fact_tokens
 
     def decode_oracle(self, write_ids, write_mask, query_ids, query_mask, target_ids, deterministic=False):
         fact_tokens = self.encode_fact(write_ids, write_mask, deterministic=deterministic)
+        fact_token_ids = self.pad_truncate_ids(write_ids)
         query_tokens, h_query = self.encode_query(query_ids, query_mask, deterministic=deterministic)
+        query_token_ids = self.pad_truncate_ids(query_ids)
         
-        # Simulasikan bank fuse oracle jika perlu, atau langsung concatenate
         mem = jnp.concatenate([fact_tokens, query_tokens], axis=1)
-        logits = self.decode_h_fused(mem, target_ids, deterministic=deterministic)
-        return logits
+        mem_token_ids = jnp.concatenate([fact_token_ids, query_token_ids], axis=1)
+        probs = self.decode_h_fused(mem, mem_token_ids, target_ids, deterministic=deterministic)
+        return probs
 
     def init_all(self, input_ids, mask, is_eos, write_prob, read_prob, target_ids):
         self.write_only(input_ids, mask, is_eos, write_prob, deterministic=True)
@@ -201,11 +227,14 @@ class TransformerQAModel(nn.Module):
 
     def greedy_decode(self, input_ids, mask, read_prob, write_prob, max_len=16, bos_id=2, pad_id=0, eos_id=3, deterministic=False):
         query_tokens, h_eos = self.encode_query(input_ids, mask, deterministic=True)
-        h_fused, sim = self.bank(h_eos, read_prob, write_prob, deterministic=True)
+        query_token_ids = self.pad_truncate_ids(input_ids)
+        h_fused, retrieved_ids, sim = self.bank(h_eos, read_prob, write_prob, deterministic=True)
         
         mem = jnp.concatenate([h_fused, query_tokens], axis=1)
+        mem_token_ids = jnp.concatenate([retrieved_ids, query_token_ids], axis=1)
         
         batch_size = h_fused.shape[0]
+        batch_indices = jnp.arange(batch_size)[:, None]
         next_token = jnp.full((batch_size, 1), bos_id, dtype=jnp.int32)
         
         output_tokens = []
@@ -225,9 +254,21 @@ class TransformerQAModel(nn.Module):
             for dec in self.decoders:
                 y = dec(y, mem, causal_mask=causal_mask, deterministic=True)
                 
-            logits_seq = self.decoder_out(y)
-            logits_t = logits_seq[:, -1, :]
-            next_token_raw = jnp.argmax(logits_t, axis=-1, keepdims=True)
+            y_t = y[:, -1:, :]
+            vocab_logits = self.decoder_out(y_t)
+            vocab_dist = jax.nn.softmax(vocab_logits, axis=-1)
+            
+            attn_scores = jnp.matmul(y_t, mem.transpose((0, 2, 1))) / jnp.sqrt(self.embed_dim)
+            attn_dist = jax.nn.softmax(attn_scores, axis=-1)
+            
+            p_gen = nn.sigmoid(self.p_gen_layer(y_t))
+            scaled_vocab = p_gen * vocab_dist
+            scaled_attn = (1.0 - p_gen) * attn_dist
+            
+            final_dist_t = scaled_vocab.at[batch_indices, 0, mem_token_ids].add(scaled_attn[:, 0, :])
+            final_dist_t = final_dist_t / (jnp.sum(final_dist_t, axis=-1, keepdims=True) + 1e-8)
+            
+            next_token_raw = jnp.argmax(final_dist_t[:, 0, :], axis=-1, keepdims=True)
             
             is_finished = is_finished | (next_token_raw[:, 0] == eos_id)
             next_token_masked = jnp.where(is_finished, pad_id, next_token_raw[:, 0])
@@ -239,8 +280,10 @@ class TransformerQAModel(nn.Module):
 
     def __call__(self, input_ids, mask, read_prob, write_prob, target_ids, deterministic=False):
         query_tokens, h_eos = self.encode_query(input_ids, mask, deterministic=deterministic)
-        h_fused, sim = self.bank(h_eos, read_prob, write_prob, deterministic=deterministic)
+        query_token_ids = self.pad_truncate_ids(input_ids)
+        h_fused, retrieved_ids, sim = self.bank(h_eos, read_prob, write_prob, deterministic=deterministic)
         
         mem = jnp.concatenate([h_fused, query_tokens], axis=1)
-        logits = self.decode_h_fused(mem, target_ids, deterministic=deterministic)
-        return logits, sim, h_eos, h_fused
+        mem_token_ids = jnp.concatenate([retrieved_ids, query_token_ids], axis=1)
+        probs = self.decode_h_fused(mem, mem_token_ids, target_ids, deterministic=deterministic)
+        return probs, sim, h_eos, h_fused

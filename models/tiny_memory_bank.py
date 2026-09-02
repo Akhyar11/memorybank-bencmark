@@ -44,6 +44,7 @@ class TinyMemoryBank(nn.Module):
         self.sim_weight = self.param('sim_weight', nn.initializers.constant(5.0), ())
         self.mem_keys = self.variable('memory', 'keys', jnp.zeros, (capacity, n_tok, dim))
         self.mem_vals = self.variable('memory', 'vals', jnp.zeros, (capacity, n_tok, dim))
+        self.mem_token_ids = self.variable('memory', 'token_ids', jnp.zeros, (capacity, n_tok), jnp.int32)
         
         # Meta-data
         self.mem_importance = self.variable('memory', 'importance', jnp.zeros, (capacity,))
@@ -55,9 +56,9 @@ class TinyMemoryBank(nn.Module):
         self.mem_state = self.variable('memory', 'state', lambda s: jnp.full(s, STATE_EMPTY, dtype=jnp.int32), (capacity,))
         self.step = self.variable('memory', 'step', jnp.zeros, (), jnp.int32)
         
-    def write(self, fact_tokens, is_eos, write_prob):
+    def write(self, fact_tokens, fact_token_ids, is_eos, write_prob):
         """
-        Menulis fakta [batch, N_fact_tokens, dim] ke memori.
+        Menulis fakta [batch, N_fact_tokens, dim] dan ID aslinya ke memori.
         Setiap slot menyimpan N_fact_tokens.
         """
         batch_size, n_tok, dim = fact_tokens.shape
@@ -66,6 +67,7 @@ class TinyMemoryBank(nn.Module):
         
         keys = self.mem_keys.value  # (capacity, n_tok, dim)
         vals = self.mem_vals.value
+        token_ids = self.mem_token_ids.value
         state = self.mem_state.value
         
         # Pool vector per slot untuk perbandingan similarity (capacity, dim)
@@ -79,7 +81,7 @@ class TinyMemoryBank(nn.Module):
         sim = jnp.matmul(fact_summary_norm, slot_keys_norm.T) # (batch, capacity)
         
         def write_single(args):
-            f_tokens, single_sim = args
+            f_tokens, f_ids, single_sim = args
             max_sim_idx = jnp.argmax(single_sim)
             max_sim = single_sim[max_sim_idx]
             
@@ -91,19 +93,21 @@ class TinyMemoryBank(nn.Module):
             
             target_idx = jnp.where(is_update, max_sim_idx, jnp.where(has_empty, first_empty, jnp.argmin(self.mem_importance.value)))
             
-            # Write N tokens to slot
+            # Write N tokens and IDs to slot
             new_keys = keys.at[target_idx].set(f_tokens)
             new_vals = vals.at[target_idx].set(f_tokens)
+            new_token_ids = token_ids.at[target_idx].set(f_ids)
             new_state = state.at[target_idx].set(STATE_ACTIVE)
             
-            return new_keys, new_vals, new_state
+            return new_keys, new_vals, new_token_ids, new_state
             
         for b in range(batch_size):
-            new_k, new_v, new_s = write_single((fact_tokens[b], sim[b]))
-            keys, vals, state = new_k, new_v, new_s
+            new_k, new_v, new_tids, new_s = write_single((fact_tokens[b], fact_token_ids[b], sim[b]))
+            keys, vals, token_ids, state = new_k, new_v, new_tids, new_s
             
         self.mem_keys.value = keys
         self.mem_vals.value = vals
+        self.mem_token_ids.value = token_ids
         self.mem_state.value = state
         
         return sim
@@ -116,6 +120,7 @@ class TinyMemoryBank(nn.Module):
         batch_size, dim = query_summary.shape
         keys = self.mem_keys.value # (capacity, n_tok, dim)
         vals = self.mem_vals.value # (capacity, n_tok, dim)
+        token_ids = self.mem_token_ids.value # (capacity, n_tok)
         state = self.mem_state.value
         top_k = self.config.memory_top_k
         n_tok = self.config.tokens_per_slot
@@ -136,14 +141,15 @@ class TinyMemoryBank(nn.Module):
         top_k_indices = jnp.argsort(masked_sim, axis=-1)[:, -top_k:] # (batch, top_k)
         
         # Ambil token representasi dari Top-K Slot
-        def get_top_k_tokens(batch_indices):
+        def get_top_k_tokens_and_ids(batch_indices):
             # batch_indices: (top_k,)
             selected_vals = vals[batch_indices] # (top_k, n_tok, dim)
-            return selected_vals.reshape((top_k * n_tok, dim)) # (top_k * n_tok, dim)
+            selected_ids = token_ids[batch_indices] # (top_k, n_tok)
+            return selected_vals.reshape((top_k * n_tok, dim)), selected_ids.reshape((top_k * n_tok,))
             
-        retrieved_memory = jax.vmap(get_top_k_tokens)(top_k_indices) # (batch, top_k * n_tok, dim)
+        retrieved_memory, retrieved_ids = jax.vmap(get_top_k_tokens_and_ids)(top_k_indices) # (batch, top_k * n_tok, dim), (batch, top_k * n_tok)
         
-        return retrieved_memory, sim
+        return retrieved_memory, retrieved_ids, sim
 
     def __call__(self, query_summary, read_prob, write_prob, deterministic=False):
         return self.read(query_summary)

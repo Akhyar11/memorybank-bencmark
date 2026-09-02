@@ -69,9 +69,11 @@ def make_ablation_config(ablation_type: str) -> TinyMemoryConfig:
         base['mem_reinforcement_rate'] = 0.0  # eta_a = 0: no importance boost on read
     elif ablation_type == 'no_top_k':
         base['memory_top_k'] = base['memory_capacity'] # top_k = capacity: retrieve all
-    elif ablation_type == 'no_threshold':
+    elif ablation_type == 'no_retrieval_threshold':
         base['memory_threshold'] = -1e9
+    elif ablation_type == 'no_write_gate':
         base['memory_write_threshold'] = -1e9
+    elif ablation_type == 'no_read_gate':
         base['memory_read_threshold'] = -1e9
     elif ablation_type == 'no_write':
         base['memory_write_threshold'] = 1e9 # Block all writes
@@ -119,8 +121,16 @@ def run_ablation(ablation_type, num_memories, key, time_delay=100):
     # Query target (middle element)
     target_idx    = num_memories // 2
     query_h       = dataset[target_idx:target_idx+1]
-    read_val, _   = bank.apply(vars, query_h, method=bank.read, mutable=['memory'])
+    
+    # Must explicitly pass read_prob so threshold gating works for no_read
+    read_prob_val = jnp.ones((1,))
+    read_val, _   = bank.apply(vars, query_h, read_prob_val, method=bank.read, mutable=['memory'])
     expected_v, _ = bank.apply(vars, query_h, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
+
+    if ablation_type == 'no_write':
+        active_count = jnp.sum(vars['memory']['state'] == STATE_ACTIVE)
+        assert int(active_count) == 0, f"no_write failed to block writes! Active memory: {active_count}"
+        assert float(jnp.linalg.norm(read_val)) == 0.0, "no_write read result is not exactly 0.0"
 
     sim = float(jnp.mean(compute_cosine_similarity(read_val, expected_v)))
     return sim
@@ -137,7 +147,9 @@ def run_experiment(config_path, config, seeds=3):
         'no_decay',
         'no_reinforcement',
         'no_top_k',
-        'no_threshold',
+        'no_retrieval_threshold',
+        'no_write_gate',
+        'no_read_gate',
         'no_write',
         'no_read',
     ]

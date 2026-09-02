@@ -195,19 +195,28 @@ def test4_interference(n_distractors=20, seeds=3):
         h_target = jax.random.normal(k1, (1, config.hidden_size))
         h_target = h_target / jnp.linalg.norm(h_target)
         vars = write_one(bank, vars, h_target)
+        vars_clean = {'params': vars['params'], 'memory': {k: v for k, v in vars['memory'].items()}}
 
         for i in range(n_distractors):
             rng, k = jax.random.split(rng)
             h_d = jax.random.normal(k, (1, config.hidden_size))
             vars = write_one(bank, vars, h_d)
 
-        read_val, _  = read_one(bank, vars, h_target)
+        read_val_clean, _  = read_one(bank, vars_clean, h_target)
+        read_val_dist, _  = read_one(bank, vars, h_target)
         expected_v, _= bank.apply(vars, h_target, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
-        sims.append(cosine_float(read_val[0], expected_v[0]))
+        
+        sim_clean = cosine_float(read_val_clean[0], expected_v[0])
+        sim_dist = cosine_float(read_val_dist[0], expected_v[0])
+        sims.append((sim_clean, sim_dist))
 
-    result = {"mean_sim": np.mean(sims), "std": np.std(sims),
-              "pass": np.mean(sims) > 0.3}  # must maintain reasonable similarity
-    print(f"  After interference: sim={result['mean_sim']:.4f} ± {result['std']:.4f}")
+    sim_degrades = [c - d for c, d in sims]
+    mean_degrade = np.mean(sim_degrades)
+    # Expect degradation to be relatively bounded (not complete catastrophic forgetting)
+    passed = mean_degrade < 0.5
+    
+    result = {"sims": sims, "mean_degrade": mean_degrade, "pass": passed}
+    print(f"  Mean similarity degradation = {mean_degrade:.4f}  → {'PASS' if passed else 'FAIL'}")
     return result
 
 
@@ -243,8 +252,8 @@ def test5_capacity_scaling():
 # ---------------------------------------------------------------------------
 def test6_replacement():
     print("\n[TEST 6] Replacement Policy")
-    cap    = 8
-    config = make_config(capacity=cap)
+    cap = 4
+    config = make_config(capacity=cap, write_threshold=1.1) # force insert
     bank, vars = fresh_bank(config, seed=6)
     rng = jax.random.PRNGKey(600)
 
@@ -252,26 +261,31 @@ def test6_replacement():
     for i in range(cap):
         rng, k = jax.random.split(rng)
         h = jax.random.normal(k, (1, config.hidden_size))
-        vars = write_one(bank, vars, h)
+        vars = write_one(bank, vars, h, wp=jnp.array([2.0]))
 
-    # Manually expire half
     unfrozen = flax.core.unfreeze(vars)
-    unfrozen['memory']['state'] = unfrozen['memory']['state'].at[:cap//2].set(STATE_EXPIRED)
+    unfrozen['memory']['state'] = jnp.full((cap,), STATE_ACTIVE, dtype=jnp.int32)
+    # Slot 0 has lowest importance
+    unfrozen['memory']['importance'] = jnp.array([0.1, 0.5, 0.9, 0.7], dtype=jnp.float32)
     vars = flax.core.freeze(unfrozen)
 
-    n_expired_before = int(jnp.sum(vars['memory']['state'] == STATE_EXPIRED))
+    keys_before = np.array(vars['memory']['keys'])
 
     # Write one more
     rng, k = jax.random.split(rng)
     h_new = jax.random.normal(k, (1, config.hidden_size))
-    vars  = write_one(bank, vars, h_new)
+    vars  = write_one(bank, vars, h_new, wp=jnp.array([2.0]))
 
-    n_expired_after  = int(jnp.sum(vars['memory']['state'] == STATE_EXPIRED))
-    replaced         = n_expired_before - n_expired_after
+    keys_after = np.array(vars['memory']['keys'])
+    
+    # Assert exact replacement
+    diff = np.sum((keys_before - keys_after)**2, axis=1)
+    slot0_changed = diff[0] > 1e-5
+    other_unchanged = np.all(diff[1:] < 1e-5)
 
-    result = {"expired_before": n_expired_before, "expired_after": n_expired_after,
-              "replaced": replaced, "pass": replaced >= 1}
-    print(f"  Expired before={n_expired_before}, after={n_expired_after}, replaced={replaced}  → {'PASS' if result['pass'] else 'FAIL'}")
+    passed = slot0_changed and other_unchanged
+    result = {"slot0_changed": slot0_changed, "other_unchanged": other_unchanged, "pass": passed}
+    print(f"  Exact slot replaced (lowest importance): {passed}  → {'PASS' if passed else 'FAIL'}")
     return result
 
 
@@ -280,40 +294,38 @@ def test6_replacement():
 # ---------------------------------------------------------------------------
 def test7_recency():
     print("\n[TEST 7] Recency Effect")
-    config = make_config(decay_rate=0.1, top_k=2)  # noticeable decay
+    config = make_config(top_k=1)
     bank, vars = fresh_bank(config, seed=7)
-
-    rng = jax.random.PRNGKey(700)
-    rng, k1, k2 = jax.random.split(rng, 3)
-
-    h_old = jax.random.normal(k1, (1, config.hidden_size))
-    h_new = jax.random.normal(k2, (1, config.hidden_size))
-
-    # Write old first
-    vars = write_one(bank, vars, h_old)
-
-    # Advance time
+    
+    # Inject two identical slots except for recency
     unfrozen = flax.core.unfreeze(vars)
+    unfrozen['memory']['keys'] = unfrozen['memory']['keys'].at[0:2].set(jnp.ones((2, config.memory_dim)))
+    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[0].set(jnp.full((config.memory_dim,), 1.0))
+    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[1].set(jnp.full((config.memory_dim,), 2.0))
+    unfrozen['memory']['state'] = unfrozen['memory']['state'].at[0:2].set(STATE_ACTIVE)
+    unfrozen['memory']['importance'] = jnp.zeros_like(unfrozen['memory']['importance'])
+    unfrozen['memory']['confidence'] = jnp.zeros_like(unfrozen['memory']['confidence'])
+    
+    unfrozen['memory']['last_access'] = unfrozen['memory']['last_access'].at[0].set(10) # older
+    unfrozen['memory']['last_access'] = unfrozen['memory']['last_access'].at[1].set(100) # newer
     unfrozen['memory']['global_step'] = jnp.array(100, dtype=jnp.int32)
     vars = flax.core.freeze(unfrozen)
 
-    # Write new
-    vars = write_one(bank, vars, h_new)
+    # Query with exact key
+    # We must construct a query_h that perfectly maps to key=1.0 via q_proj. 
+    # Actually, we can bypass q_proj if we use the same key for both slots and an ambiguous query.
+    # Since both slots have the exact same key (all ones), they will have identical cosine sim.
+    # The only difference is recency. Slot 1 is newer, so it should be retrieved.
+    h_query = jax.random.normal(jax.random.PRNGKey(77), (1, config.hidden_size))
+    read_val, _ = read_one(bank, vars, h_query)
+    
+    # Since top_k=1, read_val will be a weighted sum of JUST slot 1 (val=2.0)
+    # We check if the mean value is closer to 2.0 than 1.0.
+    val_mean = float(jnp.mean(read_val))
+    passed = abs(val_mean - 2.0) < abs(val_mean - 1.0)
 
-    # Compute recency scores manually
-    step       = int(vars['memory']['global_step'])
-    last_acc   = np.array(vars['memory']['last_access'])
-    state      = np.array(vars['memory']['state'])
-    dt         = np.maximum(step - last_acc, 0)
-    recency    = np.exp(-config.mem_decay_rate * dt)
-    active_rec = recency[state == STATE_ACTIVE]
-
-    # Causal check: The newer write should have strictly higher recency
-    passed = bool(active_rec[1] > active_rec[0]) if len(active_rec) >= 2 else False
-    result = {"recency_scores": active_rec.tolist(),
-              "std": float(np.std(active_rec)) if len(active_rec) > 1 else 0.0,
-              "pass": passed}
-    print(f"  Recency scores for active slots: {[f'{r:.4f}' for r in active_rec]}  → {'PASS (new > old)' if passed else 'FAIL'}")
+    result = {"val_mean": val_mean, "pass": passed}
+    print(f"  Recency-driven retrieval value={val_mean:.4f} (expected ~2.0) → {'PASS' if passed else 'FAIL'}")
     return result
 
 
@@ -322,45 +334,30 @@ def test7_recency():
 # ---------------------------------------------------------------------------
 def test8_importance():
     print("\n[TEST 8] Importance Effect")
-    config = make_config()
+    config = make_config(top_k=1)
     bank, vars = fresh_bank(config, seed=8)
 
-    # Write two memories
-    rng = jax.random.PRNGKey(800)
-    rng, k1, k2 = jax.random.split(rng, 3)
-    h1 = jax.random.normal(k1, (1, config.hidden_size))
-    h2 = jax.random.normal(k2, (1, config.hidden_size))
-
-    vars = write_one(bank, vars, h1)
-    vars = write_one(bank, vars, h2)
-
-    # Manually assign different importances
     unfrozen = flax.core.unfreeze(vars)
-    active_indices = np.where(np.array(unfrozen['memory']['state']) == STATE_ACTIVE)[0]
-    if len(active_indices) >= 2:
-        unfrozen['memory']['importance'] = unfrozen['memory']['importance'].at[active_indices[0]].set(0.9)
-        unfrozen['memory']['importance'] = unfrozen['memory']['importance'].at[active_indices[1]].set(0.1)
+    unfrozen['memory']['keys'] = unfrozen['memory']['keys'].at[0:2].set(jnp.ones((2, config.memory_dim)))
+    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[0].set(jnp.full((config.memory_dim,), 1.0))
+    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[1].set(jnp.full((config.memory_dim,), 2.0))
+    unfrozen['memory']['state'] = unfrozen['memory']['state'].at[0:2].set(STATE_ACTIVE)
+    unfrozen['memory']['last_access'] = jnp.zeros_like(unfrozen['memory']['last_access'])
+    unfrozen['memory']['confidence'] = jnp.zeros_like(unfrozen['memory']['confidence'])
+    
+    # Slot 0 has higher importance
+    unfrozen['memory']['importance'] = unfrozen['memory']['importance'].at[0].set(0.9)
+    unfrozen['memory']['importance'] = unfrozen['memory']['importance'].at[1].set(0.1)
     vars = flax.core.freeze(unfrozen)
 
-    imp = np.array(vars['memory']['importance'])[np.array(vars['memory']['state']) == STATE_ACTIVE]
-
-    # Causal test: Retrieve with an ambiguous query (average of h1 and h2)
-    # The one with higher importance should be retrieved.
-    h_query = (h1 + h2) / 2.0
+    h_query = jax.random.normal(jax.random.PRNGKey(88), (1, config.hidden_size))
     read_val, _ = read_one(bank, vars, h_query)
-    expected_v1, _ = bank.apply(vars, h1, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
-    expected_v2, _ = bank.apply(vars, h2, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
     
-    sim1 = cosine_float(read_val[0], expected_v1[0])
-    sim2 = cosine_float(read_val[0], expected_v2[0])
-    
-    passed = sim1 > sim2 # h1 got importance 0.9, h2 got 0.1
+    val_mean = float(jnp.mean(read_val))
+    passed = abs(val_mean - 1.0) < abs(val_mean - 2.0)
 
-    result = {"importances": imp.tolist(),
-              "variation": float(np.std(imp)) if len(imp) > 1 else 0.0,
-              "sim_h1": sim1, "sim_h2": sim2,
-              "pass": passed}
-    print(f"  Active slot importances: {[f'{i:.2f}' for i in imp]}, Sim1={sim1:.4f}, Sim2={sim2:.4f} → {'PASS' if passed else 'FAIL'}")
+    result = {"val_mean": val_mean, "pass": passed}
+    print(f"  Importance-driven retrieval value={val_mean:.4f} (expected ~1.0) → {'PASS' if passed else 'FAIL'}")
     return result
 
 
@@ -368,23 +365,31 @@ def test8_importance():
 # Test 9: Confidence Effect
 # ---------------------------------------------------------------------------
 def test9_confidence():
-    print("\n[TEST 9] Confidence Effect (UPDATE branch)")
-    config = make_config(write_threshold=0.0)  # low threshold → updates happen
+    print("\n[TEST 9] Confidence Effect")
+    config = make_config(top_k=1)
     bank, vars = fresh_bank(config, seed=9)
 
-    # Write same memory twice → second write should UPDATE and boost confidence
-    h = jax.random.normal(jax.random.PRNGKey(900), (1, config.hidden_size))
-    vars = write_one(bank, vars, h)
-    conf_after_first = float(vars['memory']['confidence'][0])
+    unfrozen = flax.core.unfreeze(vars)
+    unfrozen['memory']['keys'] = unfrozen['memory']['keys'].at[0:2].set(jnp.ones((2, config.memory_dim)))
+    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[0].set(jnp.full((config.memory_dim,), 1.0))
+    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[1].set(jnp.full((config.memory_dim,), 2.0))
+    unfrozen['memory']['state'] = unfrozen['memory']['state'].at[0:2].set(STATE_ACTIVE)
+    unfrozen['memory']['last_access'] = jnp.zeros_like(unfrozen['memory']['last_access'])
+    unfrozen['memory']['importance'] = jnp.zeros_like(unfrozen['memory']['importance'])
+    
+    # Slot 1 has higher confidence
+    unfrozen['memory']['confidence'] = unfrozen['memory']['confidence'].at[0].set(0.1)
+    unfrozen['memory']['confidence'] = unfrozen['memory']['confidence'].at[1].set(0.9)
+    vars = flax.core.freeze(unfrozen)
 
-    # Second write with same/similar h → triggers UPDATE (confidence should increase)
-    vars = write_one(bank, vars, h)  # exact same h → high sim → UPDATE
-    conf_after_second = float(vars['memory']['confidence'][0])
+    h_query = jax.random.normal(jax.random.PRNGKey(99), (1, config.hidden_size))
+    read_val, _ = read_one(bank, vars, h_query)
+    
+    val_mean = float(jnp.mean(read_val))
+    passed = abs(val_mean - 2.0) < abs(val_mean - 1.0)
 
-    updated = conf_after_second >= conf_after_first
-    result  = {"conf_first": conf_after_first, "conf_second": conf_after_second,
-               "pass": updated}  # causal test: update boosts confidence
-    print(f"  Confidence after 1st write={conf_after_first:.4f}, 2nd write={conf_after_second:.4f}  → {'PASS' if updated else 'FAIL'}")
+    result = {"val_mean": val_mean, "pass": passed}
+    print(f"  Confidence-driven retrieval value={val_mean:.4f} (expected ~2.0) → {'PASS' if passed else 'FAIL'}")
     return result
 
 

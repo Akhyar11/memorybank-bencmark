@@ -105,6 +105,9 @@ class TransformerQAModel(nn.Module):
     ff_dim: int = 256
     max_target_len: int = 16
     dropout_rate: float = 0.1
+    pad_id: int = 0
+    bos_id: int = 2
+    eos_id: int = 3
 
     def setup(self):
         self.embedding    = nn.Embed(num_embeddings=self.vocab_size, features=self.embed_dim)
@@ -191,7 +194,7 @@ class TransformerQAModel(nn.Module):
             logits: (batch, tgt_seq_len, vocab_size)
         """
         batch_size, seq_len = target_ids.shape
-        next_token = jnp.full((batch_size, 1), 2, dtype=jnp.int32)  # BOS
+        next_token = jnp.full((batch_size, 1), self.bos_id, dtype=jnp.int32)
         all_logits = []
         dec_in     = next_token
 
@@ -251,8 +254,11 @@ class TransformerQAModel(nn.Module):
         return self.__call__(input_ids, mask, read_prob, write_prob, target_ids, deterministic=True)
 
     def greedy_decode(self, input_ids, mask, read_prob, write_prob,
-                      max_len=16, bos_id=2, pad_id=0, eos_id=3, deterministic=True):
+                      max_len=16, deterministic=True):
         """Greedy decoding for inference."""
+        bos_id = self.bos_id
+        pad_id = self.pad_id
+        eos_id = self.eos_id
         h_eos   = self.encode_query(input_ids, mask, deterministic=True)
         h_fused = self.bank(h_eos, read_prob, write_prob, deterministic=True)
 

@@ -16,6 +16,9 @@ class TextQAModel(nn.Module):
     memory_capacity: int = 128
     max_target_len: int = 16
     dropout_rate: float = 0.2
+    pad_id: int = 0
+    bos_id: int = 2
+    eos_id: int = 3
 
     def setup(self):
         # 1. Teks ke Vektor (Embedding)
@@ -84,7 +87,7 @@ class TextQAModel(nn.Module):
         batch_size, seq_len = target_ids.shape
         
         carry = h_fused  # Initial GRU state dari memory retrieval
-        next_token = jnp.full((batch_size, 1), 2, dtype=jnp.int32)  # BOS token
+        next_token = jnp.full((batch_size, 1), self.bos_id, dtype=jnp.int32)  # BOS token
         all_logits = []
         
         for _ in range(seq_len):
@@ -131,8 +134,12 @@ class TextQAModel(nn.Module):
         self.decode_oracle(input_ids, mask, input_ids, mask, target_ids, deterministic=True)
         return self.__call__(input_ids, mask, read_prob, write_prob, target_ids, deterministic=True)
         
-    def greedy_decode(self, input_ids, mask, read_prob, write_prob, max_len=16, bos_id=2, pad_id=0, eos_id=3, deterministic=False):
+    def greedy_decode(self, input_ids, mask, read_prob, write_prob, max_len=16, deterministic=False):
         """Fase Inference: Menghasilkan teks token-per-token tanpa Teacher Forcing"""
+        pad_id = self.pad_id
+        bos_id = self.bos_id
+        eos_id = self.eos_id
+        
         h_eos = self.encode_query(input_ids, mask, deterministic=True)
         h_fused, sim = self.bank(h_eos, read_prob, write_prob, deterministic=True)
         

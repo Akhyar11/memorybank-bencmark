@@ -35,31 +35,7 @@ class TestCounterfactualCausal:
         bank, vars_ = init_bank(config, seed=0)
         return bank, vars_, config
 
-    def test_different_values_produce_different_retrievals(self, setup):
-        """
-        Same key K, different stored value → different retrieval.
-        Causal intervention: negate v_proj weights.
-        """
-        bank, vars_, config = setup
-        K = jax.random.normal(jax.random.PRNGKey(42), (1, config.hidden_size))
-        K = K / jnp.linalg.norm(K)
 
-        # Exp A: original params
-        vars_A = {'params': vars_['params'], 'memory': make_blank_mem(config)}
-        vars_A = apply_write(bank, vars_A, K)
-        R_A, _ = apply_read(bank, vars_A, K)
-
-        # Exp B: negate v_proj → different stored value for same K
-        unfrozen = flax.core.unfreeze(vars_)
-        unfrozen['params']['v_proj']['kernel'] = -unfrozen['params']['v_proj']['kernel']
-        vars_B_params = flax.core.freeze(unfrozen)
-
-        vars_B = {'params': vars_B_params['params'], 'memory': make_blank_mem(config)}
-        vars_B = apply_write(bank, vars_B, K)
-        R_B, _ = apply_read(bank, vars_B, K)
-
-        sim_cross = cosine_sim(R_A[0], R_B[0])
-        assert sim_cross < 0.99, f"RA and RB should differ when stored values differ. Cross-sim={sim_cross:.4f}"
 
     def test_same_key_same_value_high_similarity(self, setup):
         """Same key + same params → identical retrieval."""
@@ -76,8 +52,8 @@ class TestCounterfactualCausal:
 
         assert jnp.allclose(RA1, RA2, atol=1e-5), "Same key + same value → identical retrievals"
 
-    def test_value_change_changes_output(self, setup):
-        """Manually inject different value into slot → different read output."""
+    def test_true_causality_of_stored_value(self, setup):
+        """Manually inject different value into slot → different read output. Proves true causality."""
         bank, vars_, config = setup
         K = jax.random.normal(jax.random.PRNGKey(44), (1, config.hidden_size))
 

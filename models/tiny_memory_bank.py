@@ -147,15 +147,36 @@ class TinyMemoryBank(nn.Module):
         self.mem_state.value = new_state
         return effective_R
 
+    def empty_memory_state(self):
+        """
+        Creates an explicitly empty memory state.
+        This guarantees that no dummy data from init() leaks into the runtime state.
+        """
+        cap = self.config.memory_capacity
+        dim = self.config.memory_dim
+        return {
+            'keys':         jnp.zeros((cap, dim),  dtype=jnp.float32),
+            'vals':         jnp.zeros((cap, dim),  dtype=jnp.float32),
+            'importance':   jnp.zeros((cap,),      dtype=jnp.float32),
+            'confidence':   jnp.zeros((cap,),      dtype=jnp.float32),
+            'created_at':   jnp.zeros((cap,),      dtype=jnp.int32),
+            'last_access':  jnp.zeros((cap,),      dtype=jnp.int32),
+            'access_count': jnp.zeros((cap,),      dtype=jnp.int32),
+            'state':        jnp.full((cap,), STATE_EXPIRED, dtype=jnp.int32),
+            'global_step':  jnp.zeros((),          dtype=jnp.int32),
+        }
+
     # -----------------------------------------------------------------------
     # LOCKED OPERATION 2: read
     # -----------------------------------------------------------------------
-    def read(self, h_eos: jax.Array) -> jax.Array:
+    def read(self, h_eos: jax.Array, read_prob: jax.Array = None) -> jax.Array:
         """
         Read from memory.
 
         Args:
             h_eos: (batch_size, hidden_size)
+            read_prob: (batch_size,) optional gating probability. 
+                       If provided, reinforcement side-effects are disabled when read_prob=0.
 
         Returns:
             read_result: (batch_size, memory_dim)
@@ -204,6 +225,14 @@ class TinyMemoryBank(nn.Module):
         # 8. Threshold filter (LOCKED: tau = memory_threshold)
         tau        = cfg.memory_threshold
         valid_mask = topk_scores > tau  # (batch, k)
+        
+        # Also ensure that EXPIRED slots are strictly invalid (score=-1e9)
+        valid_mask = jnp.logical_and(valid_mask, topk_scores > -1e8)
+
+        # Gate read effects if read_prob is provided and 0
+        if read_prob is not None:
+            is_read = read_prob > cfg.memory_read_threshold
+            valid_mask = jnp.logical_and(valid_mask, is_read[:, None])
 
         # 9. Softmax aggregation (set invalid to -1e9 before softmax)
         filtered_scores = jnp.where(valid_mask, topk_scores, -1e9)
@@ -464,7 +493,7 @@ class TinyMemoryBank(nn.Module):
         self.decay_memory()
 
         # 2. Read
-        read_val = self.read(h_eos)
+        read_val = self.read(h_eos, read_prob=read_prob)
 
         # 3. Gating
         if deterministic:

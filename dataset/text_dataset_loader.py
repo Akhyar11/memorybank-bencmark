@@ -88,17 +88,17 @@ class TextDataLoader:
 
             # Encode write facts
             write_encs = self.tokenizer.encode_batch(write_texts)
-            write_ids  = np.array([self.pad_or_truncate(e, self.max_input_len)[0] for e in write_encs])
-            write_mask = np.array([self.pad_or_truncate(e, self.max_input_len)[1] for e in write_encs])
+            write_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in write_encs]
+            write_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in write_encs]
 
             # Encode queries
             query_encs = self.tokenizer.encode_batch(query_texts)
-            query_ids  = np.array([self.pad_or_truncate(e, self.max_input_len)[0] for e in query_encs])
-            query_mask = np.array([self.pad_or_truncate(e, self.max_input_len)[1] for e in query_encs])
+            query_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in query_encs]
+            query_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in query_encs]
 
             # Encode targets: truncate, append EOS, pad
             target_encs = self.tokenizer.encode_batch(target_texts)
-            target_ids  = []
+            target_ids_list  = []
             for e in target_encs:
                 ids = e.ids
                 if len(ids) >= self.max_target_len:
@@ -106,13 +106,24 @@ class TextDataLoader:
                 ids.append(self.eos_id)
                 pad_len = self.max_target_len - len(ids)
                 ids = ids + [self.pad_id] * pad_len
-                target_ids.append(ids)
-            target_ids = np.array(target_ids)
+                target_ids_list.append(ids)
+                
+            valid_count = len(write_texts)
+            
+            # Pad batch to batch_size if it's a partial batch
+            if valid_count < self.batch_size:
+                pad_rows = self.batch_size - valid_count
+                write_ids_list.extend([[self.pad_id] * self.max_input_len] * pad_rows)
+                write_mask_list.extend([[0] * self.max_input_len] * pad_rows)
+                query_ids_list.extend([[self.pad_id] * self.max_input_len] * pad_rows)
+                query_mask_list.extend([[0] * self.max_input_len] * pad_rows)
+                target_ids_list.extend([[self.pad_id] * self.max_target_len] * pad_rows)
 
             yield {
-                'write_ids':   write_ids,
-                'write_mask':  write_mask,
-                'query_ids':   query_ids,
-                'query_mask':  query_mask,
-                'target_ids':  target_ids,
+                'write_ids':   np.array(write_ids_list),
+                'write_mask':  np.array(write_mask_list),
+                'query_ids':   np.array(query_ids_list),
+                'query_mask':  np.array(query_mask_list),
+                'target_ids':  np.array(target_ids_list),
+                'valid_count': valid_count,
             }

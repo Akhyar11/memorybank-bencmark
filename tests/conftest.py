@@ -14,19 +14,7 @@ from models.tiny_memory_bank import TinyMemoryBank, TinyMemoryConfig, STATE_EXPI
 
 def make_blank_mem(config):
     """Create a fresh, completely empty memory dict (all slots EXPIRED)."""
-    cap = config.memory_capacity
-    dim = config.memory_dim
-    return {
-        'keys':         jnp.zeros((cap, dim),  dtype=jnp.float32),
-        'vals':         jnp.zeros((cap, dim),  dtype=jnp.float32),
-        'importance':   jnp.zeros((cap,),      dtype=jnp.float32),
-        'confidence':   jnp.zeros((cap,),      dtype=jnp.float32),
-        'created_at':   jnp.zeros((cap,),      dtype=jnp.int32),
-        'last_access':  jnp.zeros((cap,),      dtype=jnp.int32),
-        'access_count': jnp.zeros((cap,),      dtype=jnp.int32),
-        'state':        jnp.full((cap,), STATE_EXPIRED, dtype=jnp.int32),
-        'global_step':  jnp.zeros((),          dtype=jnp.int32),
-    }
+    return TinyMemoryBank(config=config).empty_memory_state()
 
 
 def init_bank(config, seed=0):
@@ -57,11 +45,14 @@ def apply_write(bank, vars_, h, eos=None, wp=None):
     return {'params': vars_['params'], 'memory': new_mem['memory']}
 
 
-def apply_read(bank, vars_, h):
+def apply_read(bank, vars_, h, rp=None):
     """
     Apply bank.read and return (output, updated vars_).
     """
-    out, new_mem = bank.apply(vars_, h, method=bank.read, mutable=['memory'])
+    if rp is not None:
+        out, new_mem = bank.apply(vars_, h, rp, method=bank.read, mutable=['memory'])
+    else:
+        out, new_mem = bank.apply(vars_, h, method=bank.read, mutable=['memory'])
     return out, {'params': vars_['params'], 'memory': new_mem['memory']}
 
 

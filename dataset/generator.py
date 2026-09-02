@@ -22,31 +22,27 @@ def generate_clustered_dataset(key, num_samples, dim, num_clusters=50):
     noise = jax.random.normal(k3, (num_samples, dim)) * 0.15
     h_eos = cluster_centers[assignments] + noise
     h_eos = h_eos / (jnp.linalg.norm(h_eos, axis=-1, keepdims=True) + 1e-8)
-    return h_eos, assignments
+    return h_eos, assignments, cluster_centers
 
 
 def generate_random_dataset(key, num_samples, dim):
-    """Generates structured h_eos via Gaussian Mixture Clusters."""
-    h_eos, _ = generate_clustered_dataset(key, num_samples, dim)
+    """Generates a truly random dataset (uniform on sphere) which is approximately orthogonal in high dims."""
+    h_eos = jax.random.normal(key, (num_samples, dim))
+    h_eos = h_eos / (jnp.linalg.norm(h_eos, axis=-1, keepdims=True) + 1e-8)
     return h_eos
 
 
 def generate_clustered_pairs(key, num_samples, dim, num_clusters=50):
     """
-    Returns (write_data, query_data) where write and query are from the SAME cluster.
-    query has a small perturbation so the model can't use identity shortcut.
+    Returns (write_data, query_data) where write and query are from the SAME cluster,
+    but derived independently from the cluster center so they aren't near-duplicates.
     """
     key, k1, k2 = jax.random.split(key, 3)
-    h_write, assignments = generate_clustered_dataset(k1, num_samples, dim, num_clusters)
+    h_write, assignments, cluster_centers = generate_clustered_dataset(k1, num_samples, dim, num_clusters)
 
-    # Generate query = same cluster center + different noise
-    num_clusters_actual = int(np.max(np.array(assignments)) + 1)
-    cluster_centers = jax.random.normal(k2, (num_clusters_actual, dim))
-    cluster_centers = cluster_centers / (jnp.linalg.norm(cluster_centers, axis=-1, keepdims=True) + 1e-8)
-
-    key, k3 = jax.random.split(key)
-    query_noise = jax.random.normal(k3, (num_samples, dim)) * 0.15
-    h_query = h_write + query_noise  # same cluster, slightly different point
+    # Generate query = same cluster center + different independent noise
+    query_noise = jax.random.normal(k2, (num_samples, dim)) * 0.15
+    h_query = cluster_centers[assignments] + query_noise
     h_query = h_query / (jnp.linalg.norm(h_query, axis=-1, keepdims=True) + 1e-8)
     return h_write, h_query
 

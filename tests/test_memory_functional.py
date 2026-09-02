@@ -75,8 +75,11 @@ class TestDistractorRetrieval:
             vars_ = apply_write(bank, vars_, h_d)
 
         out, _ = apply_read(bank, vars_, h_target)
-        # Just check it's non-zero (target was written)
-        assert jnp.linalg.norm(out) > 1e-6 or True  # always pass – measured in benchmark
+        
+        from tests.conftest import apply_v_proj
+        expected_v = apply_v_proj(bank, vars_, h_target)
+        sim = cosine_float(out[0], expected_v[0])
+        assert sim > 0.8, f"Target should be cleanly retrieved despite distractors. Sim={sim:.4f}"
 
 
 class TestEmptySlotMasking:
@@ -110,7 +113,10 @@ class TestInterference:
             vars_ = apply_write(bank, vars_, h_d)
 
         out, _ = apply_read(bank, vars_, h_target)
-        assert jnp.linalg.norm(out) > 1e-6
+        from tests.conftest import apply_v_proj
+        expected_v = apply_v_proj(bank, vars_, h_target)
+        sim = cosine_float(out[0], expected_v[0])
+        assert sim > 0.5, f"Target should survive interference. Sim={sim:.4f}"
 
 
 class TestCapacityScaling:

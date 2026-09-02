@@ -146,6 +146,18 @@ class TestRead:
         out, _ = apply_read(bank, vars_, h)
         assert jnp.linalg.norm(out) > 1e-6, "1 active memory should give non-zero read"
 
+    def test_read_gate_has_no_effects(self, small_bank):
+        bank, vars_, config = small_bank
+        h = jnp.ones((1, config.hidden_size))
+        vars_ = apply_write(bank, vars_, h)
+        
+        state_before = vars_['memory']['importance'].copy()
+        out, vars_ = apply_read(bank, vars_, h, rp=jnp.zeros((1,)))
+        state_after = vars_['memory']['importance'].copy()
+        
+        assert jnp.allclose(out, 0.0), "Read output should be 0 when gated"
+        assert jnp.allclose(state_before, state_after), "Importance should not be updated when read_prob=0"
+
 
 class TestDecay:
     def test_decay_expires_old_memories(self, small_bank):

@@ -122,6 +122,9 @@ def main():
         ff_dim        = ff_dim,
         max_target_len= max_target_len,
         dropout_rate  = dropout_rate,
+        pad_id        = train_loader.pad_id,
+        bos_id        = train_loader.bos_id,
+        eos_id        = train_loader.eos_id,
     )
 
     # ---------------------------------------------------------------------------
@@ -242,7 +245,9 @@ def main():
 
             # Token accuracy (training signal check)
             preds   = jnp.argmax(logits, axis=-1)
-            mask    = (batch['target_ids'] != pad_id)
+            # Mask out padding AND invalid rows from partial batches
+            row_mask = jnp.arange(batch_size) < batch['valid_count']
+            mask    = (batch['target_ids'] != pad_id) & row_mask[:, None]
             correct = jnp.sum((preds == batch['target_ids']) * mask)
             acc     = correct / jnp.maximum(jnp.sum(mask), 1.0)
 
@@ -285,7 +290,7 @@ def main():
         preds = model.apply(
             {'params': params, 'memory': updated_mem['memory']},
             batch['query_ids'], batch['query_mask'],
-            read_p, write_off, max_target_len, 2, pad_id, 3,
+            read_p, write_off, max_target_len,
             deterministic=True,
             method=model.greedy_decode,
             mutable=['memory'],
@@ -293,7 +298,10 @@ def main():
 
         mask        = (batch['target_ids'] != pad_id)
         tok_eq      = (preds == batch['target_ids']) | (~mask)
-        exact_match = jnp.mean(jnp.all(tok_eq, axis=-1).astype(jnp.float32))
+        # exact_match for valid rows only
+        row_em = jnp.all(tok_eq, axis=-1).astype(jnp.float32)
+        row_mask = jnp.arange(batch_size) < batch['valid_count']
+        exact_match = jnp.sum(row_em * row_mask) / jnp.maximum(jnp.sum(row_mask), 1.0)
 
         return loss, exact_match
 
@@ -313,8 +321,6 @@ def main():
         n_processed = 0
 
         for batch in train_loader.iter_batches(shuffle=True):
-            if len(batch['write_ids']) < batch_size:
-                continue
             n_processed += 1
             rng, step_rng = jax.random.split(rng)
             params, opt_state, total_loss, (qa_loss, qf_loss, ret_loss, oracle_loss, acc) = \
@@ -331,8 +337,6 @@ def main():
 
         val_losses, val_accs = [], []
         for batch in val_loader.iter_batches(shuffle=False):
-            if len(batch['write_ids']) < batch_size:
-                continue
             v_loss, v_acc = eval_step(params, batch)
             val_losses.append(float(v_loss))
             val_accs.append(float(v_acc))
@@ -375,12 +379,10 @@ def main():
     test_losses, test_ems, n_test = [], [], 0
 
     for batch in test_loader.iter_batches(shuffle=False):
-        if len(batch['write_ids']) < batch_size:
-            continue
         t_loss, t_em = eval_step(best_params, batch)
         test_losses.append(float(t_loss))
         test_ems.append(float(t_em))
-        n_test += batch_size
+        n_test += batch['valid_count']
 
     avg_test_loss = np.mean(test_losses) if test_losses else float('nan')
     avg_test_em   = np.mean(test_ems)    if test_ems    else float('nan')
@@ -392,8 +394,6 @@ def main():
     # Sample predictions
     print("\n--- Sample Predictions ---")
     for batch in test_loader.iter_batches(shuffle=True):
-        if len(batch['write_ids']) < batch_size:
-            continue
         mem     = make_blank_memory(config)
         is_eos  = jnp.ones((batch_size,))
         write_p = jnp.ones((batch_size,))
@@ -412,7 +412,7 @@ def main():
         preds, _ = model.apply(
             {'params': best_params, 'memory': updated_mem['memory']},
             batch['query_ids'], batch['query_mask'],
-            read_p, write_off, max_target_len, 2, pad_id, 3,
+            read_p, write_off, max_target_len,
             deterministic=True,
             method=model.greedy_decode,
             mutable=['memory'],

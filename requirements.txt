@@ -4,3 +4,7 @@ flax
 numpy
 pyyaml
 optax
+tokenizers
+pandas
+tqdm
+pytest

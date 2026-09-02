@@ -1,303 +1,421 @@
-import os, sys
+"""
+train_text_qa.py – Fixed QA training script.
+
+Fixes applied:
+- BUG-P0-019: val_loader now uses val_csv (not train_csv)
+- BUG-P0-021: Oracle loss REMOVED from total_loss; kept as separate diagnostic metric
+- BUG-P0-022: Test loop evaluates ENTIRE test set (no break)
+- BUG-P0-023: TextDataLoader uses max_samples=None (no silent truncation)
+- BUG-P0-024: blank_memory refreshed properly per training step
+- BUG-P1-004: Comment corrected – free-running autoregressive, not teacher forcing
+- BUG-P1-008: Loss components logged separately; QA loss is primary objective
+- Loss: decoder outputs logits → cross_entropy_loss (not log(probs))
+"""
+import os
+import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import jax
 import jax.numpy as jnp
-import flax.linen as nn
 import optax
 import numpy as np
 from tqdm import tqdm
 
 from models.transformer_qa_model import TransformerQAModel
-from models.tiny_memory_bank import TinyMemoryConfig
+from models.tiny_memory_bank import TinyMemoryConfig, STATE_EXPIRED
 from dataset.text_dataset_loader import TextDataLoader
 
+
+# ---------------------------------------------------------------------------
+# Loss helpers
+# ---------------------------------------------------------------------------
 def cross_entropy_loss(logits, targets, pad_id, vocab_size):
-    one_hot = jax.nn.one_hot(targets, vocab_size)
-    log_probs = jax.nn.log_softmax(logits, axis=-1)
-    loss = -jnp.sum(one_hot * log_probs, axis=-1)
-    mask = (targets != pad_id).astype(jnp.float32)
+    """
+    Standard cross-entropy from logits.
+    logits: (batch, seq, vocab_size) – raw logits (NOT softmax'd)
+    targets: (batch, seq)
+    """
+    one_hot  = jax.nn.one_hot(targets, vocab_size)
+    log_prob = jax.nn.log_softmax(logits, axis=-1)
+    loss     = -jnp.sum(one_hot * log_prob, axis=-1)
+    mask     = (targets != pad_id).astype(jnp.float32)
     return jnp.sum(loss * mask) / jnp.maximum(jnp.sum(mask), 1.0)
 
+
+def make_blank_memory(config):
+    """Create a truly empty memory state (all slots EXPIRED)."""
+    cap = config.memory_capacity
+    dim = config.memory_dim
+    return {
+        'keys':         jnp.zeros((cap, dim),  dtype=jnp.float32),
+        'vals':         jnp.zeros((cap, dim),  dtype=jnp.float32),
+        'importance':   jnp.zeros((cap,),      dtype=jnp.float32),
+        'confidence':   jnp.zeros((cap,),      dtype=jnp.float32),
+        'created_at':   jnp.zeros((cap,),      dtype=jnp.int32),
+        'last_access':  jnp.zeros((cap,),      dtype=jnp.int32),
+        'access_count': jnp.zeros((cap,),      dtype=jnp.int32),
+        'state':        jnp.full((cap,), STATE_EXPIRED, dtype=jnp.int32),
+        'global_step':  jnp.zeros((),          dtype=jnp.int32),
+    }
+
+
 def main():
-    dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dataset")
-    train_csv = os.path.join(dataset_dir, "train.csv")
-    val_csv = os.path.join(dataset_dir, "val.csv")
-    tokenizer_path = os.path.join(dataset_dir, "tokenizer.json")
-    
-    # 1. Hyperparameters
-    vocab_size = 2000
-    batch_size = 32
-    max_input_len = 16
+    dataset_dir    = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'dataset')
+    train_csv      = os.path.join(dataset_dir, 'train.csv')
+    val_csv        = os.path.join(dataset_dir, 'val.csv')   # FIX BUG-P0-019
+    test_csv       = os.path.join(dataset_dir, 'test.csv')
+    tokenizer_path = os.path.join(dataset_dir, 'tokenizer.json')
+
+    # Verify distinct dataset files
+    assert train_csv != val_csv,  "train and val CSV must be different files!"
+    assert train_csv != test_csv, "train and test CSV must be different files!"
+
+    # ---------------------------------------------------------------------------
+    # Hyperparameters
+    # ---------------------------------------------------------------------------
+    vocab_size     = 2000
+    batch_size     = 32
+    max_input_len  = 32
     max_target_len = 16
-    
-    # 2. Setup Data
-    train_loader = TextDataLoader(train_csv, tokenizer_path, batch_size, max_input_len, max_target_len)
-    val_loader = TextDataLoader(train_csv, tokenizer_path, batch_size, max_input_len, max_target_len)
+    num_epochs     = 10
+    seed           = 42
+
+    # ---------------------------------------------------------------------------
+    # Data loaders – max_samples=None loads full dataset
+    # ---------------------------------------------------------------------------
+    train_loader = TextDataLoader(train_csv, tokenizer_path, batch_size,
+                                  max_input_len, max_target_len, max_samples=None)
+    val_loader   = TextDataLoader(val_csv,   tokenizer_path, batch_size,
+                                  max_input_len, max_target_len, max_samples=None)
     pad_id = train_loader.pad_id
-    
-    # Disable thresholds during training to prevent cold-start bypass and enable gradients
+
+    # ---------------------------------------------------------------------------
+    # Model config
+    # ---------------------------------------------------------------------------
     config = TinyMemoryConfig(
-        memory_capacity=128,
-        memory_dim=32,
-        hidden_size=32,
-        memory_threshold=0.0,
-        memory_read_threshold=0.0,
-        memory_write_threshold=0.7,
-        memory_top_k=8
+        memory_capacity      = 128,
+        memory_dim           = 32,
+        hidden_size          = 32,
+        memory_threshold     = 0.0,  # disable threshold during training (cold-start)
+        memory_read_threshold= 0.0,
+        memory_write_threshold= 0.0,
+        memory_top_k         = 8,
     )
-    model = TransformerQAModel(config=config, vocab_size=vocab_size, embed_dim=32, num_layers=1, num_heads=2, ff_dim=64, max_target_len=max_target_len, dropout_rate=0.0)
-    num_epochs = 10
-    
-    # Cosine decay schedule
+
+    model = TransformerQAModel(
+        config        = config,
+        vocab_size    = vocab_size,
+        embed_dim     = 32,
+        num_layers    = 1,
+        num_heads     = 2,
+        ff_dim        = 64,
+        max_target_len= max_target_len,
+        dropout_rate  = 0.0,
+    )
+
+    # ---------------------------------------------------------------------------
+    # Optimizer
+    # ---------------------------------------------------------------------------
     lr_schedule = optax.warmup_cosine_decay_schedule(
-        init_value=1e-4,
-        peak_value=2e-3,
-        warmup_steps=100,
-        decay_steps=num_epochs * train_loader.num_batches,
-        end_value=1e-5
+        init_value   = 1e-4,
+        peak_value   = 2e-3,
+        warmup_steps = 100,
+        decay_steps  = num_epochs * train_loader.num_batches,
+        end_value    = 1e-5,
     )
-    
-    # Optimizer dengan Weight Decay dan Gradient Clipping untuk mencegah NaN
     tx = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adamw(learning_rate=lr_schedule, weight_decay=1e-4)
+        optax.adamw(learning_rate=lr_schedule, weight_decay=1e-4),
     )
-    
-    rng = jax.random.PRNGKey(42)
+
+    # ---------------------------------------------------------------------------
+    # Initialise model
+    # ---------------------------------------------------------------------------
+    rng = jax.random.PRNGKey(seed)
     rng, init_rng = jax.random.split(rng)
-    
-    dummy_input = jnp.ones((batch_size, max_input_len), dtype=jnp.int32)
-    dummy_mask = jnp.ones((batch_size, max_input_len), dtype=jnp.int32)
+
+    dummy_input  = jnp.ones((batch_size, max_input_len),  dtype=jnp.int32)
+    dummy_mask   = jnp.ones((batch_size, max_input_len),  dtype=jnp.int32)
     dummy_target = jnp.ones((batch_size, max_target_len), dtype=jnp.int32)
-    dummy_p = jnp.ones((batch_size,), dtype=jnp.float32)
-    
-    print("Inisialisasi Model Parameter...")
-    variables = model.init(init_rng, dummy_input, dummy_mask, dummy_p, dummy_p, dummy_p, dummy_target, method=model.init_all)
-    
-    state = {'params': variables['params']}
-    opt_state = tx.init(state['params'])
-    blank_memory = variables['memory']
-    
+    dummy_p      = jnp.ones((batch_size,),                dtype=jnp.float32)
+
+    print("Initialising model parameters...")
+    variables = model.init(
+        init_rng, dummy_input, dummy_mask, dummy_p, dummy_p, dummy_target,
+        method=model.init_all
+    )
+
+    params    = variables['params']
+    opt_state = tx.init(params)
+
+    # blank_memory is recreated per training step (episodic: memory resets each batch)
+    blank_memory = make_blank_memory(config)
+
+    # ---------------------------------------------------------------------------
+    # Training step
+    # ---------------------------------------------------------------------------
     @jax.jit
     def train_step(params, opt_state, batch, step_rng):
-        write_rng, dropout_rng = jax.random.split(step_rng)
-        
-        def loss_fn(params):
-            vars = {'params': params, 'memory': blank_memory}
-            is_eos = jnp.ones((batch_size,))
-            write_p = jnp.ones((batch_size,))
-            
-            # Forward pass (Training)
-            (_, h_eos), updated_memory = model.apply(vars, batch['write_ids'], batch['write_mask'], is_eos, write_p, 
-                                            deterministic=False, method=model.write_only, mutable=['memory'], rngs={'dropout': dropout_rng})
-                                            
-            new_vars = {'params': params, 'memory': updated_memory['memory']}
-            read_p = jnp.ones((batch_size,))
-            write_p_zero = jnp.zeros((batch_size,))
-            
-            (logits, sim, query_h_eos, h_fused), _ = model.apply(new_vars, batch['query_ids'], batch['query_mask'], 
-                                    read_p, write_p_zero, batch['target_ids'], deterministic=False, 
-                                    mutable=['memory'], rngs={'dropout': dropout_rng})
-            
-            # Auto-regressive loss (Teacher Forcing)
-            # logits here are actually final_probs from the Pointer-Generator
-            mask = (batch['target_ids'] != pad_id)
-            target_probs = jnp.take_along_axis(logits, batch['target_ids'][..., None], axis=-1)[..., 0]
-            loss = -jnp.log(target_probs + 1e-8)
-            loss = (loss * mask).sum() / jnp.maximum(mask.sum(), 1.0)
-            
-            # Contrastive Loss on Memory Retrieval
-            labels = jnp.arange(batch_size)
-            target_sim = jax.nn.one_hot(labels, sim.shape[-1])
-            aux_loss = jnp.mean((sim - target_sim) ** 2)
-            
-            # Orthogonal Contrastive Loss for Encoder Representations (h_eos)
-            h_eos_pooled = jnp.mean(h_eos, axis=1)
-            h_norm = h_eos_pooled / jnp.sqrt(jnp.sum(h_eos_pooled**2, axis=-1, keepdims=True) + 1e-8)
-            sim_matrix = jnp.matmul(h_norm, h_norm.T) # shape: (batch_size, batch_size)
-            off_diagonal_mask = 1.0 - jnp.eye(batch_size)
-            # Penalty if similarity is greater than 0 for different facts
-            contrast_loss = jnp.mean((sim_matrix * off_diagonal_mask) ** 2)
-            
-            # Query-Fact Contrastive Loss (InfoNCE): Align h_query (Query GRU) dengan h_fact (Fact GRU)
-            h_fact_eos = model.apply({'params': params, 'memory': blank_memory},
-                                     batch['write_ids'], batch['write_mask'],
-                                     deterministic=False, method=model.encode_fact,
-                                     rngs={'dropout': dropout_rng})
-            
-            h_fact_pooled = jnp.mean(h_fact_eos, axis=1)
-            h_q_norm = h_norm
-            h_f_norm = h_fact_pooled / jnp.sqrt(jnp.sum(h_fact_pooled**2, axis=-1, keepdims=True) + 1e-8)
-            
-            # Cosine similarity matrix antar query_i dan fact_j dalam batch (scaled by temperature 0.1)
-            qf_sim_matrix = jnp.matmul(h_q_norm, h_f_norm.T) / 0.1
-            qf_labels = jnp.arange(batch_size)
-            qf_contrastive_loss = optax.softmax_cross_entropy_with_integer_labels(qf_sim_matrix, qf_labels).mean()
+        dropout_rng, _ = jax.random.split(step_rng)
 
-            # Retrieval Supervision Loss: h_fused harus semirip mungkin dengan h_fact_eos
-            h_fused_pooled = jnp.mean(h_fused, axis=1)
-            h_fused_norm = h_fused_pooled / jnp.sqrt(jnp.sum(h_fused_pooled**2, axis=-1, keepdims=True) + 1e-8)
-            retrieval_sim = jnp.sum(h_fused_norm * h_f_norm, axis=-1)
+        def loss_fn(params):
+            # Fresh memory per batch (episodic mode)
+            mem = make_blank_memory(config)
+
+            is_eos  = jnp.ones((batch_size,))
+            write_p = jnp.ones((batch_size,))
+
+            # --- WRITE phase ---
+            h_eos_fact, updated_mem = model.apply(
+                {'params': params, 'memory': mem},
+                batch['write_ids'], batch['write_mask'],
+                is_eos, write_p, True,
+                method=model.write_only,
+                mutable=['memory'],
+                rngs={'dropout': dropout_rng},
+            )
+
+            # --- READ + FUSE + DECODE phase ---
+            read_p    = jnp.ones((batch_size,))
+            write_off = jnp.zeros((batch_size,))
+
+            (logits, sim, h_eos_q, h_fused), _ = model.apply(
+                {'params': params, 'memory': updated_mem['memory']},
+                batch['query_ids'], batch['query_mask'],
+                read_p, write_off, batch['target_ids'],
+                deterministic=False,
+                mutable=['memory'],
+                rngs={'dropout': dropout_rng},
+            )
+
+            # --- Primary QA loss (logits → cross-entropy) ---
+            # logits: (batch, seq, vocab) – raw logits from decoder
+            qa_loss = cross_entropy_loss(logits, batch['target_ids'], pad_id, vocab_size)
+
+            # --- Auxiliary: Query-Fact InfoNCE contrastive (optional, small weight) ---
+            h_q_norm = h_eos_q / (jnp.linalg.norm(h_eos_q, axis=-1, keepdims=True) + 1e-8)
+
+            h_f_norm_vals, _ = model.apply(
+                {'params': params, 'memory': make_blank_memory(config)},
+                batch['write_ids'], batch['write_mask'], True,
+                method=model.encode_fact,
+                mutable=['memory'],
+                rngs={'dropout': dropout_rng},
+            )
+            h_f_vals = h_f_norm_vals
+            h_f_norm = h_f_vals / (jnp.linalg.norm(h_f_vals, axis=-1, keepdims=True) + 1e-8)
+
+            qf_sim    = jnp.matmul(h_q_norm, h_f_norm.T) / 0.1
+            qf_labels = jnp.arange(batch_size)
+            qf_loss   = optax.softmax_cross_entropy_with_integer_labels(qf_sim, qf_labels).mean()
+
+            # --- Retrieval alignment: h_fused should be similar to h_fact ---
+            h_fused_norm = h_fused / (jnp.linalg.norm(h_fused, axis=-1, keepdims=True) + 1e-8)
+            retrieval_sim  = jnp.sum(h_fused_norm * h_f_norm, axis=-1)
             retrieval_loss = 1.0 - jnp.mean(retrieval_sim)
-            
-            oracle_probs = model.apply(
-                {'params': params, 'memory': blank_memory},
+
+            # --- DIAGNOSTIC ONLY: oracle loss (not added to total) ---
+            oracle_logits, _ = model.apply(
+                {'params': params, 'memory': make_blank_memory(config)},
                 batch['write_ids'], batch['write_mask'],
                 batch['query_ids'], batch['query_mask'],
-                batch['target_ids'], deterministic=False,
-                method=model.decode_oracle, rngs={'dropout': dropout_rng}
+                batch['target_ids'], True,
+                method=model.decode_oracle,
+                mutable=['memory'],
+                rngs={'dropout': dropout_rng},
             )
-            oracle_target_probs = jnp.take_along_axis(oracle_probs, batch['target_ids'][..., None], axis=-1)[..., 0]
-            oracle_loss = -jnp.log(oracle_target_probs + 1e-8)
-            oracle_loss = (oracle_loss * mask).sum() / jnp.maximum(mask.sum(), 1.0)
-            
-            total_loss = loss + 10.0 * aux_loss + 2.0 * contrast_loss + 5.0 * retrieval_loss + 3.0 * oracle_loss + 5.0 * qf_contrastive_loss
-            
-            # Calculate accuracy
-            preds = jnp.argmax(logits, axis=-1)
-            correct = jnp.sum((preds == batch['target_ids']) * mask)
-            total = jnp.maximum(jnp.sum(mask), 1.0)
-            acc = correct / total
-            
-            return total_loss, acc
-            
-        (total_loss, acc), grads = jax.value_and_grad(loss_fn, has_aux=True)(params)
-        updates, opt_state = tx.update(grads, opt_state, params) # pass params for weight decay!
-        params = optax.apply_updates(params, updates)
-        
-        return params, opt_state, total_loss
+            oracle_loss = cross_entropy_loss(oracle_logits, batch['target_ids'], pad_id, vocab_size)
 
+            # --- Total loss: QA loss primary; small aux weights ---
+            total_loss = qa_loss + 0.5 * qf_loss + 0.5 * retrieval_loss
+
+            # Token accuracy (training signal check)
+            preds   = jnp.argmax(logits, axis=-1)
+            mask    = (batch['target_ids'] != pad_id)
+            correct = jnp.sum((preds == batch['target_ids']) * mask)
+            acc     = correct / jnp.maximum(jnp.sum(mask), 1.0)
+
+            return total_loss, (qa_loss, qf_loss, retrieval_loss, oracle_loss, acc)
+
+        (total_loss, aux), grads = jax.value_and_grad(loss_fn, has_aux=True)(params)
+        updates, opt_state = tx.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, opt_state, total_loss, aux
+
+    # ---------------------------------------------------------------------------
+    # Eval step
+    # ---------------------------------------------------------------------------
     @jax.jit
     def eval_step(params, batch):
-        vars = {'params': params, 'memory': blank_memory}
-        is_eos = jnp.ones((batch_size,))
+        mem     = make_blank_memory(config)
+        is_eos  = jnp.ones((batch_size,))
         write_p = jnp.ones((batch_size,))
-        
-        # Tulis fakta ke memori
-        (_, h_eos), updated_memory = model.apply(vars, batch['write_ids'], batch['write_mask'], is_eos, write_p, 
-                                        deterministic=True, method=model.write_only, mutable=['memory'])
-        
-        new_vars = {'params': params, 'memory': updated_memory['memory']}
-        read_p = jnp.ones((batch_size,))
-        write_p_zero = jnp.zeros((batch_size,))
-        
-        # --- Hitung loss (pakai teacher forcing hanya untuk loss, bukan untuk acc) ---
-        (logits, sim, _, _), _ = model.apply(new_vars, batch['query_ids'], batch['query_mask'], 
-                                read_p, write_p_zero, batch['target_ids'], deterministic=True, mutable=['memory'])
-        loss = cross_entropy_loss(logits, batch['target_ids'], pad_id, vocab_size)
-        
-        # --- Hitung accuracy menggunakan GREEDY DECODE dengan EXACT MATCH ---
-        preds, _ = model.apply(new_vars, batch['query_ids'], batch['query_mask'],
-                            read_p, write_p_zero, max_target_len, 2, pad_id, 3,
-                            deterministic=True, method=model.greedy_decode, mutable=['memory'])
-        
-        # Exact Match: semua token non-PAD harus sama persis
-        mask = (batch['target_ids'] != pad_id)
-        token_equals = (preds == batch['target_ids']) | (~mask)
-        sequence_exact_match = jnp.all(token_equals, axis=-1)  # (batch_size,)
-        acc = jnp.mean(sequence_exact_match.astype(jnp.float32))
-        
-        return loss, acc
 
-    print(f"Mulai training NLP (GRU Autoregressive) selama {num_epochs} epoch...")
-    print("-" * 60)
-    
-    best_val_loss = float('inf')
-    
+        _, updated_mem = model.apply(
+            {'params': params, 'memory': mem},
+            batch['write_ids'], batch['write_mask'],
+            is_eos, write_p, True,
+            method=model.write_only,
+            mutable=['memory'],
+        )
+
+        read_p    = jnp.ones((batch_size,))
+        write_off = jnp.zeros((batch_size,))
+
+        (logits, _, _, _), _ = model.apply(
+            {'params': params, 'memory': updated_mem['memory']},
+            batch['query_ids'], batch['query_mask'],
+            read_p, write_off, batch['target_ids'],
+            deterministic=True,
+            mutable=['memory'],
+        )
+        loss = cross_entropy_loss(logits, batch['target_ids'], pad_id, vocab_size)
+
+        preds = model.apply(
+            {'params': params, 'memory': updated_mem['memory']},
+            batch['query_ids'], batch['query_mask'],
+            read_p, write_off, max_target_len, 2, pad_id, 3,
+            deterministic=True,
+            method=model.greedy_decode,
+            mutable=['memory'],
+        )[0]
+
+        mask        = (batch['target_ids'] != pad_id)
+        tok_eq      = (preds == batch['target_ids']) | (~mask)
+        exact_match = jnp.mean(jnp.all(tok_eq, axis=-1).astype(jnp.float32))
+
+        return loss, exact_match
+
+    # ---------------------------------------------------------------------------
+    # Training loop
+    # ---------------------------------------------------------------------------
+    print(f"Starting training for {num_epochs} epochs...")
+    print("-" * 70)
+
+    best_val_loss    = float('inf')
+    best_params      = params
+    results_dir      = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'results')
+    os.makedirs(results_dir, exist_ok=True)
+
     for epoch in range(1, num_epochs + 1):
-        train_losses = []
-        num_batches_yielded = 0
-        num_batches_processed = 0
-        
+        train_losses, train_qa, train_qf, train_ret = [], [], [], []
+        n_processed = 0
+
         for batch in train_loader.iter_batches(shuffle=True):
-            num_batches_yielded += 1
             if len(batch['write_ids']) < batch_size:
                 continue
-            num_batches_processed += 1
-                
+            n_processed += 1
             rng, step_rng = jax.random.split(rng)
-            state['params'], opt_state, loss = train_step(state['params'], opt_state, batch, step_rng)
-            train_losses.append(loss)
-            
-            if np.isnan(loss):
-                print(f"NaN generated BY MODEL at Epoch {epoch}, Batch {len(train_losses)}!", flush=True)
-                raise ValueError(f"NaN detected at Epoch {epoch}, Batch {len(train_losses)}!")
-        
-        print(f"DEBUG: Epoch {epoch} yielded {num_batches_yielded} batches, processed {num_batches_processed} batches.")
-            
-        val_losses = []
-        val_accs = []
+            params, opt_state, total_loss, (qa_loss, qf_loss, ret_loss, oracle_loss, acc) = \
+                train_step(params, opt_state, batch, step_rng)
+
+            train_losses.append(float(total_loss))
+            train_qa.append(float(qa_loss))
+            train_qf.append(float(qf_loss))
+            train_ret.append(float(ret_loss))
+
+            if np.isnan(float(total_loss)):
+                print(f"NaN at epoch {epoch}, batch {n_processed}!")
+                raise ValueError("NaN detected in training loss")
+
+        val_losses, val_accs = [], []
         for batch in val_loader.iter_batches(shuffle=False):
             if len(batch['write_ids']) < batch_size:
                 continue
-                
-            v_loss, v_acc = eval_step(state['params'], batch)
-            val_losses.append(v_loss)
-            val_accs.append(v_acc)
-            
+            v_loss, v_acc = eval_step(params, batch)
+            val_losses.append(float(v_loss))
+            val_accs.append(float(v_acc))
+
         avg_t_loss = np.mean(train_losses)
-        avg_v_loss = np.mean(val_losses)
-        avg_v_acc = np.mean(val_accs)
-        
-        mark = "✓ best" if avg_v_loss < best_val_loss else ""
+        avg_v_loss = np.mean(val_losses)   if val_losses else float('inf')
+        avg_v_acc  = np.mean(val_accs)     if val_accs   else 0.0
+
+        mark = " ✓ best" if avg_v_loss < best_val_loss else ""
         if avg_v_loss < best_val_loss:
             best_val_loss = avg_v_loss
-            
-        print(f"Epoch {epoch:03d} | Train Loss: {avg_t_loss:.4f} | Val Loss: {avg_v_loss:.4f} | Val Acc: {avg_v_acc*100:.1f}% {mark}")
+            best_params   = params
+            # Save best checkpoint
+            try:
+                from flax import serialization
+                ckpt_path = os.path.join(results_dir, 'best_model.msgpack')
+                with open(ckpt_path, 'wb') as f:
+                    f.write(serialization.to_bytes(params))
+            except Exception as e:
+                print(f"  Checkpoint save failed: {e}")
 
-    print("=" * 60)
-    print("MENGUJI MODEL (GREEDY DECODING) PADA DATA TEST")
-    print("=" * 60)
-    
-    try:
-        from flax import serialization
-        ckpt_path = os.path.abspath(os.path.join(dataset_dir, "..", "results", "model.msgpack"))
-        os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
-        with open(ckpt_path, "wb") as f:
-            f.write(serialization.to_bytes(state['params']))
-        print(f"Model tersimpan di {ckpt_path}")
-    except Exception as e:
-        print(f"Gagal menyimpan model: {e}")
-        
-    test_csv = os.path.join(dataset_dir, "test.csv")
-    test_loader = TextDataLoader(test_csv, tokenizer_path, batch_size, max_input_len, max_target_len)
-    
-    @jax.jit
-    def generate_step(params, batch):
-        vars = {'params': params, 'memory': blank_memory}
-        is_eos = jnp.ones((batch_size,))
-        write_p = jnp.ones((batch_size,))
-        
-        _, updated_memory = model.apply(vars, batch['write_ids'], batch['write_mask'], is_eos, write_p, 
-                                        deterministic=True, method=model.write_only, mutable=['memory'])
-        
-        new_vars = {'params': params, 'memory': updated_memory['memory']}
-        read_p = jnp.ones((batch_size,))
-        write_p_zero = jnp.zeros((batch_size,))
-        
-        preds, _ = model.apply(new_vars, batch['query_ids'], batch['query_mask'], 
-                            read_p, write_p_zero, max_target_len, 2, pad_id, 3, # bos_id, pad_id, eos_id
-                            deterministic=True, method=model.greedy_decode, mutable=['memory'])
-        return preds
-        
+        print(
+            f"Epoch {epoch:03d} | "
+            f"Total={avg_t_loss:.4f} QA={np.mean(train_qa):.4f} "
+            f"QF={np.mean(train_qf):.4f} Ret={np.mean(train_ret):.4f} | "
+            f"Val Loss={avg_v_loss:.4f} Val EM={avg_v_acc*100:.1f}%"
+            f"{mark}"
+        )
+
+    # ---------------------------------------------------------------------------
+    # Test evaluation – FULL test set (no break) – FIX BUG-P0-022
+    # ---------------------------------------------------------------------------
+    print("=" * 70)
+    print("TESTING ON FULL TEST SET (GREEDY DECODING)")
+    print("=" * 70)
+
+    test_loader = TextDataLoader(test_csv, tokenizer_path, batch_size,
+                                 max_input_len, max_target_len, max_samples=None)
+
+    test_losses, test_ems, n_test = [], [], 0
+
+    for batch in test_loader.iter_batches(shuffle=False):
+        if len(batch['write_ids']) < batch_size:
+            continue
+        t_loss, t_em = eval_step(best_params, batch)
+        test_losses.append(float(t_loss))
+        test_ems.append(float(t_em))
+        n_test += batch_size
+
+    avg_test_loss = np.mean(test_losses) if test_losses else float('nan')
+    avg_test_em   = np.mean(test_ems)    if test_ems    else float('nan')
+
+    print(f"Test samples evaluated : {n_test}")
+    print(f"Test Loss              : {avg_test_loss:.4f}")
+    print(f"Test Exact Match       : {avg_test_em * 100:.2f}%")
+
+    # Sample predictions
+    print("\n--- Sample Predictions ---")
     for batch in test_loader.iter_batches(shuffle=True):
         if len(batch['write_ids']) < batch_size:
             continue
-            
-        preds = generate_step(state['params'], batch)
-        
-        for i in range(5):
-            print(f"\n--- Sampel {i+1} ---")
+        mem     = make_blank_memory(config)
+        is_eos  = jnp.ones((batch_size,))
+        write_p = jnp.ones((batch_size,))
+
+        _, updated_mem = model.apply(
+            {'params': best_params, 'memory': mem},
+            batch['write_ids'], batch['write_mask'],
+            is_eos, write_p, True,
+            method=model.write_only,
+            mutable=['memory'],
+        )
+
+        read_p    = jnp.ones((batch_size,))
+        write_off = jnp.zeros((batch_size,))
+
+        preds, _ = model.apply(
+            {'params': best_params, 'memory': updated_mem['memory']},
+            batch['query_ids'], batch['query_mask'],
+            read_p, write_off, max_target_len, 2, pad_id, 3,
+            deterministic=True,
+            method=model.greedy_decode,
+            mutable=['memory'],
+        )
+
+        for i in range(min(5, batch_size)):
             q_str = test_loader.tokenizer.decode(batch['query_ids'][i].tolist(), skip_special_tokens=True)
             t_str = test_loader.tokenizer.decode(batch['target_ids'][i].tolist(), skip_special_tokens=True)
             p_str = test_loader.tokenizer.decode(preds[i].tolist(), skip_special_tokens=True)
-            
-            print(f"Query   : {q_str}")
-            print(f"Target  : {t_str}")
-            print(f"Prediksi: {p_str}")
-            
-        break
+            print(f"\n[{i+1}] Query:  {q_str}")
+            print(f"    Target: {t_str}")
+            print(f"    Pred:   {p_str}")
+        break  # Only print one batch of examples
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()

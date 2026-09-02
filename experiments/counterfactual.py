@@ -1,71 +1,120 @@
+"""
+experiments/counterfactual.py – Fixed True Causal Counterfactual Test.
+
+Fix BUG-P1-003: Original used two completely different H_A and H_B.
+True counterfactual requires:
+  - Same key K (same h_eos for write)
+  - Different stored VALUE (manipulate v_proj output)
+  - Query with same K
+  - Verify: retrieval changes only because value changed
+
+Method:
+  Experiment A: write K with params_A → v_proj_A(K) stored → read K → R_A
+  Experiment B: same K with params_B (negated v_proj) → v_proj_B(K) stored → read K → R_B
+  Assert: R_A ≠ R_B, sim(R_A, R_B) is low (causal effect of value)
+"""
 import jax
 import jax.numpy as jnp
-from dataset.generator import generate_random_dataset, create_synthetic_batch
-from evaluation.metrics import compute_cosine_similarity
+import flax.core
 import numpy as np
+
+from models.tiny_memory_bank import STATE_EXPIRED
+from evaluation.metrics import compute_cosine_similarity
+
+
+def make_blank_memory(config):
+    cap = config.memory_capacity
+    dim = config.memory_dim
+    return {
+        'keys':         jnp.zeros((cap, dim),  dtype=jnp.float32),
+        'vals':         jnp.zeros((cap, dim),  dtype=jnp.float32),
+        'importance':   jnp.zeros((cap,),      dtype=jnp.float32),
+        'confidence':   jnp.zeros((cap,),      dtype=jnp.float32),
+        'created_at':   jnp.zeros((cap,),      dtype=jnp.int32),
+        'last_access':  jnp.zeros((cap,),      dtype=jnp.int32),
+        'access_count': jnp.zeros((cap,),      dtype=jnp.int32),
+        'state':        jnp.full((cap,), STATE_EXPIRED, dtype=jnp.int32),
+        'global_step':  jnp.zeros((),          dtype=jnp.int32),
+    }
+
 
 def run_counterfactual(adapter, dim, key):
     """
-    Test 10: Counterfactual Causal Test
-    Experiment A: K1 -> V_A, Query K1 -> Expect V_A
-    Experiment B: K1 -> V_B, Query K1 -> Expect V_B
+    True Causal Counterfactual Test (Fix BUG-P1-003).
+
+    Same key K → different stored values → different retrieval outputs.
     """
-    key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
-    
-    # Generate same K1 but different V (we manipulate the adapter's input slightly to fake different V projection, 
-    # but MemoryBank generates V from H. So if we want different V for same K, we must manipulate `v_proj` weights or 
-    # manually intervene. Let's just use two distinct H's that are mapped to the same K but different V. 
-    # Since K = k_proj(H), this is hard without intervention.
-    # Alternatively, we just use two completely different H's for Exp A and Exp B.
-    
-    H_A = generate_random_dataset(subkey1, 1, dim)
-    H_B = generate_random_dataset(subkey2, 1, dim)
-    
-    # Exp A
+    key, k1 = jax.random.split(key)
+
+    # Fixed query key K – used for both experiments
+    K = jax.random.normal(k1, (1, dim))
+    K = K / jnp.linalg.norm(K)
+
+    # ---- Experiment A: original params ----
     adapter.reset_memory()
-    h_eos, is_eos, write_prob, _ = create_synthetic_batch(H_A)
-    adapter.write_only(h_eos, is_eos, write_prob)
-    retrieved_A = adapter.read_only(h_eos)
-    expected_A = adapter.get_v_proj(h_eos)
-    
-    # Exp B
+    adapter.write_only(K, jnp.ones((1,)), jnp.ones((1,)))
+    R_A = adapter.read_only(K)
+
+    # ---- Experiment B: negate v_proj → different stored value for same K ----
+    # Manually flip v_proj kernel to produce V_B = -V_A
+    unfrozen = flax.core.unfreeze(adapter.variables)
+    unfrozen['params']['bank']['v_proj']['kernel'] = \
+        -unfrozen['params']['bank']['v_proj']['kernel']
+    adapter.variables = flax.core.freeze(unfrozen)
+
     adapter.reset_memory()
-    h_eos_B, is_eos_B, write_prob_B, _ = create_synthetic_batch(H_B)
-    adapter.write_only(h_eos_B, is_eos_B, write_prob_B)
-    retrieved_B = adapter.read_only(h_eos_B)
-    expected_B = adapter.get_v_proj(h_eos_B)
-    
-    # We expect retrieved_A to match expected_A, and retrieved_B to match expected_B
-    sim_A = compute_cosine_similarity(retrieved_A, expected_A)
-    sim_B = compute_cosine_similarity(retrieved_B, expected_B)
-    
-    # Counterfactual check: does retrieved_A equal retrieved_B?
-    # If they are different, it means the memory content causally changes the output.
-    sim_cross = compute_cosine_similarity(retrieved_A, retrieved_B)
-    
-    return np.mean(np.array(sim_A)), np.mean(np.array(sim_B)), np.mean(np.array(sim_cross))
+    adapter.write_only(K, jnp.ones((1,)), jnp.ones((1,)))
+    R_B = adapter.read_only(K)
+
+    # Restore original params
+    unfrozen = flax.core.unfreeze(adapter.variables)
+    unfrozen['params']['bank']['v_proj']['kernel'] = \
+        -unfrozen['params']['bank']['v_proj']['kernel']
+    adapter.variables = flax.core.freeze(unfrozen)
+
+    # Expected A: v_proj_A(K)
+    expected_A = adapter.get_v_proj(K)
+
+    # Restore negated to get expected_B
+    unfrozen = flax.core.unfreeze(adapter.variables)
+    unfrozen['params']['bank']['v_proj']['kernel'] = \
+        -unfrozen['params']['bank']['v_proj']['kernel']
+    adapter.variables = flax.core.freeze(unfrozen)
+    expected_B = adapter.get_v_proj(K)
+    # Restore again
+    unfrozen = flax.core.unfreeze(adapter.variables)
+    unfrozen['params']['bank']['v_proj']['kernel'] = \
+        -unfrozen['params']['bank']['v_proj']['kernel']
+    adapter.variables = flax.core.freeze(unfrozen)
+
+    sim_A     = float(jnp.mean(compute_cosine_similarity(R_A, expected_A)))
+    sim_B     = float(jnp.mean(compute_cosine_similarity(R_B, expected_B)))
+    sim_cross = float(jnp.mean(compute_cosine_similarity(R_A, R_B)))
+
+    return sim_A, sim_B, sim_cross
+
 
 def run_experiment(adapter, config, seeds=3):
-    print("Running Counterfactual Test...")
-    dims = config.memory_dim
-    results = {}
-    
-    scores_A = []
-    scores_B = []
-    scores_cross = []
-    
+    print("Running Counterfactual Causal Test (True Causal Intervention)...")
+    dim = config.memory_dim
+
+    scores_A, scores_B, scores_cross = [], [], []
+
     for seed in range(seeds):
-        key = jax.random.PRNGKey(seed)
-        sa, sb, sc = run_counterfactual(adapter, dims, key)
+        key = jax.random.PRNGKey(seed + 1000)
+        sa, sb, sc = run_counterfactual(adapter, dim, key)
         scores_A.append(sa)
         scores_B.append(sb)
         scores_cross.append(sc)
-        
-    results['A'] = {'mean': np.mean(scores_A), 'std': np.std(scores_A)}
-    results['B'] = {'mean': np.mean(scores_B), 'std': np.std(scores_B)}
-    results['cross'] = {'mean': np.mean(scores_cross), 'std': np.std(scores_cross)}
-    
-    print(f"  Match A: {results['A']['mean']:.4f}")
-    print(f"  Match B: {results['B']['mean']:.4f}")
-    print(f"  Cross-Match (Should be low): {results['cross']['mean']:.4f}")
+
+    results = {
+        'A':     {'mean': np.mean(scores_A),     'std': np.std(scores_A)},
+        'B':     {'mean': np.mean(scores_B),     'std': np.std(scores_B)},
+        'cross': {'mean': np.mean(scores_cross), 'std': np.std(scores_cross)},
+    }
+
+    print(f"  Match A (RA vs expected_A):  {results['A']['mean']:.4f} ± {results['A']['std']:.4f}")
+    print(f"  Match B (RB vs expected_B):  {results['B']['mean']:.4f} ± {results['B']['std']:.4f}")
+    print(f"  Cross (RA vs RB, should differ): {results['cross']['mean']:.4f} ± {results['cross']['std']:.4f}")
+    print(f"  Causal effect: {'YES' if results['cross']['mean'] < 0.9 else 'NO'}")
     return results

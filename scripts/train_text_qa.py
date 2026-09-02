@@ -20,6 +20,7 @@ import jax.numpy as jnp
 import optax
 import numpy as np
 from tqdm import tqdm
+import yaml
 
 from models.transformer_qa_model import TransformerQAModel
 from models.tiny_memory_bank import TinyMemoryConfig, STATE_EXPIRED
@@ -71,14 +72,24 @@ def main():
     assert train_csv != test_csv, "train and test CSV must be different files!"
 
     # ---------------------------------------------------------------------------
-    # Hyperparameters
+    # Load Hyperparameters from configs/benchmark.yaml
     # ---------------------------------------------------------------------------
-    vocab_size     = 2000
-    batch_size     = 32
-    max_input_len  = 32
-    max_target_len = 16
-    num_epochs     = 10
-    seed           = 42
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'configs', 'benchmark.yaml')
+    with open(config_path, 'r') as f:
+        cfg = yaml.safe_load(f)
+
+    vocab_size     = cfg.get('vocab_size', 2000)
+    batch_size     = cfg.get('batch_size', 32)
+    max_input_len  = cfg.get('max_input_len', 32)
+    max_target_len = cfg.get('max_target_len', 16)
+    num_epochs     = cfg.get('num_epochs', 10)
+    seed           = cfg.get('seed', 42)
+    
+    embed_dim      = cfg.get('embed_dim', 32)
+    num_layers     = cfg.get('num_layers', 1)
+    num_heads      = cfg.get('num_heads', 2)
+    ff_dim         = cfg.get('ff_dim', 64)
+    dropout_rate   = cfg.get('dropout_rate', 0.0)
 
     # ---------------------------------------------------------------------------
     # Data loaders – max_samples=None loads full dataset
@@ -93,24 +104,24 @@ def main():
     # Model config
     # ---------------------------------------------------------------------------
     config = TinyMemoryConfig(
-        memory_capacity      = 128,
-        memory_dim           = 32,
-        hidden_size          = 32,
+        memory_capacity      = cfg.get('memory_capacity', 128),
+        memory_dim           = cfg.get('memory_dim', 32),
+        hidden_size          = cfg.get('hidden_size', 32),
         memory_threshold     = 0.0,  # disable threshold during training (cold-start)
         memory_read_threshold= 0.0,
         memory_write_threshold= 0.0,
-        memory_top_k         = 8,
+        memory_top_k         = cfg.get('memory_top_k', 8),
     )
 
     model = TransformerQAModel(
         config        = config,
         vocab_size    = vocab_size,
-        embed_dim     = 32,
-        num_layers    = 1,
-        num_heads     = 2,
-        ff_dim        = 64,
+        embed_dim     = embed_dim,
+        num_layers    = num_layers,
+        num_heads     = num_heads,
+        ff_dim        = ff_dim,
         max_target_len= max_target_len,
-        dropout_rate  = 0.0,
+        dropout_rate  = dropout_rate,
     )
 
     # ---------------------------------------------------------------------------

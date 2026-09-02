@@ -206,28 +206,6 @@ def main():
             # logits: (batch, seq, vocab) – raw logits from decoder
             qa_loss = cross_entropy_loss(logits, batch['target_ids'], pad_id, vocab_size)
 
-            # --- Auxiliary: Query-Fact InfoNCE contrastive (optional, small weight) ---
-            h_q_norm = h_eos_q / (jnp.linalg.norm(h_eos_q, axis=-1, keepdims=True) + 1e-8)
-
-            h_f_norm_vals, _ = model.apply(
-                {'params': params, 'memory': make_blank_memory(config)},
-                batch['write_ids'], batch['write_mask'], True,
-                method=model.encode_fact,
-                mutable=['memory'],
-                rngs={'dropout': dropout_rng},
-            )
-            h_f_vals = h_f_norm_vals
-            h_f_norm = h_f_vals / (jnp.linalg.norm(h_f_vals, axis=-1, keepdims=True) + 1e-8)
-
-            qf_sim    = jnp.matmul(h_q_norm, h_f_norm.T) / 0.1
-            qf_labels = jnp.arange(batch_size)
-            qf_loss   = optax.softmax_cross_entropy_with_integer_labels(qf_sim, qf_labels).mean()
-
-            # --- Retrieval alignment: h_fused should be similar to h_fact ---
-            h_fused_norm = h_fused / (jnp.linalg.norm(h_fused, axis=-1, keepdims=True) + 1e-8)
-            retrieval_sim  = jnp.sum(h_fused_norm * h_f_norm, axis=-1)
-            retrieval_loss = 1.0 - jnp.mean(retrieval_sim)
-
             # --- DIAGNOSTIC ONLY: oracle loss (not added to total) ---
             oracle_logits, _ = model.apply(
                 {'params': params, 'memory': make_blank_memory(config)},
@@ -240,8 +218,8 @@ def main():
             )
             oracle_loss = cross_entropy_loss(oracle_logits, batch['target_ids'], pad_id, vocab_size)
 
-            # --- Total loss: QA loss primary; small aux weights ---
-            total_loss = qa_loss + 0.5 * qf_loss + 0.5 * retrieval_loss
+            # --- Total loss: QA loss primary; no shortcut qf_loss ---
+            total_loss = qa_loss
 
             # Token accuracy (training signal check)
             preds   = jnp.argmax(logits, axis=-1)
@@ -251,7 +229,7 @@ def main():
             correct = jnp.sum((preds == batch['target_ids']) * mask)
             acc     = correct / jnp.maximum(jnp.sum(mask), 1.0)
 
-            return total_loss, (qa_loss, qf_loss, retrieval_loss, oracle_loss, acc)
+            return total_loss, (qa_loss, oracle_loss, acc)
 
         (total_loss, aux), grads = jax.value_and_grad(loss_fn, has_aux=True)(params)
         updates, opt_state = tx.update(grads, opt_state, params)
@@ -317,19 +295,17 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
 
     for epoch in range(1, num_epochs + 1):
-        train_losses, train_qa, train_qf, train_ret = [], [], [], []
+        train_losses, train_qa = [], []
         n_processed = 0
 
         for batch in train_loader.iter_batches(shuffle=True):
             n_processed += 1
             rng, step_rng = jax.random.split(rng)
-            params, opt_state, total_loss, (qa_loss, qf_loss, ret_loss, oracle_loss, acc) = \
+            params, opt_state, total_loss, (qa_loss, oracle_loss, acc) = \
                 train_step(params, opt_state, batch, step_rng)
 
             train_losses.append(float(total_loss))
             train_qa.append(float(qa_loss))
-            train_qf.append(float(qf_loss))
-            train_ret.append(float(ret_loss))
 
             if np.isnan(float(total_loss)):
                 print(f"NaN at epoch {epoch}, batch {n_processed}!")
@@ -360,8 +336,7 @@ def main():
 
         print(
             f"Epoch {epoch:03d} | "
-            f"Total={avg_t_loss:.4f} QA={np.mean(train_qa):.4f} "
-            f"QF={np.mean(train_qf):.4f} Ret={np.mean(train_ret):.4f} | "
+            f"Total={avg_t_loss:.4f} QA={np.mean(train_qa):.4f} | "
             f"Val Loss={avg_v_loss:.4f} Val EM={avg_v_acc*100:.1f}%"
             f"{mark}"
         )

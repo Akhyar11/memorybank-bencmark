@@ -129,7 +129,9 @@ class TransformerQAModel(nn.Module):
         ]
 
         # Locked Memory Bank
+        self.memory_proj_in = nn.Dense(self.config.hidden_size)
         self.bank = TinyMemoryBank(self.config)
+        self.memory_proj_out = nn.Dense(self.embed_dim)
 
         self.decoders = [
             TransformerDecoderBlock(
@@ -228,8 +230,9 @@ class TransformerQAModel(nn.Module):
     def write_only(self, input_ids, mask, is_eos, write_prob, deterministic=False):
         """Encode fact and write to memory bank."""
         h_eos = self.encode_fact(input_ids, mask, deterministic=deterministic)
-        self.bank.write(h_eos, is_eos, write_prob)
-        return h_eos
+        h_eos_proj = self.memory_proj_in(h_eos)
+        self.bank.write(h_eos_proj, is_eos, write_prob)
+        return h_eos_proj
 
     def decode_oracle(self, write_ids, write_mask, query_ids, query_mask,
                       target_ids, deterministic=False):
@@ -240,10 +243,13 @@ class TransformerQAModel(nn.Module):
         """
         h_fact  = self.encode_fact(write_ids,  write_mask,  deterministic=deterministic)
         h_query = self.encode_query(query_ids, query_mask,  deterministic=deterministic)
+        h_fact_proj = self.memory_proj_in(h_fact)
+        h_query_proj = self.memory_proj_in(h_query)
         # Simulate perfect retrieval: memory = h_fact
-        h_fused = self.bank.fuse(h_query, h_fact)  # (batch, hidden_size)
+        h_fused = self.bank.fuse(h_query_proj, h_fact_proj)  # (batch, hidden_size)
+        h_fused_proj = self.memory_proj_out(h_fused)
         # Build context for decoder: (batch, 1, hidden_size) for cross-attention
-        context = h_fused[:, None, :]
+        context = h_fused_proj[:, None, :]
         logits  = self._decode_from_context(context, target_ids, deterministic=deterministic)
         return logits  # logits, NOT probabilities
 
@@ -260,9 +266,11 @@ class TransformerQAModel(nn.Module):
         pad_id = self.pad_id
         eos_id = self.eos_id
         h_eos   = self.encode_query(input_ids, mask, deterministic=True)
-        h_fused = self.bank(h_eos, read_prob, write_prob, deterministic=True)
+        h_eos_proj = self.memory_proj_in(h_eos)
+        h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=True)
+        h_fused_proj = self.memory_proj_out(h_fused)
 
-        context     = h_fused[:, None, :]  # (batch, 1, dim)
+        context     = h_fused_proj[:, None, :]  # (batch, 1, dim)
         batch_size  = h_fused.shape[0]
         next_token  = jnp.full((batch_size, 1), bos_id, dtype=jnp.int32)
         output_tokens = []
@@ -310,13 +318,15 @@ class TransformerQAModel(nn.Module):
             h_fused: (batch, hidden_size)
         """
         h_eos   = self.encode_query(input_ids, mask, deterministic=deterministic)
-        h_fused = self.bank(h_eos, read_prob, write_prob, deterministic=deterministic)
+        h_eos_proj = self.memory_proj_in(h_eos)
+        h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=deterministic)
+        h_fused_proj = self.memory_proj_out(h_fused)
 
-        context = h_fused[:, None, :]  # (batch, 1, hidden_size) for cross-attention
+        context = h_fused_proj[:, None, :]  # (batch, 1, hidden_size) for cross-attention
         logits  = self._decode_from_context(context, target_ids, deterministic=deterministic)
 
         # Retrieve sim scores from internal read (for logging purposes)
         # We cannot call read again here; return zeros as placeholder for sim
         sim = jnp.zeros((h_eos.shape[0], self.config.memory_capacity))
 
-        return logits, sim, h_eos, h_fused
+        return logits, sim, h_eos_proj, h_fused

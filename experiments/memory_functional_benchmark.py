@@ -173,7 +173,7 @@ def test3_distractor_retrieval(n_distractors=10, seeds=3):
     result = {
         "Recall@1":   np.mean(r1_scores),
         "MRR":        np.mean(mrr_scores),
-        "pass": np.mean(r1_scores) >= 0.0,  # any retrieval is measured
+        "pass": np.mean(r1_scores) >= 0.5,  # Needs to actually recall correctly at least half the time
     }
     print(f"  Recall@1={result['Recall@1']:.4f}  MRR={result['MRR']:.4f}")
     return result
@@ -206,7 +206,7 @@ def test4_interference(n_distractors=20, seeds=3):
         sims.append(cosine_float(read_val[0], expected_v[0]))
 
     result = {"mean_sim": np.mean(sims), "std": np.std(sims),
-              "pass": np.mean(sims) > -1.0}  # always measured
+              "pass": np.mean(sims) > 0.3}  # must maintain reasonable similarity
     print(f"  After interference: sim={result['mean_sim']:.4f} ± {result['std']:.4f}")
     return result
 
@@ -308,12 +308,12 @@ def test7_recency():
     recency    = np.exp(-config.mem_decay_rate * dt)
     active_rec = recency[state == STATE_ACTIVE]
 
-    # The newer write should have higher recency
-    has_variation = float(np.std(active_rec)) > 0 if len(active_rec) > 1 else True
+    # Causal check: The newer write should have strictly higher recency
+    passed = bool(active_rec[1] > active_rec[0]) if len(active_rec) >= 2 else False
     result = {"recency_scores": active_rec.tolist(),
               "std": float(np.std(active_rec)) if len(active_rec) > 1 else 0.0,
-              "pass": True}  # structural test
-    print(f"  Recency scores for active slots: {[f'{r:.4f}' for r in active_rec]}  → PASS (structural)")
+              "pass": passed}
+    print(f"  Recency scores for active slots: {[f'{r:.4f}' for r in active_rec]}  → {'PASS (new > old)' if passed else 'FAIL'}")
     return result
 
 
@@ -343,10 +343,24 @@ def test8_importance():
     vars = flax.core.freeze(unfrozen)
 
     imp = np.array(vars['memory']['importance'])[np.array(vars['memory']['state']) == STATE_ACTIVE]
+
+    # Causal test: Retrieve with an ambiguous query (average of h1 and h2)
+    # The one with higher importance should be retrieved.
+    h_query = (h1 + h2) / 2.0
+    read_val, _ = read_one(bank, vars, h_query)
+    expected_v1, _ = bank.apply(vars, h1, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
+    expected_v2, _ = bank.apply(vars, h2, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
+    
+    sim1 = cosine_float(read_val[0], expected_v1[0])
+    sim2 = cosine_float(read_val[0], expected_v2[0])
+    
+    passed = sim1 > sim2 # h1 got importance 0.9, h2 got 0.1
+
     result = {"importances": imp.tolist(),
               "variation": float(np.std(imp)) if len(imp) > 1 else 0.0,
-              "pass": True}
-    print(f"  Active slot importances: {[f'{i:.2f}' for i in imp]}  → PASS (structural)")
+              "sim_h1": sim1, "sim_h2": sim2,
+              "pass": passed}
+    print(f"  Active slot importances: {[f'{i:.2f}' for i in imp]}, Sim1={sim1:.4f}, Sim2={sim2:.4f} → {'PASS' if passed else 'FAIL'}")
     return result
 
 
@@ -369,8 +383,8 @@ def test9_confidence():
 
     updated = conf_after_second >= conf_after_first
     result  = {"conf_first": conf_after_first, "conf_second": conf_after_second,
-               "pass": True}  # structural: confidence is initialised correctly
-    print(f"  Confidence after 1st write={conf_after_first:.4f}, 2nd write={conf_after_second:.4f}  → PASS")
+               "pass": updated}  # causal test: update boosts confidence
+    print(f"  Confidence after 1st write={conf_after_first:.4f}, 2nd write={conf_after_second:.4f}  → {'PASS' if updated else 'FAIL'}")
     return result
 
 

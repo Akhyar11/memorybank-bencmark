@@ -150,3 +150,24 @@ class TestLockedPipeline:
         keys_before = vars_['memory']['keys'].copy()
         vars_after  = apply_write(bank, vars_, h)
         assert not jnp.allclose(keys_before, vars_after['memory']['keys'])
+
+    def test_causal_projections(self, bank_and_vars):
+        """Verify that negating projection weights causally changes outputs."""
+        bank, vars_, config = bank_and_vars
+        h = jnp.ones((1, config.hidden_size))
+        
+        # Test fusion_proj causal effect
+        out1 = apply_fuse(bank, vars_, h, h)
+        unfrozen = flax.core.unfreeze(vars_)
+        unfrozen['params']['fusion_proj']['kernel'] = -unfrozen['params']['fusion_proj']['kernel']
+        vars_neg = flax.core.freeze(unfrozen)
+        out2 = apply_fuse(bank, vars_neg, h, h)
+        assert not jnp.allclose(out1, out2), "fusion_proj did not causally affect output"
+
+        # Test q_proj causal effect
+        q1 = bank.apply(vars_, h, method=lambda mdl, x: mdl.q_proj(x))
+        unfrozen = flax.core.unfreeze(vars_)
+        unfrozen['params']['q_proj']['kernel'] = -unfrozen['params']['q_proj']['kernel']
+        vars_neg = flax.core.freeze(unfrozen)
+        q2 = bank.apply(vars_neg, h, method=lambda mdl, x: mdl.q_proj(x))
+        assert not jnp.allclose(q1, q2), "q_proj did not causally affect query"

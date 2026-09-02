@@ -67,6 +67,16 @@ def make_ablation_config(ablation_type: str) -> TinyMemoryConfig:
         base['mem_decay_rate'] = 0.0  # lambda = 0: no decay ever
     elif ablation_type == 'no_reinforcement':
         base['mem_reinforcement_rate'] = 0.0  # eta_a = 0: no importance boost on read
+    elif ablation_type == 'no_top_k':
+        base['memory_top_k'] = base['memory_capacity'] # top_k = capacity: retrieve all
+    elif ablation_type == 'no_threshold':
+        base['memory_threshold'] = -1e9
+        base['memory_write_threshold'] = -1e9
+        base['memory_read_threshold'] = -1e9
+    elif ablation_type == 'no_write':
+        base['memory_write_threshold'] = 1e9 # Block all writes
+    elif ablation_type == 'no_read':
+        base['memory_read_threshold'] = 1e9 # Block all reads
     else:
         raise ValueError(f"Unknown ablation_type: {ablation_type}")
 
@@ -110,7 +120,7 @@ def run_ablation(ablation_type, num_memories, key, time_delay=100):
     target_idx    = num_memories // 2
     query_h       = dataset[target_idx:target_idx+1]
     read_val, _   = bank.apply(vars, query_h, method=bank.read, mutable=['memory'])
-    expected_v, _ = bank.apply(vars, query_h, method=bank.v_proj, mutable=['memory'])
+    expected_v, _ = bank.apply(vars, query_h, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
 
     sim = float(jnp.mean(compute_cosine_similarity(read_val, expected_v)))
     return sim
@@ -126,6 +136,10 @@ def run_experiment(config_path, config, seeds=3):
         'no_confidence',
         'no_decay',
         'no_reinforcement',
+        'no_top_k',
+        'no_threshold',
+        'no_write',
+        'no_read',
     ]
     results = {}
 

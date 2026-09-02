@@ -152,11 +152,17 @@ class TestRead:
         vars_ = apply_write(bank, vars_, h)
         
         state_before = vars_['memory']['importance'].copy()
+        last_acc_before = vars_['memory']['last_access'].copy()
+        acc_cnt_before = vars_['memory']['access_count'].copy()
+        mem_state_before = vars_['memory']['state'].copy()
+        
         out, vars_ = apply_read(bank, vars_, h, rp=jnp.zeros((1,)))
-        state_after = vars_['memory']['importance'].copy()
         
         assert jnp.allclose(out, 0.0), "Read output should be 0 when gated"
-        assert jnp.allclose(state_before, state_after), "Importance should not be updated when read_prob=0"
+        assert jnp.allclose(state_before, vars_['memory']['importance']), "Importance should not be updated when read_prob=0"
+        assert jnp.allclose(last_acc_before, vars_['memory']['last_access']), "Last access should not be updated"
+        assert jnp.allclose(acc_cnt_before, vars_['memory']['access_count']), "Access count should not be updated"
+        assert jnp.allclose(mem_state_before, vars_['memory']['state']), "State should not be updated"
 
 
 class TestDecay:
@@ -218,6 +224,7 @@ class TestReplacement:
     def test_replacement_different_importance(self):
         config = TinyMemoryConfig(
             memory_capacity=4, memory_dim=4, hidden_size=4,
+            memory_write_threshold=1.1,  # Force insert instead of update
         )
         bank, vars_ = init_bank(config, seed=0)
 
@@ -226,10 +233,17 @@ class TestReplacement:
             vars_ = apply_write(bank, vars_, h)
 
         unfrozen = flax.core.unfreeze(vars_)
-        unfrozen['memory']['importance'] = jnp.array([0.1, 0.5, 0.9, 0.7])
+        unfrozen['memory']['importance'] = jnp.array([0.9, 0.5, 0.1, 0.7])
         unfrozen['memory']['state'] = jnp.array([STATE_ACTIVE]*4, dtype=jnp.int32)
         vars_ = flax.core.freeze(unfrozen)
 
         h_new = jax.random.normal(jax.random.PRNGKey(200), (1, 4))
-        vars_ = apply_write(bank, vars_, h_new)
-        assert float(vars_['memory']['importance'][2]) > 0.0
+        # Ensure write_threshold is low so it inserts if not identical
+        vars_ = apply_write(bank, vars_, h_new, wp=jnp.array([2.0]))
+        
+        # The slot with importance 0.1 is index 2. It should have been replaced.
+        # So its importance should now be the new i_proj(h_new).
+        # We can check that the slot 2 was overwritten by verifying its access count was reset to 1
+        assert int(vars_['memory']['access_count'][2]) == 1, "Slot with lowest importance was not replaced"
+        # Other slots should not be replaced, their access count is > 1 (or 0 if untouched, but we wrote them above)
+        assert int(vars_['memory']['access_count'][0]) != 1, "Slot with high importance was replaced"

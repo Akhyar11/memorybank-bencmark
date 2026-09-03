@@ -46,6 +46,8 @@ def run_benchmark():
     print("===========================================")
     print("      END-TO-END MEMORY BENCHMARK          ")
     print("===========================================")
+    print(f"JAX DEVICES DETECTED: {jax.devices()}")
+    print("===========================================")
     dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'dataset')
     train_csv = os.path.join(dataset_dir, 'train.csv')
     test_csv = os.path.join(dataset_dir, 'test.csv')

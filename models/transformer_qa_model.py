@@ -26,9 +26,10 @@ class SinusoidalPositionalEncoding(nn.Module):
         div_term = jnp.exp(
             jnp.arange(0, self.dim, 2) * (-jnp.log(10000.0) / self.dim)
         )
-        pe = jnp.zeros((seq_len, self.dim))
-        pe = pe.at[:, 0::2].set(jnp.sin(position * div_term))
-        pe = pe.at[:, 1::2].set(jnp.cos(position * div_term))
+        pe_sin = jnp.sin(position * div_term)
+        pe_cos = jnp.cos(position * div_term)
+        # Interleave sin and cos: [sin0, cos0, sin1, cos1, ...]
+        pe = jnp.stack([pe_sin, pe_cos], axis=-1).reshape(seq_len, self.dim)
         return x + jnp.expand_dims(pe, axis=0)
 
 

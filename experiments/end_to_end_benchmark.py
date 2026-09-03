@@ -59,7 +59,7 @@ def run_benchmark():
         
     batch_size = 8
     # Train loader
-    train_loader = TextDataLoader(train_csv, tokenizer_path, batch_size, 32, 16, max_samples=512)
+    train_loader = TextDataLoader(train_csv, tokenizer_path, batch_size, 32, 16, max_samples=None)
     # Test loader
     loader = TextDataLoader(test_csv, tokenizer_path, batch_size, 32, 16, max_samples=128)
     

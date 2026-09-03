@@ -178,7 +178,10 @@ def run_benchmark():
                     
                     # Periodic block to prevent JAX async dispatch queue explosion (OOM)
                     if len(losses) % 50 == 0:
-                        jax.block_until_ready(loss)
+                        jax.block_until_ready((params, opt_state, mem_state, loss))
+                        
+                    if len(losses) % 500 == 0:
+                        print(f"      [Debug] Completed {len(losses)} batches...")
                 
                 # Final block for epoch
                 end_time = time.time()

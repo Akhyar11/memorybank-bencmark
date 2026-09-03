@@ -61,6 +61,41 @@ class TextDataLoader:
 
         self.tokenizer.enable_padding(pad_id=self.pad_id, length=max_input_len)
         self.tokenizer.enable_truncation(max_length=max_input_len)
+        # Pre-tokenize entire dataset
+        self._pre_tokenize_dataset()
+
+    def _pre_tokenize_dataset(self):
+        write_texts  = self.df['write_fact_A'].tolist()
+        query_texts  = self.df['query_B'].tolist()
+        target_texts = self.df['expected_output_A'].tolist()
+
+        # Encode write facts
+        write_encs = self.tokenizer.encode_batch(write_texts)
+        write_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in write_encs]
+        write_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in write_encs]
+
+        # Encode queries
+        query_encs = self.tokenizer.encode_batch(query_texts)
+        query_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in query_encs]
+        query_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in query_encs]
+
+        # Encode targets: truncate, append EOS, pad
+        target_encs = self.tokenizer.encode_batch(target_texts)
+        target_ids_list  = []
+        for e in target_encs:
+            ids = e.ids
+            if len(ids) >= self.max_target_len:
+                ids = ids[:self.max_target_len - 1]
+            ids.append(self.eos_id)
+            pad_len = self.max_target_len - len(ids)
+            ids = ids + [self.pad_id] * pad_len
+            target_ids_list.append(ids)
+
+        self.all_write_ids = np.array(write_ids_list, dtype=np.int32)
+        self.all_write_mask = np.array(write_mask_list, dtype=np.int32)
+        self.all_query_ids = np.array(query_ids_list, dtype=np.int32)
+        self.all_query_mask = np.array(query_mask_list, dtype=np.int32)
+        self.all_target_ids = np.array(target_ids_list, dtype=np.int32)
 
     def pad_or_truncate(self, encoding, max_len):
         ids  = encoding.ids
@@ -81,49 +116,35 @@ class TextDataLoader:
 
         for i in range(0, len(self.df), self.batch_size):
             batch_indices = indices[i:i + self.batch_size]
-
-            write_texts  = self.df.iloc[batch_indices]['write_fact_A'].tolist()
-            query_texts  = self.df.iloc[batch_indices]['query_B'].tolist()
-            target_texts = self.df.iloc[batch_indices]['expected_output_A'].tolist()
-
-            # Encode write facts
-            write_encs = self.tokenizer.encode_batch(write_texts)
-            write_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in write_encs]
-            write_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in write_encs]
-
-            # Encode queries
-            query_encs = self.tokenizer.encode_batch(query_texts)
-            query_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in query_encs]
-            query_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in query_encs]
-
-            # Encode targets: truncate, append EOS, pad
-            target_encs = self.tokenizer.encode_batch(target_texts)
-            target_ids_list  = []
-            for e in target_encs:
-                ids = e.ids
-                if len(ids) >= self.max_target_len:
-                    ids = ids[:self.max_target_len - 1]
-                ids.append(self.eos_id)
-                pad_len = self.max_target_len - len(ids)
-                ids = ids + [self.pad_id] * pad_len
-                target_ids_list.append(ids)
-                
-            valid_count = len(write_texts)
+            valid_count = len(batch_indices)
+            
+            w_ids = self.all_write_ids[batch_indices]
+            w_mask = self.all_write_mask[batch_indices]
+            q_ids = self.all_query_ids[batch_indices]
+            q_mask = self.all_query_mask[batch_indices]
+            t_ids = self.all_target_ids[batch_indices]
             
             # Pad batch to batch_size if it's a partial batch
             if valid_count < self.batch_size:
                 pad_rows = self.batch_size - valid_count
-                write_ids_list.extend([[self.pad_id] * self.max_input_len] * pad_rows)
-                write_mask_list.extend([[0] * self.max_input_len] * pad_rows)
-                query_ids_list.extend([[self.pad_id] * self.max_input_len] * pad_rows)
-                query_mask_list.extend([[0] * self.max_input_len] * pad_rows)
-                target_ids_list.extend([[self.pad_id] * self.max_target_len] * pad_rows)
+                
+                pad_w_ids = np.full((pad_rows, self.max_input_len), self.pad_id, dtype=np.int32)
+                pad_w_mask = np.zeros((pad_rows, self.max_input_len), dtype=np.int32)
+                pad_q_ids = np.full((pad_rows, self.max_input_len), self.pad_id, dtype=np.int32)
+                pad_q_mask = np.zeros((pad_rows, self.max_input_len), dtype=np.int32)
+                pad_t_ids = np.full((pad_rows, self.max_target_len), self.pad_id, dtype=np.int32)
+                
+                w_ids = np.concatenate([w_ids, pad_w_ids], axis=0)
+                w_mask = np.concatenate([w_mask, pad_w_mask], axis=0)
+                q_ids = np.concatenate([q_ids, pad_q_ids], axis=0)
+                q_mask = np.concatenate([q_mask, pad_q_mask], axis=0)
+                t_ids = np.concatenate([t_ids, pad_t_ids], axis=0)
 
             yield {
-                'write_ids':   np.array(write_ids_list),
-                'write_mask':  np.array(write_mask_list),
-                'query_ids':   np.array(query_ids_list),
-                'query_mask':  np.array(query_mask_list),
-                'target_ids':  np.array(target_ids_list),
+                'write_ids':   w_ids,
+                'write_mask':  w_mask,
+                'query_ids':   q_ids,
+                'query_mask':  q_mask,
+                'target_ids':  t_ids,
                 'valid_count': valid_count,
             }

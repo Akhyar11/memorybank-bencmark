@@ -1,33 +1,19 @@
 """
-TextDataLoader – Fixed dataset loader.
-
-Fixes applied:
-- BUG-P0-023: Removed hardcoded .head(2000) – replaced with max_samples=None parameter
-- BUG-P2-004: PAD ID always looked up from tokenizer, never assumed 0
+TextDataLoader – PyTorch dataset loader.
 """
 import os
 import pandas as pd
 import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
 from tokenizers import Tokenizer
 
 
-class TextDataLoader:
+class TextDataset(Dataset):
     """
-    Loads and iterates over text QA dataset (write_fact_A, query_B, expected_output_A).
-
-    Args:
-        csv_file:       Path to CSV file.
-        tokenizer_path: Path to tokenizer JSON.
-        batch_size:     Number of samples per batch.
-        max_input_len:  Max token length for input sequences.
-        max_target_len: Max token length for target sequences.
-        max_samples:    Maximum number of samples to load.
-                        None = load all samples (default).
-                        Set explicitly when a specific limit is needed.
+    PyTorch Dataset for text QA (write_fact_A, query_B, expected_output_A).
     """
-
-    def __init__(self, csv_file, tokenizer_path, batch_size=32,
-                 max_input_len=32, max_target_len=16, max_samples=None):
+    def __init__(self, csv_file, tokenizer_path, max_input_len=32, max_target_len=16, max_samples=None):
         df = pd.read_csv(csv_file)
         if max_samples is not None:
             df = df.head(max_samples)
@@ -35,33 +21,23 @@ class TextDataLoader:
 
         self.tokenizer = Tokenizer.from_file(tokenizer_path)
 
-        # Always look up special token IDs from tokenizer (never assume 0)
+        # Always look up special token IDs from tokenizer
         vocab = self.tokenizer.get_vocab()
-        if '[PAD]' not in vocab:
-            self.tokenizer.add_special_tokens(['[PAD]'])
-        if '[EOS]' not in vocab:
-            self.tokenizer.add_special_tokens(['[EOS]'])
-        if '[BOS]' not in vocab:
-            self.tokenizer.add_special_tokens(['[BOS]'])
-        if '[UNK]' not in vocab:
-            self.tokenizer.add_special_tokens(['[UNK]'])
+        for token in ['[PAD]', '[EOS]', '[BOS]', '[UNK]']:
+            if token not in vocab:
+                self.tokenizer.add_special_tokens([token])
 
         self.pad_id = self.tokenizer.token_to_id('[PAD]')
         self.eos_id = self.tokenizer.token_to_id('[EOS]')
         self.bos_id = self.tokenizer.token_to_id('[BOS]')
         self.unk_id = self.tokenizer.token_to_id('[UNK]')
 
-        assert self.pad_id is not None, "Tokenizer missing [PAD] token"
-        assert self.eos_id is not None, "Tokenizer missing [EOS] token"
-
-        self.batch_size     = batch_size
         self.max_input_len  = max_input_len
         self.max_target_len = max_target_len
-        self.num_batches    = int(np.ceil(len(self.df) / batch_size))
 
         self.tokenizer.enable_padding(pad_id=self.pad_id, length=max_input_len)
         self.tokenizer.enable_truncation(max_length=max_input_len)
-        # Pre-tokenize entire dataset
+        
         self._pre_tokenize_dataset()
 
     def _pre_tokenize_dataset(self):
@@ -71,17 +47,14 @@ class TextDataLoader:
         query_texts  = self.df['query_B'].tolist()
         target_texts = self.df['expected_output_A'].tolist()
 
-        # Encode write facts
         write_encs = self.tokenizer.encode_batch(write_texts)
         write_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in write_encs]
         write_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in write_encs]
 
-        # Encode queries
         query_encs = self.tokenizer.encode_batch(query_texts)
         query_ids_list  = [self.pad_or_truncate(e, self.max_input_len)[0] for e in query_encs]
         query_mask_list = [self.pad_or_truncate(e, self.max_input_len)[1] for e in query_encs]
 
-        # Encode targets: truncate, append EOS, pad
         target_encs = self.tokenizer.encode_batch(target_texts)
         target_ids_list  = []
         for e in target_encs:
@@ -93,11 +66,11 @@ class TextDataLoader:
             ids = ids + [self.pad_id] * pad_len
             target_ids_list.append(ids)
 
-        self.all_write_ids = np.array(write_ids_list, dtype=np.int32)
-        self.all_write_mask = np.array(write_mask_list, dtype=np.int32)
-        self.all_query_ids = np.array(query_ids_list, dtype=np.int32)
-        self.all_query_mask = np.array(query_mask_list, dtype=np.int32)
-        self.all_target_ids = np.array(target_ids_list, dtype=np.int32)
+        self.all_write_ids = torch.tensor(write_ids_list, dtype=torch.long)
+        self.all_write_mask = torch.tensor(write_mask_list, dtype=torch.long)
+        self.all_query_ids = torch.tensor(query_ids_list, dtype=torch.long)
+        self.all_query_mask = torch.tensor(query_mask_list, dtype=torch.long)
+        self.all_target_ids = torch.tensor(target_ids_list, dtype=torch.long)
 
     def pad_or_truncate(self, encoding, max_len):
         ids  = encoding.ids
@@ -111,56 +84,39 @@ class TextDataLoader:
             mask    = mask + [0]           * pad_len
         return ids, mask
 
-    def iter_batches(self, shuffle=True):
-        indices = np.arange(len(self.df))
-        if shuffle:
-            np.random.shuffle(indices)
+    def __len__(self):
+        return len(self.df)
 
-        for i in range(0, len(self.df), self.batch_size):
-            batch_indices = indices[i:i + self.batch_size]
-            valid_count = len(batch_indices)
-            
-            w_ids = self.all_write_ids[batch_indices]
-            w_mask = self.all_write_mask[batch_indices]
-            q_ids = self.all_query_ids[batch_indices]
-            q_mask = self.all_query_mask[batch_indices]
-            t_ids = self.all_target_ids[batch_indices]
-            
-            # Pad batch to batch_size if it's a partial batch
-            if valid_count < self.batch_size:
-                pad_rows = self.batch_size - valid_count
-                
-                pad_w_ids = np.full((pad_rows, self.max_input_len), self.pad_id, dtype=np.int32)
-                pad_w_mask = np.zeros((pad_rows, self.max_input_len), dtype=np.int32)
-                pad_q_ids = np.full((pad_rows, self.max_input_len), self.pad_id, dtype=np.int32)
-                pad_q_mask = np.zeros((pad_rows, self.max_input_len), dtype=np.int32)
-                pad_t_ids = np.full((pad_rows, self.max_target_len), self.pad_id, dtype=np.int32)
-                
-                w_ids = np.concatenate([w_ids, pad_w_ids], axis=0)
-                w_mask = np.concatenate([w_mask, pad_w_mask], axis=0)
-                q_ids = np.concatenate([q_ids, pad_q_ids], axis=0)
-                q_mask = np.concatenate([q_mask, pad_q_mask], axis=0)
-                t_ids = np.concatenate([t_ids, pad_t_ids], axis=0)
-                
-            batch_fact_ids = [self.fact_ids[idx] for idx in batch_indices]
-            batch_query_ids = [self.query_ids[idx] for idx in batch_indices]
-            
-            # Pad IDs with None if partial batch
-            if valid_count < self.batch_size:
-                batch_fact_ids += [None] * (self.batch_size - valid_count)
-                batch_query_ids += [None] * (self.batch_size - valid_count)
-
-            yield {
-                'write_ids':   w_ids,
-                'write_mask':  w_mask,
-                'query_ids':   q_ids,
-                'query_mask':  q_mask,
-                'target_ids':  t_ids,
-                'fact_str_ids': batch_fact_ids,
-                'query_str_ids': batch_query_ids,
-                'valid_count': valid_count,
-            }
+    def __getitem__(self, idx):
+        return {
+            'write_ids': self.all_write_ids[idx],
+            'write_mask': self.all_write_mask[idx],
+            'query_ids': self.all_query_ids[idx],
+            'query_mask': self.all_query_mask[idx],
+            'target_ids': self.all_target_ids[idx],
+            'fact_str_id': self.fact_ids[idx],
+            'query_str_id': self.query_ids[idx]
+        }
 
     @property
     def vocab_size(self):
         return self.tokenizer.get_vocab_size()
+
+def get_dataloader(csv_file, tokenizer_path, batch_size=32, max_input_len=32, max_target_len=16, max_samples=None, shuffle=True):
+    dataset = TextDataset(csv_file, tokenizer_path, max_input_len, max_target_len, max_samples)
+    
+    def collate_fn(batch):
+        # Default PyTorch collate will batch tensors. 
+        # For strings (fact_str_id), it will create a tuple of strings.
+        collated = torch.utils.data.dataloader.default_collate(batch)
+        # In PyTorch dataloader, if batch is partial (at the end), it just returns smaller tensors.
+        # We don't need to manually pad the batch dimension to a fixed size unlike in JAX/TPU XLA!
+        return collated
+        
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    loader.vocab_size = dataset.vocab_size
+    loader.pad_id = dataset.pad_id
+    loader.bos_id = dataset.bos_id
+    loader.eos_id = dataset.eos_id
+    
+    return loader

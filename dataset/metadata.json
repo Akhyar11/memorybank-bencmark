@@ -1,0 +1,20 @@
+{
+  "seed": 42,
+  "generator_version": "2.0.0-entity-aware",
+  "num_entities": 30000,
+  "train_size": 120000,
+  "val_size": 15000,
+  "test_size": 15000,
+  "split_strategy": "entity_aware_80_10_10",
+  "query_uniqueness": "guaranteed_by_entity_id",
+  "leakage_check": {
+    "train_val_entity_overlap": 0,
+    "train_test_entity_overlap": 0,
+    "val_test_entity_overlap": 0
+  },
+  "files": {
+    "train": "train.csv",
+    "val": "val.csv",
+    "test": "test.csv"
+  }
+}

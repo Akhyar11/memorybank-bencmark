@@ -65,6 +65,8 @@ class TextDataLoader:
         self._pre_tokenize_dataset()
 
     def _pre_tokenize_dataset(self):
+        self.fact_ids    = self.df['fact_id'].tolist()
+        self.query_ids   = self.df['query_id'].tolist()
         write_texts  = self.df['write_fact_A'].tolist()
         query_texts  = self.df['query_B'].tolist()
         target_texts = self.df['expected_output_A'].tolist()
@@ -139,6 +141,14 @@ class TextDataLoader:
                 q_ids = np.concatenate([q_ids, pad_q_ids], axis=0)
                 q_mask = np.concatenate([q_mask, pad_q_mask], axis=0)
                 t_ids = np.concatenate([t_ids, pad_t_ids], axis=0)
+                
+            batch_fact_ids = [self.fact_ids[idx] for idx in batch_indices]
+            batch_query_ids = [self.query_ids[idx] for idx in batch_indices]
+            
+            # Pad IDs with None if partial batch
+            if valid_count < self.batch_size:
+                batch_fact_ids += [None] * (self.batch_size - valid_count)
+                batch_query_ids += [None] * (self.batch_size - valid_count)
 
             yield {
                 'write_ids':   w_ids,
@@ -146,5 +156,11 @@ class TextDataLoader:
                 'query_ids':   q_ids,
                 'query_mask':  q_mask,
                 'target_ids':  t_ids,
+                'fact_str_ids': batch_fact_ids,
+                'query_str_ids': batch_query_ids,
                 'valid_count': valid_count,
             }
+
+    @property
+    def vocab_size(self):
+        return self.tokenizer.get_vocab_size()

@@ -84,34 +84,39 @@ def generate_dataset(seed: int = 42, output_dir: str = None):
     # Template library – every query uniquely references the entity ID
     # -----------------------------------------------------------------------
     def make_samples(eid, attrs):
-        """Generate 5 (write_fact, query, answer) tuples for one entity."""
+        """Generate 5 (fact_id, query_id, write_fact, query, answer) tuples for one entity."""
         return [
             # City
             (
+                f"{eid}_F0", f"{eid}_Q0",
                 f"{eid} tinggal di kota {attrs['city']}.",
                 f"Di kota mana {eid} tinggal?",
                 attrs['city'],
             ),
             # Job
             (
+                f"{eid}_F1", f"{eid}_Q1",
                 f"{eid} bekerja sebagai {attrs['job']}.",
                 f"Apa pekerjaan {eid}?",
                 attrs['job'],
             ),
             # Pet
             (
+                f"{eid}_F2", f"{eid}_Q2",
                 f"{eid} memiliki peliharaan {attrs['animal']} bernama {attrs['pet_name']}.",
                 f"Siapa nama peliharaan {eid}?",
                 attrs['pet_name'],
             ),
             # Car brand
             (
+                f"{eid}_F3", f"{eid}_Q3",
                 f"Mobil yang dimiliki {eid} adalah {attrs['car']} berwarna {attrs['color']}.",
                 f"Apa merek mobil {eid}?",
                 attrs['car'],
             ),
             # Car color
             (
+                f"{eid}_F4", f"{eid}_Q4",
                 f"{eid} baru membeli {attrs['car']} warna {attrs['color']}.",
                 f"Apa warna mobil {eid}?",
                 attrs['color'],
@@ -156,7 +161,7 @@ def generate_dataset(seed: int = 42, output_dir: str = None):
         path = os.path.join(output_dir, filename)
         with open(path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(['write_fact_A', 'query_B', 'expected_output_A'])
+            writer.writerow(['fact_id', 'query_id', 'write_fact_A', 'query_B', 'expected_output_A'])
             writer.writerows(data)
         return path
 

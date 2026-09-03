@@ -128,10 +128,15 @@ class TransformerQAModel(nn.Module):
             for _ in range(self.num_layers)
         ]
 
-        # Locked Memory Bank
-        self.memory_proj_in = nn.Dense(self.config.hidden_size)
+        # Projections for Memory Bank
+        self.memory_proj_in = nn.Dense(self.config.hidden_size, name="memory_proj_in")
+        self.memory_proj_out = nn.Dense(self.embed_dim, name="memory_proj_out")
+        
+        # Independent Projections for NN Baseline
+        self.nn_proj_in = nn.Dense(self.embed_dim, name="nn_proj_in")
+        self.nn_proj_out = nn.Dense(self.embed_dim, name="nn_proj_out")
+
         self.bank = TinyMemoryBank(self.config)
-        self.memory_proj_out = nn.Dense(self.embed_dim)
 
         self.decoders = [
             TransformerDecoderBlock(
@@ -230,11 +235,16 @@ class TransformerQAModel(nn.Module):
     def write_only(self, input_ids, mask, is_eos, write_prob, deterministic=False, memory_mode='bank'):
         """Encode fact and write to memory bank."""
         h_eos = self.encode_fact(input_ids, mask, deterministic=deterministic)
-        h_eos_proj = self.memory_proj_in(h_eos)
         written_indices = None
         if memory_mode == 'bank':
+            h_eos_proj = self.memory_proj_in(h_eos)
             written_indices = self.bank.write(h_eos_proj, is_eos, write_prob)
-        return h_eos_proj, written_indices
+            return h_eos_proj, written_indices
+        elif memory_mode == 'nn':
+            h_eos_proj = self.nn_proj_in(h_eos)
+            return h_eos_proj, written_indices
+        else:
+            return h_eos, written_indices
 
     def decode_oracle(self, write_ids, write_mask, query_ids, query_mask,
                       target_ids, deterministic=False):
@@ -257,9 +267,19 @@ class TransformerQAModel(nn.Module):
 
     def init_all(self, input_ids, mask, is_eos, write_prob, read_prob, target_ids):
         """Initialize all sub-module parameters."""
-        self.write_only(input_ids, mask, is_eos, write_prob, deterministic=True)
+        # Initialize memory_mode='bank'
+        self.write_only(input_ids, mask, is_eos, write_prob, deterministic=True, memory_mode='bank')
         self.decode_oracle(input_ids, mask, input_ids, mask, target_ids, deterministic=True)
-        return self.__call__(input_ids, mask, read_prob, write_prob, target_ids, deterministic=True)
+        out = self.__call__(input_ids, mask, read_prob, write_prob, target_ids, deterministic=True, memory_mode='bank')
+        
+        # Initialize memory_mode='nn' (for nn_proj_in, nn_proj_out)
+        self.write_only(input_ids, mask, is_eos, write_prob, deterministic=True, memory_mode='nn')
+        self.__call__(input_ids, mask, read_prob, write_prob, target_ids, deterministic=True, memory_mode='nn')
+        
+        # Initialize memory_mode='none'
+        self.__call__(input_ids, mask, read_prob, write_prob, target_ids, deterministic=True, memory_mode='none')
+        
+        return out
 
     def greedy_decode(self, input_ids, mask, read_prob, write_prob,
                       max_len=16, deterministic=True, memory_mode='bank', fact_store=None):
@@ -268,24 +288,26 @@ class TransformerQAModel(nn.Module):
         pad_id = self.pad_id
         eos_id = self.eos_id
         h_eos   = self.encode_query(input_ids, mask, deterministic=True)
-        h_eos_proj = self.memory_proj_in(h_eos)
         
         if memory_mode == 'none':
-            h_fused = h_eos_proj
+            h_eos_proj = h_eos
+            h_fused = h_eos
             h_fused_proj = self.memory_proj_out(h_fused)
         elif memory_mode == 'nn':
+            h_eos_proj = self.nn_proj_in(h_eos)
             if fact_store is None:
                 fact_store = jnp.zeros((self.config.memory_capacity, self.config.hidden_size))
             q_n = h_eos_proj / (jnp.linalg.norm(h_eos_proj, axis=-1, keepdims=True) + 1e-8)
             k_n = fact_store / (jnp.linalg.norm(fact_store, axis=-1, keepdims=True) + 1e-8)
             sim = jnp.dot(q_n, k_n.T)
             active_mask = jnp.any(fact_store != 0, axis=-1)[None, :]
-            sim = jnp.where(active_mask, sim, -1e9)
-            attn = jax.nn.softmax(sim, axis=-1)
+            masked_sim = jnp.where(active_mask, sim, -1e9)
+            attn = jax.nn.softmax(masked_sim, axis=-1)
             retrieved = jnp.dot(attn, fact_store)
             h_fused = h_eos_proj + retrieved
-            h_fused_proj = self.memory_proj_out(h_fused)
+            h_fused_proj = self.nn_proj_out(h_fused)
         else:
+            h_eos_proj = self.memory_proj_in(h_eos)
             h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=True)
             h_fused_proj = self.memory_proj_out(h_fused)
 
@@ -337,14 +359,15 @@ class TransformerQAModel(nn.Module):
             h_fused: (batch, hidden_size)
         """
         h_eos   = self.encode_query(input_ids, mask, deterministic=deterministic)
-        h_eos_proj = self.memory_proj_in(h_eos)
         
         sim = jnp.zeros((h_eos.shape[0], self.config.memory_capacity))
 
         if memory_mode == 'none':
-            h_fused = h_eos_proj
+            h_eos_proj = h_eos
+            h_fused = h_eos
             h_fused_proj = self.memory_proj_out(h_fused)
         elif memory_mode == 'nn':
+            h_eos_proj = self.nn_proj_in(h_eos)
             if fact_store is None:
                 fact_store = jnp.zeros((self.config.memory_capacity, self.config.hidden_size))
             q_n = h_eos_proj / (jnp.linalg.norm(h_eos_proj, axis=-1, keepdims=True) + 1e-8)
@@ -355,8 +378,9 @@ class TransformerQAModel(nn.Module):
             attn = jax.nn.softmax(masked_sim, axis=-1)
             retrieved = jnp.dot(attn, fact_store)
             h_fused = h_eos_proj + retrieved
-            h_fused_proj = self.memory_proj_out(h_fused)
+            h_fused_proj = self.nn_proj_out(h_fused)
         else:
+            h_eos_proj = self.memory_proj_in(h_eos)
             h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=deterministic)
             h_fused_proj = self.memory_proj_out(h_fused)
             

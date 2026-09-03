@@ -35,11 +35,11 @@ def create_initial_memory(config):
         'global_step': jnp.zeros((), dtype=jnp.int32)
     }
 
-def cross_entropy_loss(logits, targets, pad_id, vocab_size=2000):
+def cross_entropy_loss(logits, targets, pad_id, vocab_size):
     one_hot = jax.nn.one_hot(targets, vocab_size)
-    log_prob = jax.nn.log_softmax(logits, axis=-1)
-    loss = -jnp.sum(one_hot * log_prob, axis=-1)
-    mask = (targets != pad_id).astype(jnp.float32)
+    log_probs = jax.nn.log_softmax(logits)
+    loss = -jnp.sum(one_hot * log_probs, axis=-1)
+    mask = (targets != pad_id)
     return jnp.sum(loss * mask) / jnp.maximum(jnp.sum(mask), 1.0)
 
 def run_benchmark():
@@ -66,13 +66,13 @@ def run_benchmark():
     config = TinyMemoryConfig(memory_capacity=128, memory_dim=256, hidden_size=256)
     
     # We use ONE single backbone
-    mdl = TransformerQAModel(config=config, vocab_size=2000, embed_dim=256, num_layers=4, num_heads=4, pad_id=loader.pad_id, bos_id=loader.bos_id, eos_id=loader.eos_id)
+    mdl = TransformerQAModel(config=config, vocab_size=loader.vocab_size, embed_dim=256, num_layers=4, num_heads=4, pad_id=loader.pad_id, bos_id=loader.bos_id, eos_id=loader.eos_id)
     
     dummy_input = jnp.ones((batch_size, 32), dtype=jnp.int32)
     dummy_target = jnp.ones((batch_size, 16), dtype=jnp.int32)
     
     modes = {"No Memory": "none", "NN Memory": "nn", "Memory Bank": "bank"}
-    num_epochs = 100
+    num_epochs = 2
     seeds = [42, 43, 44]
     
     results = {name: collections.defaultdict(list) for name in modes.keys()}
@@ -87,7 +87,7 @@ def run_benchmark():
             b, r = xs
             def loss_fn(p_inner):
                 logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': mem_state}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='none', rngs={'dropout': r})
-                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id)
+                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size)
             loss, grads = jax.value_and_grad(loss_fn)(p)
             updates, opt = tx.update(grads, opt, p)
             p = optax.apply_updates(p, updates)
@@ -104,10 +104,10 @@ def run_benchmark():
             p, opt, fs, widx = carry
             b, r = xs
             def loss_fn(p_inner):
-                h_eos_proj = mdl.apply({'params': p_inner}, b['write_ids'], b['write_mask'], True, jnp.ones(batch_size), deterministic=False, memory_mode='none', method=mdl.write_only, rngs={'dropout': r})
+                h_eos_proj, _ = mdl.apply({'params': p_inner}, b['write_ids'], b['write_mask'], True, jnp.ones(batch_size), deterministic=False, memory_mode='none', method=mdl.write_only, rngs={'dropout': r})
                 new_fs = jax.lax.dynamic_update_slice(fs, h_eos_proj, (widx, 0))
                 logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': mem_state}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='nn', fact_store=new_fs, rngs={'dropout': r})
-                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id), new_fs
+                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), new_fs
             (loss, fs), grads = jax.value_and_grad(loss_fn, has_aux=True)(p)
             updates, opt = tx.update(grads, opt, p)
             p = optax.apply_updates(p, updates)
@@ -126,7 +126,7 @@ def run_benchmark():
             def loss_fn(p_inner):
                 _, updated_m = mdl.apply({'params': p_inner, 'memory': m}, b['write_ids'], b['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'], rngs={'dropout': r})
                 logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': updated_m['memory']}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='bank', rngs={'dropout': r}, mutable=['memory'])[0]
-                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id), updated_m['memory']
+                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), updated_m['memory']
             (loss, m), grads = jax.value_and_grad(loss_fn, has_aux=True)(p)
             updates, opt = tx.update(grads, opt, p)
             p = optax.apply_updates(p, updates)
@@ -144,7 +144,7 @@ def run_benchmark():
 
     @jax.jit
     def eval_step_nn(params, mem_state, fact_store, write_idx, batch):
-        h_eos_proj = mdl.apply({'params': params}, batch['write_ids'], batch['write_mask'], True, jnp.ones(batch_size), deterministic=True, memory_mode='none', method=mdl.write_only)
+        h_eos_proj, _ = mdl.apply({'params': params}, batch['write_ids'], batch['write_mask'], True, jnp.ones(batch_size), deterministic=True, memory_mode='none', method=mdl.write_only)
         new_fact_store = jax.lax.dynamic_update_slice(fact_store, h_eos_proj, (write_idx, 0))
         logits, sim, _, _ = mdl.apply({'params': params, 'memory': mem_state}, batch['query_ids'], batch['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), batch['target_ids'], deterministic=True, memory_mode='nn', fact_store=new_fact_store)
         return jnp.argmax(logits, axis=-1), sim, new_fact_store
@@ -156,7 +156,7 @@ def run_benchmark():
     # Pre-extract all train batches into a single stacked dictionary for XLA scan
     all_train_batches = list(train_loader.iter_batches(shuffle=False))
     batched_train_data = {
-        k: jnp.stack([b[k] for b in all_train_batches]) for k in all_train_batches[0].keys() if k != 'valid_count'
+        k: jnp.stack([b[k] for b in all_train_batches]) for k in all_train_batches[0].keys() if k not in ['valid_count', 'fact_str_ids', 'query_str_ids']
     }
     
     for seed in seeds:
@@ -180,7 +180,7 @@ def run_benchmark():
             opt_state = tx.init(params)
             
             # Persistent train episodic memory
-            mem_state = create_initial_memory(config)
+            mem_state = initial_vars['memory']
             fact_store = jnp.zeros((config.memory_capacity, config.hidden_size))
             write_idx = 0
             
@@ -210,34 +210,67 @@ def run_benchmark():
             ems, f1s, r1s, mrrs = [], [], [], []
             
             # Reset episode state for test set
-            eval_mem_state = create_initial_memory(config)
+            eval_mem_state = initial_vars['memory']
             eval_fact_store = jnp.zeros((config.memory_capacity, config.hidden_size))
             write_idx = 0
             
+            fact_to_slot = {}
+            slot_to_fact = {}
+            
             for batch in loader.iter_batches(shuffle=False):
                 mode_rng, step_rng = jax.random.split(mode_rng)
+                jax_batch = {k: v for k, v in batch.items() if k not in ('fact_str_ids', 'query_str_ids')}
+                
                 if mode == 'none':
-                    preds, sim = eval_step_none(params, eval_mem_state, batch)
+                    preds, sim = eval_step_none(params, eval_mem_state, jax_batch)
                 elif mode == 'nn':
-                    preds, sim, eval_fact_store = eval_step_nn(params, eval_mem_state, eval_fact_store, write_idx, batch)
+                    preds, sim, eval_fact_store = eval_step_nn(params, eval_mem_state, eval_fact_store, write_idx, jax_batch)
                     # For NN Memory, it writes sequentially
                     written_indices = jnp.arange(write_idx, write_idx + batch_size) % config.memory_capacity
                 else:
-                    written_indices, updated_mem = mdl.apply({'params': params, 'memory': eval_mem_state}, batch['write_ids'], batch['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'])
-                    out, new_mem = mdl.apply({'params': params, 'memory': updated_mem['memory']}, batch['query_ids'], batch['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), batch['target_ids'], deterministic=True, memory_mode='bank', mutable=['memory'])
+                    written_indices, updated_mem = mdl.apply({'params': params, 'memory': eval_mem_state}, jax_batch['write_ids'], jax_batch['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'])
+                    out, new_mem = mdl.apply({'params': params, 'memory': updated_mem['memory']}, jax_batch['query_ids'], jax_batch['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), jax_batch['target_ids'], deterministic=True, memory_mode='bank', mutable=['memory'])
                     logits, sim, _, _ = out
                     preds = jnp.argmax(logits, axis=-1)
                     eval_mem_state = new_mem['memory']
                 
-                em = exact_match(preds, batch['target_ids'], pad_id=loader.pad_id)
-                f1 = batch_token_f1(preds, batch['target_ids'], pad_id=loader.pad_id)
+                
+                # Slice out padded batch elements
+                valid_count = batch['valid_count']
+                preds = preds[:valid_count]
+                targets = batch['target_ids'][:valid_count]
+                batch_fact_ids = batch['fact_str_ids'][:valid_count]
+                batch_query_ids = batch['query_str_ids'][:valid_count]
+                
+                em = exact_match(preds, targets, pad_id=loader.pad_id)
+                f1 = batch_token_f1(preds, targets, pad_id=loader.pad_id)
                 
                 if mode != 'none':
-                    for i in range(batch_size):
-                        # Use the EXACT slot index where the fact was written
-                        gt_idx = int(written_indices[i])
-                        r1 = recall_at_k(np.array(sim[i]), gt_idx, k_values=[1])[1]
-                        mrr = mean_reciprocal_rank(np.array(sim[i]), gt_idx)
+                    # Update true ground truth mappings
+                    for i in range(valid_count):
+                        fid = batch_fact_ids[i]
+                        slot = int(written_indices[i])
+                        
+                        old_fact = slot_to_fact.get(slot)
+                        if old_fact is not None and old_fact != fid:
+                            fact_to_slot[old_fact] = None # Evicted
+                            
+                        slot_to_fact[slot] = fid
+                        fact_to_slot[fid] = slot
+                    
+                    # Evaluate retrieval
+                    for i in range(valid_count):
+                        qid = batch_query_ids[i]
+                        expected_fid = qid.replace("_Q", "_F")
+                        gt_idx = fact_to_slot.get(expected_fid, None)
+                        
+                        if gt_idx is not None:
+                            r1 = recall_at_k(np.array(sim[i]), gt_idx, k_values=[1])[1]
+                            mrr = mean_reciprocal_rank(np.array(sim[i]), gt_idx)
+                        else:
+                            r1 = 0.0
+                            mrr = 0.0
+                            
                         r1s.append(r1)
                         mrrs.append(mrr)
                 

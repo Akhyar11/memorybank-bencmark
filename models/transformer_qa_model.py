@@ -192,43 +192,32 @@ class TransformerQAModel(nn.Module):
     # ------------------------------------------------------------------
     def _decode_from_context(self, context, target_ids, deterministic=False):
         """
-        Autoregressive decoder using model's own predictions as next input.
-        This is FREE-RUNNING (not teacher forcing): input_t = argmax(logit_{t-1}).
+        Parallel Teacher Forcing decoder.
+        Prepend BOS and shift targets to predict the next token.
 
-        context: (batch, context_len, embed_dim) – cross-attention memory
-        target_ids: (batch, tgt_seq_len) – used for length only during training
+        context: (batch, 1, embed_dim) – cross-attention memory
+        target_ids: (batch, seq_len)
 
         Returns:
-            logits: (batch, tgt_seq_len, vocab_size)
+            logits: (batch, seq_len, vocab_size)
         """
         batch_size, seq_len = target_ids.shape
-        next_token = jnp.full((batch_size, 1), self.bos_id, dtype=jnp.int32)
-        all_logits = []
-        dec_in     = next_token
+        bos = jnp.full((batch_size, 1), self.bos_id, dtype=jnp.int32)
+        # Teacher forcing input: [BOS, t_0, t_1, ..., t_{N-2}]
+        dec_in = jnp.concatenate([bos, target_ids[:, :-1]], axis=1)
 
-        for t in range(seq_len):
-            if t > 0:
-                dec_in = jnp.concatenate([dec_in, next_token], axis=1)
+        x = self.embedding(dec_in)
+        x = self.pos_encoding(x)
+        
+        # Parallel causal mask
+        causal_mask = jnp.tril(jnp.ones((seq_len, seq_len)))[None, None, :, :]
 
-            x = self.embedding(dec_in)
-            x = self.pos_encoding(x)
-            cur_len    = dec_in.shape[1]
-            causal_mask= jnp.tril(jnp.ones((cur_len, cur_len)))[None, None, :, :]
+        y = x
+        for dec in self.decoders:
+            y = dec(y, context, causal_mask=causal_mask, deterministic=deterministic)
 
-            y = x
-            for dec in self.decoders:
-                y = dec(y, context, causal_mask=causal_mask, deterministic=deterministic)
-
-            y_t     = y[:, -1, :]           # (batch, dim)
-            logit_t = self.decoder_out(y_t)  # (batch, vocab_size) → logits (NOT probs)
-            all_logits.append(logit_t)
-
-            # Free-running: feed own prediction as next input
-            next_token = jax.lax.stop_gradient(
-                jnp.argmax(logit_t, axis=-1, keepdims=True)
-            )
-
-        return jnp.stack(all_logits, axis=1)  # (batch, seq_len, vocab_size)
+        logits = self.decoder_out(y)
+        return logits
 
     # ------------------------------------------------------------------
     # Memory operations

@@ -54,7 +54,9 @@ def run_benchmark(
     num_layers=1,
     num_heads=2,
     ff_dim=216,
-    memory_capacity=128
+    memory_capacity=128,
+    checkpoint_dir=None,
+    resume=False,
 ):
     print("===========================================")
     print("      END-TO-END MEMORY BENCHMARK          ")
@@ -62,6 +64,12 @@ def run_benchmark(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"DEVICE: {device}")
     print("===========================================")
+
+    # Checkpoint directory
+    if checkpoint_dir is None:
+        checkpoint_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'checkpoints')
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    print(f"CHECKPOINT DIR: {os.path.abspath(checkpoint_dir)}")
 
     dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'dataset')
     train_csv = os.path.join(dataset_dir, 'train.csv')
@@ -113,6 +121,17 @@ def run_benchmark(
             print(f"      Model Parameters: {param_count:,}")
 
             optimizer = torch.optim.AdamW(mdl.parameters(), lr=1e-3)
+
+            # Checkpoint path per baseline per seed
+            ckpt_name = f"seed{seed}_{name.replace(' ', '_').lower()}.pt"
+            ckpt_path = os.path.join(checkpoint_dir, ckpt_name)
+
+            # Resume from checkpoint if available
+            if resume and os.path.exists(ckpt_path):
+                ckpt = torch.load(ckpt_path, map_location=device)
+                mdl.load_state_dict(ckpt['model'])
+                optimizer.load_state_dict(ckpt['optimizer'])
+                print(f"      Loaded checkpoint: {ckpt_path} (epoch {ckpt['epoch']})")
 
             # Separate key and value buffers for NN Baseline (P0-08)
             nn_keys = torch.zeros(config.memory_capacity, mdl.embed_dim, device=device)
@@ -196,6 +215,17 @@ def run_benchmark(
                 step_time_ms = (epoch_time / steps) * 1000
                 if num_epochs <= 10 or (epoch + 1) % 10 == 0 or epoch == 0 or epoch == num_epochs - 1:
                     print(f"    Epoch {epoch+1:3d}/{num_epochs} Loss: {np.mean(losses):.4f} | Time: {epoch_time:.2f}s | {step_time_ms:.2f} ms/step")
+
+            # Save checkpoint after training
+            torch.save({
+                'epoch': num_epochs,
+                'model': mdl.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'seed': seed,
+                'baseline': name,
+                'final_loss': float(np.mean(losses)),
+            }, ckpt_path)
+            print(f"      Checkpoint saved: {ckpt_path}")
 
             # ---------------------------------------------------------------
             # Evaluation Phase

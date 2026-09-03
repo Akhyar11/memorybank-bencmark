@@ -69,7 +69,7 @@ def run_benchmark():
     dummy_target = jnp.ones((batch_size, 16), dtype=jnp.int32)
     
     modes = {"No Memory": "none", "NN Memory": "nn", "Memory Bank": "bank"}
-    num_epochs = 50
+    num_epochs = 1000
     seeds = [42, 43, 44]
     
     results = {name: collections.defaultdict(list) for name in modes.keys()}

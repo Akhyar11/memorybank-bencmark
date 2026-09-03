@@ -72,7 +72,7 @@ def run_benchmark():
     dummy_target = jnp.ones((batch_size, 16), dtype=jnp.int32)
     
     modes = {"No Memory": "none", "NN Memory": "nn", "Memory Bank": "bank"}
-    num_epochs = 2
+    num_epochs = 100
     seeds = [42, 43, 44]
     
     results = {name: collections.defaultdict(list) for name in modes.keys()}
@@ -125,8 +125,9 @@ def run_benchmark():
             b, r = xs
             def loss_fn(p_inner):
                 _, updated_m = mdl.apply({'params': p_inner, 'memory': m}, b['write_ids'], b['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'], rngs={'dropout': r})
-                logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': updated_m['memory']}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='bank', rngs={'dropout': r}, mutable=['memory'])[0]
-                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), updated_m['memory']
+                out, new_m = mdl.apply({'params': p_inner, 'memory': updated_m['memory']}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='bank', rngs={'dropout': r}, mutable=['memory'])
+                logits = out[0]
+                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), new_m['memory']
             (loss, m), grads = jax.value_and_grad(loss_fn, has_aux=True)(p)
             updates, opt = tx.update(grads, opt, p)
             p = optax.apply_updates(p, updates)

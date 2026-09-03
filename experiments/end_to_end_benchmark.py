@@ -165,10 +165,11 @@ def run_benchmark():
                     else:
                         params, opt_state, loss, mem_state = train_step_bank(params, opt_state, mem_state, batch, step_rng)
                     
-                    # Force computation to block so time is accurate
-                    loss = jax.block_until_ready(loss)
                     losses.append(loss)
                     write_idx = (write_idx + batch_size) % config.memory_capacity
+                
+                # Force computation to block at the END of the epoch so GPU can pipeline kernels
+                jax.block_until_ready(losses[-1])
                 
                 end_time = time.time()
                 epoch_time = end_time - start_time

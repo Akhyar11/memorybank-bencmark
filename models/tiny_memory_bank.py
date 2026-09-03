@@ -288,10 +288,9 @@ class TinyMemoryBank(nn.Module):
                 sort_score = sort_keys.float() + tiebreak
                 insert_idx = torch.argmin(sort_score).item()
                 
-                target_idx = nearest_idx if is_update else insert_idx
-                target_indices.append(target_idx)
-                
                 if do_write:
+                    target_idx = nearest_idx if is_update else insert_idx
+                    target_indices.append(target_idx)
                     self.mem_keys[target_idx] = k_n
                     if is_update:
                         eta = self.mem_confidence[nearest_idx].item()
@@ -309,6 +308,8 @@ class TinyMemoryBank(nn.Module):
                         self.mem_last_access[target_idx] = step
                         self.mem_created_at[target_idx] = step
                         self.mem_access_count[target_idx] = 1
+                else:
+                    target_indices.append(-1)
 
         if target_indices:
             return torch.tensor(target_indices, dtype=torch.long, device=h_eos.device)

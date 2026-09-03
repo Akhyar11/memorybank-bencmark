@@ -72,3 +72,35 @@ class TestCounterfactualCausal:
 
         sim = cosine_sim(R_original[0].detach().numpy(), R_modified[0].detach().numpy())
         assert sim < 0.5, f"Negated value should produce different retrieval. sim={sim:.4f}"
+
+    def test_minimally_perturbed_counterfactual(self, setup):
+        """P1 Counterfactual: Distinguish Fact A from minimally perturbed Fact A'."""
+        bank, config = setup
+        dim = config.memory_dim
+
+        # Fact A
+        torch.manual_seed(999)
+        fact_A = torch.randn(1, dim)
+        fact_A = fact_A / torch.norm(fact_A)
+
+        # Fact A' (slightly perturbed)
+        noise = torch.randn(1, dim)
+        fact_A_prime = fact_A + 0.1 * noise
+        fact_A_prime = fact_A_prime / torch.norm(fact_A_prime)
+
+        bank.load_memory_state(bank.empty_memory_state())
+        bank.config.memory_write_threshold = 1.05  # Force insertion into distinct slots
+        slot_A = bank.write(fact_A, torch.ones(1), torch.tensor([2.0]))[0].item()
+        slot_A_prime = bank.write(fact_A_prime, torch.ones(1), torch.tensor([2.0]))[0].item()
+
+        assert slot_A != slot_A_prime, f"Fact A (slot {slot_A}) and Fact A' (slot {slot_A_prime}) must occupy distinct slots"
+
+        # Read using Fact A query
+        _, scores = bank.read(fact_A, return_scores=True)
+        scores_np = scores[0].detach().cpu().numpy()
+
+        # Both slots should have valid scores
+        assert scores_np[slot_A] > -1e8
+        assert scores_np[slot_A_prime] > -1e8
+        # Fact A and Fact A' must produce differentiated scores
+        assert abs(scores_np[slot_A] - scores_np[slot_A_prime]) > 1e-5

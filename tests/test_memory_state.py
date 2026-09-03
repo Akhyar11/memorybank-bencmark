@@ -84,17 +84,42 @@ class TestWrite:
         assert conf == pytest.approx(0.5, abs=0.01), f"Expected 0.5, got {conf}"
 
     def test_write_gating_write_prob_zero(self, small_bank):
+        """P0 Write Gate Semantics: write gate OFF -> no mutation, returns target -1."""
         bank, config = small_bank
         torch.manual_seed(6)
         h = torch.randn(1, config.hidden_size)
-        apply_write(bank, h, wp=torch.full((1,), -1.0))
+
+        keys_before = bank.mem_keys.clone()
+        vals_before = bank.mem_vals.clone()
+        imp_before = bank.mem_importance.clone()
+        conf_before = bank.mem_confidence.clone()
+        created_before = bank.mem_created_at.clone()
+        last_acc_before = bank.mem_last_access.clone()
+        acc_cnt_before = bank.mem_access_count.clone()
+        state_before = bank.mem_state.clone()
+
+        target_idx = bank.write(h, torch.ones(1), torch.full((1,), -1.0))
+
+        # Target must explicitly indicate no write occurred (-1)
+        assert target_idx[0].item() == -1, f"Expected target -1 for blocked write, got {target_idx[0].item()}"
+
+        # All state fields must remain strictly identical
+        assert torch.equal(bank.mem_keys, keys_before), "Keys mutated during blocked write"
+        assert torch.equal(bank.mem_vals, vals_before), "Vals mutated during blocked write"
+        assert torch.equal(bank.mem_importance, imp_before), "Importance mutated during blocked write"
+        assert torch.equal(bank.mem_confidence, conf_before), "Confidence mutated during blocked write"
+        assert torch.equal(bank.mem_created_at, created_before), "Created_at mutated during blocked write"
+        assert torch.equal(bank.mem_last_access, last_acc_before), "Last_access mutated during blocked write"
+        assert torch.equal(bank.mem_access_count, acc_cnt_before), "Access_count mutated during blocked write"
+        assert torch.equal(bank.mem_state, state_before), "State mutated during blocked write"
         assert int(torch.sum(bank.mem_state == STATE_ACTIVE)) == 0
 
     def test_write_gating_is_eos_zero(self, small_bank):
         bank, config = small_bank
         torch.manual_seed(7)
         h = torch.randn(1, config.hidden_size)
-        apply_write(bank, h, eos=torch.zeros(1))
+        target_idx = bank.write(h, torch.zeros(1), torch.ones(1))
+        assert target_idx[0].item() == -1
         assert int(torch.sum(bank.mem_state == STATE_ACTIVE)) == 0
 
     def test_multiple_writes_fill_capacity(self, small_bank):
@@ -220,24 +245,60 @@ class TestReplacement:
         assert n_expired_after < n_expired_before
 
     def test_replacement_different_importance(self):
+        """P0 Replacement Test: Identity/Content-based validation proving lowest-priority slot replaced and others preserved."""
         config = TinyMemoryConfig(
             memory_capacity=4, memory_dim=4, hidden_size=4,
             memory_write_threshold=1.1,  # Force insert instead of update
         )
         bank = init_bank(config, seed=0)
 
+        # Fill 4 slots with distinct initial memories
         for i in range(4):
             torch.manual_seed(50 + i)
             h = torch.randn(1, 4)
             apply_write(bank, h)
 
+        # Force slot 2 to have lowest priority (lowest importance)
         bank.mem_importance.copy_(torch.tensor([0.9, 0.5, 0.1, 0.7]))
         bank.mem_state.fill_(STATE_ACTIVE)
 
+        # Snapshot old memory state
+        old_keys = bank.mem_keys.clone()
+        old_vals = bank.mem_vals.clone()
+        old_imp = bank.mem_importance.clone()
+        old_conf = bank.mem_confidence.clone()
+        old_created = bank.mem_created_at.clone()
+        old_last_acc = bank.mem_last_access.clone()
+        old_state = bank.mem_state.clone()
+
+        # Step time forward
+        bank.global_step[0] = 50
+
+        # Perform new write
         torch.manual_seed(200)
         h_new = torch.randn(1, 4)
-        apply_write(bank, h_new, wp=torch.tensor([2.0]))
-        
-        # Slot with lowest importance (index 2) should be replaced
-        assert int(bank.mem_access_count[2]) == 1, "Slot with lowest importance was not replaced"
-        assert int(bank.mem_access_count[0]) != 1, "Slot with high importance was replaced"
+        target_idx = bank.write(h_new, torch.ones(1), torch.tensor([2.0]))
+
+        assert target_idx[0].item() == 2, f"Target slot should be 2, got {target_idx[0].item()}"
+
+        # Projected new key and val
+        expected_new_k = bank.k_proj(h_new).detach()[0]
+        expected_new_v = bank.v_proj(h_new).detach()[0]
+
+        # 1. Verify slot 2 was REPLACED with NEW MEMORY
+        assert torch.allclose(bank.mem_keys[2], expected_new_k, atol=1e-5), "Slot 2 key must match new projected key"
+        assert torch.allclose(bank.mem_vals[2], expected_new_v, atol=1e-5), "Slot 2 val must match new projected val"
+        assert bank.mem_state[2] == STATE_ACTIVE, "Slot 2 state must be ACTIVE"
+        assert bank.mem_created_at[2] == 50, "Slot 2 created_at must match current step 50"
+        assert bank.mem_last_access[2] == 50, "Slot 2 last_access must match current step 50"
+        assert bank.mem_access_count[2] == 1, "Slot 2 access_count must reset to 1"
+
+        # 2. Verify slots 0, 1, 3 are STRICTLY PRESERVED (OLD MEMORY)
+        for preserved_slot in [0, 1, 3]:
+            assert torch.allclose(bank.mem_keys[preserved_slot], old_keys[preserved_slot], atol=1e-5), f"Slot {preserved_slot} key altered"
+            assert torch.allclose(bank.mem_vals[preserved_slot], old_vals[preserved_slot], atol=1e-5), f"Slot {preserved_slot} val altered"
+            assert bank.mem_importance[preserved_slot] == old_imp[preserved_slot], f"Slot {preserved_slot} importance altered"
+            assert bank.mem_confidence[preserved_slot] == old_conf[preserved_slot], f"Slot {preserved_slot} confidence altered"
+            assert bank.mem_created_at[preserved_slot] == old_created[preserved_slot], f"Slot {preserved_slot} created_at altered"
+            assert bank.mem_last_access[preserved_slot] == old_last_acc[preserved_slot], f"Slot {preserved_slot} last_access altered"
+            assert bank.mem_state[preserved_slot] == old_state[preserved_slot], f"Slot {preserved_slot} state altered"

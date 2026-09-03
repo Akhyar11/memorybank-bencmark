@@ -91,3 +91,62 @@ class TestComponentAblations:
 
         final_importance = bank.mem_importance[0].item()
         assert initial_importance == final_importance, "no_reinforcement should not boost importance"
+
+    def test_no_recency_ignores_time_delay(self):
+        """When mem_gamma is 0.0, time step dt does not influence retrieval scores."""
+        config = make_ablation_config('no_recency')
+        config.mem_reinforcement_rate = 0.0  # Isolate from access reinforcement boost
+        bank = TinyMemoryBank(config=config)
+        bank.load_memory_state(bank.empty_memory_state())
+
+        dim = config.memory_dim
+        h = torch.randn(1, dim)
+        bank.write(h, torch.ones(1), torch.ones(1))
+
+        # Score at step 0
+        _, scores_step0 = bank.read(h, return_scores=True)
+
+        # Advance step to 1000 (without decay)
+        bank.global_step[0] = 1000
+        _, scores_step1000 = bank.read(h, return_scores=True)
+
+        # In no_recency, temporal recency term gamma * recency is 0, so scores remain identical
+        assert torch.allclose(scores_step0, scores_step1000, atol=1e-5), "no_recency should ignore time progression in scores"
+
+    def test_no_importance_ignores_slot_importance(self):
+        """When mem_beta is 0.0, slot importance does not alter score ranking."""
+        config = make_ablation_config('no_importance')
+        config.mem_reinforcement_rate = 0.0
+        bank = TinyMemoryBank(config=config)
+        bank.load_memory_state(bank.empty_memory_state())
+
+        dim = config.memory_dim
+        h = torch.randn(1, dim)
+        bank.write(h, torch.ones(1), torch.ones(1))
+
+        _, score_before = bank.read(h, return_scores=True)
+
+        # Modify importance manually
+        bank.mem_importance[0] = 1.0
+        _, score_after = bank.read(h, return_scores=True)
+
+        assert torch.allclose(score_before, score_after, atol=1e-5), "no_importance must not reflect importance changes in score"
+
+    def test_no_confidence_ignores_confidence_metadata(self):
+        """When mem_delta is 0.0, confidence changes do not alter retrieval scores."""
+        config = make_ablation_config('no_confidence')
+        config.mem_reinforcement_rate = 0.0  # Isolate from access reinforcement boost
+        bank = TinyMemoryBank(config=config)
+        bank.load_memory_state(bank.empty_memory_state())
+
+        dim = config.memory_dim
+        h = torch.randn(1, dim)
+        bank.write(h, torch.ones(1), torch.ones(1))
+
+        _, score_before = bank.read(h, return_scores=True)
+
+        # Modify confidence manually
+        bank.mem_confidence[0] = 0.99
+        _, score_after = bank.read(h, return_scores=True)
+
+        assert torch.allclose(score_before, score_after, atol=1e-5), "no_confidence must not reflect confidence changes in score"

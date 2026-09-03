@@ -301,13 +301,17 @@ def run_benchmark(
                             gt_idx = fact_to_slot.get(expected_fid, None)
 
                             if gt_idx is not None:
-                                r1 = recall_at_k(np.array(sim[i]), gt_idx, k_values=[1])[1]
+                                r_dict = recall_at_k(np.array(sim[i]), gt_idx, k_values=[1, 5])
+                                r1 = r_dict[1]
+                                r5 = r_dict[5]
                                 mrr = mean_reciprocal_rank(np.array(sim[i]), gt_idx)
                             else:
                                 r1 = 0.0
+                                r5 = 0.0
                                 mrr = 0.0
 
                             r1s.append(r1)
+                            r5s.append(r5)
                             mrrs.append(mrr)
 
                     ems.append(em)
@@ -318,6 +322,7 @@ def run_benchmark(
             results[name]['f1'].append(float(np.mean(f1s) * 100))
             if mode != 'none':
                 results[name]['r1'].append(float(np.mean(r1s) * 100))
+                results[name]['r5'].append(float(np.mean(r5s) * 100))
                 results[name]['mrr'].append(float(np.mean(mrrs)))
 
     print("\n===========================================")
@@ -330,6 +335,7 @@ def run_benchmark(
         print(f"  Token F1:         {np.mean(results[name]['f1']):.2f}% ± {np.std(results[name]['f1']):.2f}%")
         if name != "No Memory":
             print(f"  Recall@1:         {np.mean(results[name]['r1']):.2f}% ± {np.std(results[name]['r1']):.2f}%")
+            print(f"  Recall@5:         {np.mean(results[name]['r5']):.2f}% ± {np.std(results[name]['r5']):.2f}%")
             print(f"  MRR:              {np.mean(results[name]['mrr']):.4f} ± {np.std(results[name]['mrr']):.4f}")
 
     return results

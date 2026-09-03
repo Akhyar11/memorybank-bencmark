@@ -134,3 +134,23 @@ class TestGradientSemantics:
         # Memory state buffers must NOT have requires_grad
         for name, buf in bank.named_buffers():
             assert not buf.requires_grad, f"Buffer {name} must not require grad"
+
+    def test_write_state_mutation_is_nondifferentiable_and_preserves_external_cache_semantics(self, bank_fixture):
+        """
+        P1 Gradient Semantics:
+        Memory state mutation is non-differentiable.
+        Gradient flows through projection/computation paths (q_proj, fusion_proj, backbone)
+        but not through persistent episodic buffer mutations (which mimic Flax variable collection 'memory').
+        """
+        bank, config = bank_fixture
+        h = torch.randn(1, config.hidden_size, requires_grad=True)
+
+        # Write inside torch.no_grad()
+        bank.write(h, torch.ones(1), torch.ones(1))
+
+        # Stored slot tensors must not have grad_fn attached
+        assert bank.mem_keys.grad_fn is None, "mem_keys buffer should not have autograd history"
+        assert bank.mem_vals.grad_fn is None, "mem_vals buffer should not have autograd history"
+        assert bank.mem_importance.grad_fn is None, "mem_importance buffer should not have autograd history"
+        assert bank.mem_confidence.grad_fn is None, "mem_confidence buffer should not have autograd history"
+        assert bank.mem_state.grad_fn is None, "mem_state buffer should not have autograd history"

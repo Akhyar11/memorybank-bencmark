@@ -60,10 +60,10 @@ def run_benchmark():
     # Test loader
     loader = TextDataLoader(test_csv, tokenizer_path, batch_size, 32, 16, max_samples=128)
     
-    config = TinyMemoryConfig(memory_capacity=128, memory_dim=32, hidden_size=32)
+    config = TinyMemoryConfig(memory_capacity=128, memory_dim=256, hidden_size=256)
     
     # We use ONE single backbone
-    mdl = TransformerQAModel(config=config, vocab_size=2000, embed_dim=32, num_layers=1, num_heads=2, pad_id=loader.pad_id, bos_id=loader.bos_id, eos_id=loader.eos_id)
+    mdl = TransformerQAModel(config=config, vocab_size=2000, embed_dim=256, num_layers=4, num_heads=4, pad_id=loader.pad_id, bos_id=loader.bos_id, eos_id=loader.eos_id)
     
     dummy_input = jnp.ones((batch_size, 32), dtype=jnp.int32)
     dummy_target = jnp.ones((batch_size, 16), dtype=jnp.int32)

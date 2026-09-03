@@ -194,7 +194,8 @@ def run_benchmark(
                 epoch_time = end_time - start_time
                 steps = max(len(losses), 1)
                 step_time_ms = (epoch_time / steps) * 1000
-                print(f"    Epoch {epoch+1:3d} Loss: {np.mean(losses):.4f} | Time: {epoch_time:.2f}s | {step_time_ms:.2f} ms/step")
+                if num_epochs <= 10 or (epoch + 1) % 10 == 0 or epoch == 0 or epoch == num_epochs - 1:
+                    print(f"    Epoch {epoch+1:3d}/{num_epochs} Loss: {np.mean(losses):.4f} | Time: {epoch_time:.2f}s | {step_time_ms:.2f} ms/step")
 
             # ---------------------------------------------------------------
             # Evaluation Phase

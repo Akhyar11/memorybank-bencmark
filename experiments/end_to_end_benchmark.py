@@ -15,6 +15,7 @@ import jax.numpy as jnp
 import optax
 import numpy as np
 import collections
+import time
 
 from models.transformer_qa_model import TransformerQAModel
 from models.tiny_memory_bank import TinyMemoryConfig
@@ -141,6 +142,7 @@ def run_benchmark():
             fact_store = jnp.zeros((config.memory_capacity, config.hidden_size))
             
             for epoch in range(num_epochs):
+                start_time = time.time()
                 losses = []
                 write_idx = 0
                 for batch in train_loader.iter_batches(shuffle=False): # Sequential for episodic integrity!
@@ -154,11 +156,19 @@ def run_benchmark():
                     
                     updates, opt_state = tx.update(grads, opt_state, params)
                     params = optax.apply_updates(params, updates)
+                    
+                    # Force computation to block so time is accurate
+                    loss = jax.block_until_ready(loss)
                     losses.append(loss)
                     write_idx = (write_idx + batch_size) % config.memory_capacity
                 
+                end_time = time.time()
+                epoch_time = end_time - start_time
+                steps = len(losses)
+                step_time_ms = (epoch_time / max(steps, 1)) * 1000
+                
                 if (epoch + 1) % 10 == 0 or epoch == 0:
-                    print(f"    Epoch {epoch+1:3d} Loss: {np.mean(losses):.4f}")
+                    print(f"    Epoch {epoch+1:3d} Loss: {np.mean(losses):.4f} | Time: {epoch_time:.2f}s | {step_time_ms:.2f} ms/step")
                 
             # Evaluation
             ems, f1s, r1s, mrrs = [], [], [], []

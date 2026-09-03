@@ -175,8 +175,12 @@ def run_benchmark():
                         params, opt_state, mem_state, loss = train_step_bank(params, opt_state, mem_state, jax_batch, step_rng)
                     
                     losses.append(loss)
+                    
+                    # Periodic block to prevent JAX async dispatch queue explosion (OOM)
+                    if len(losses) % 50 == 0:
+                        jax.block_until_ready(loss)
                 
-                
+                # Final block for epoch
                 end_time = time.time()
                 epoch_time = end_time - start_time
                 steps = len(losses)

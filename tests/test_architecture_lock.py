@@ -67,6 +67,10 @@ class TestLockedComponents:
         _, vars_, _ = bank_and_vars
         assert 'kernel' in vars_['params']['v_proj'], "v_proj must be Dense"
 
+    def test_i_proj_is_dense(self, bank_and_vars):
+        _, vars_, _ = bank_and_vars
+        assert 'kernel' in vars_['params']['i_proj'], "i_proj must be Dense"
+
     def test_fusion_proj_is_dense(self, bank_and_vars):
         _, vars_, _ = bank_and_vars
         assert 'kernel' in vars_['params']['fusion_proj'], "fusion_proj must be Dense"
@@ -107,7 +111,7 @@ class TestLockedComponents:
             lock = json.load(f)
         for comp in ['q_proj', 'k_proj', 'v_proj', 'i_proj', 'fusion_proj',
                      'mem_keys', 'mem_vals', 'mem_importance', 'mem_confidence',
-                     'mem_created_at', 'mem_last_access', 'mem_access_count', 'mem_state']:
+                     'mem_created_at', 'mem_last_access', 'mem_access_count', 'mem_state', 'global_step']:
             assert comp in lock['locked_components'], f"{comp} not in architecture_lock.json"
 
 
@@ -171,3 +175,27 @@ class TestLockedPipeline:
         vars_neg = flax.core.freeze(unfrozen)
         q2 = bank.apply(vars_neg, h, method=lambda mdl, x: mdl.q_proj(x))
         assert not jnp.allclose(q1, q2), "q_proj did not causally affect query"
+
+        # Test k_proj causal effect
+        k1 = bank.apply(vars_, h, method=lambda mdl, x: mdl.k_proj(x))
+        unfrozen = flax.core.unfreeze(vars_)
+        unfrozen['params']['k_proj']['kernel'] = -unfrozen['params']['k_proj']['kernel']
+        vars_neg = flax.core.freeze(unfrozen)
+        k2 = bank.apply(vars_neg, h, method=lambda mdl, x: mdl.k_proj(x))
+        assert not jnp.allclose(k1, k2), "k_proj did not causally affect key"
+
+        # Test v_proj causal effect
+        v1 = bank.apply(vars_, h, method=lambda mdl, x: mdl.v_proj(x))
+        unfrozen = flax.core.unfreeze(vars_)
+        unfrozen['params']['v_proj']['kernel'] = -unfrozen['params']['v_proj']['kernel']
+        vars_neg = flax.core.freeze(unfrozen)
+        v2 = bank.apply(vars_neg, h, method=lambda mdl, x: mdl.v_proj(x))
+        assert not jnp.allclose(v1, v2), "v_proj did not causally affect value"
+
+        # Test i_proj causal effect
+        i1 = bank.apply(vars_, h, method=lambda mdl, x: mdl.i_proj(x))
+        unfrozen = flax.core.unfreeze(vars_)
+        unfrozen['params']['i_proj']['kernel'] = -unfrozen['params']['i_proj']['kernel']
+        vars_neg = flax.core.freeze(unfrozen)
+        i2 = bank.apply(vars_neg, h, method=lambda mdl, x: mdl.i_proj(x))
+        assert not jnp.allclose(i1, i2), "i_proj did not causally affect importance"

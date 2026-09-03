@@ -13,7 +13,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.tiny_memory_bank import TinyMemoryConfig, STATE_EXPIRED
+from models.tiny_memory_bank import TinyMemoryConfig, STATE_EXPIRED, STATE_ACTIVE
 from dataset.generator import generate_orthogonal_dataset, create_synthetic_batch
 from evaluation.metrics import compute_cosine_similarity
 
@@ -103,11 +103,17 @@ def run_ablation(ablation_type, num_memories, key, time_delay=100):
     dataset = generate_orthogonal_dataset(subkey, num_memories, config.memory_dim)
 
     # Write all memories
+    mem_before_write = {k: np.array(v) for k, v in vars['memory'].items()}
     for i in range(num_memories):
         h = dataset[i:i+1]
         _, new_mem = bank.apply(vars, h, jnp.ones((1,)), jnp.ones((1,)),
                                  method=bank.write, mutable=['memory'])
         vars = {'params': vars['params'], 'memory': new_mem['memory']}
+
+    if ablation_type == 'no_write':
+        mem_after_write = {k: np.array(v) for k, v in vars['memory'].items()}
+        for k in ['state', 'keys', 'vals', 'created_at', 'importance', 'confidence']:
+            assert np.array_equal(mem_before_write[k], mem_after_write[k]), f"no_write altered {k}"
 
     # Simulate time passing (for decay ablation comparison)
     if time_delay > 0:
@@ -124,13 +130,22 @@ def run_ablation(ablation_type, num_memories, key, time_delay=100):
     
     # Must explicitly pass read_prob so threshold gating works for no_read
     read_prob_val = jnp.ones((1,))
-    read_val, _   = bank.apply(vars, query_h, read_prob_val, method=bank.read, mutable=['memory'])
+    
+    mem_before_read = {k: np.array(v) for k, v in vars['memory'].items()}
+    read_val, new_mem = bank.apply(vars, query_h, read_prob_val, method=bank.read, mutable=['memory'])
+    mem_after_read = {k: np.array(v) for k, v in new_mem['memory'].items()}
+    
     expected_v, _ = bank.apply(vars, query_h, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
 
     if ablation_type == 'no_write':
         active_count = jnp.sum(vars['memory']['state'] == STATE_ACTIVE)
         assert int(active_count) == 0, f"no_write failed to block writes! Active memory: {active_count}"
         assert float(jnp.linalg.norm(read_val)) == 0.0, "no_write read result is not exactly 0.0"
+
+    if ablation_type == 'no_read':
+        assert float(jnp.linalg.norm(read_val)) == 0.0, "no_read read result is not exactly 0.0"
+        for k in ['last_access', 'access_count', 'importance']:
+            assert np.array_equal(mem_before_read[k], mem_after_read[k]), f"no_read altered {k}"
 
     sim = float(jnp.mean(compute_cosine_similarity(read_val, expected_v)))
     return sim

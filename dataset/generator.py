@@ -35,14 +35,19 @@ def generate_random_dataset(key, num_samples, dim):
 def generate_clustered_pairs(key, num_samples, dim, num_clusters=50):
     """
     Returns (write_data, query_data) where write and query are from the SAME cluster,
-    but derived independently from the cluster center so they aren't near-duplicates.
+    but query is transformed via a random projection matrix (simulating semantic paraphrase)
+    so they aren't near-duplicates or trivial identity mappings.
     """
-    key, k1, k2 = jax.random.split(key, 3)
+    key, k1, k2, k3 = jax.random.split(key, 4)
     h_write, assignments, cluster_centers = generate_clustered_dataset(k1, num_samples, dim, num_clusters)
 
-    # Generate query = same cluster center + different independent noise
-    query_noise = jax.random.normal(k2, (num_samples, dim)) * 0.15
-    h_query = cluster_centers[assignments] + query_noise
+    # Generate a random projection matrix W to simulate lexical/semantic shift
+    W = jax.random.normal(k2, (dim, dim)) / jnp.sqrt(dim)
+    
+    # Generate query = W @ cluster_center + different independent noise
+    projected_centers = jnp.dot(cluster_centers, W)
+    query_noise = jax.random.normal(k3, (num_samples, dim)) * 0.15
+    h_query = projected_centers[assignments] + query_noise
     h_query = h_query / (jnp.linalg.norm(h_query, axis=-1, keepdims=True) + 1e-8)
     return h_write, h_query
 

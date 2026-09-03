@@ -186,7 +186,7 @@ def test4_interference(n_distractors=20, seeds=3):
     print(f"\n[TEST 4] Interference (N={n_distractors})")
     config = make_config(capacity=64, top_k=8)
 
-    sims = []
+    clean_r1, dist_r1 = [], []
     for seed in range(seeds):
         bank, vars = fresh_bank(config, seed=seed)
         rng = jax.random.PRNGKey(seed + 200)
@@ -196,27 +196,37 @@ def test4_interference(n_distractors=20, seeds=3):
         h_target = h_target / jnp.linalg.norm(h_target)
         vars = write_one(bank, vars, h_target)
         vars_clean = {'params': vars['params'], 'memory': {k: v for k, v in vars['memory'].items()}}
+        gt_idx = 0
+
+        def get_metrics(v):
+            q, _ = bank.apply(v, h_target, method=lambda mdl, x: mdl.q_proj(x), mutable=['memory'])
+            keys  = v['memory']['keys']
+            q_n   = q[0] / (jnp.linalg.norm(q[0]) + 1e-8)
+            k_n   = keys / (jnp.linalg.norm(keys, axis=-1, keepdims=True) + 1e-8)
+            scores = np.array(jnp.matmul(q_n, k_n.T))
+            state  = np.array(v['memory']['state'])
+            scores[state != STATE_ACTIVE] = -1e9
+            r1  = recall_at_k(scores, gt_idx, k_values=[1])
+            return r1[1]
+
+        clean_r1.append(get_metrics(vars_clean))
 
         for i in range(n_distractors):
             rng, k = jax.random.split(rng)
             h_d = jax.random.normal(k, (1, config.hidden_size))
             vars = write_one(bank, vars, h_d)
 
-        read_val_clean, _  = read_one(bank, vars_clean, h_target)
-        read_val_dist, _  = read_one(bank, vars, h_target)
-        expected_v, _= bank.apply(vars, h_target, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
-        
-        sim_clean = cosine_float(read_val_clean[0], expected_v[0])
-        sim_dist = cosine_float(read_val_dist[0], expected_v[0])
-        sims.append((sim_clean, sim_dist))
+        dist_r1.append(get_metrics(vars))
 
-    sim_degrades = [c - d for c, d in sims]
-    mean_degrade = np.mean(sim_degrades)
-    # Expect degradation to be relatively bounded (not complete catastrophic forgetting)
-    passed = mean_degrade < 0.5
+    mean_clean_r1 = np.mean(clean_r1)
+    mean_dist_r1 = np.mean(dist_r1)
+    random_baseline = 1.0 / (n_distractors + 1)
     
-    result = {"sims": sims, "mean_degrade": mean_degrade, "pass": passed}
-    print(f"  Mean similarity degradation = {mean_degrade:.4f}  → {'PASS' if passed else 'FAIL'}")
+    # Must be significantly better than random
+    passed = mean_dist_r1 > random_baseline * 2
+    
+    result = {"clean_r1": mean_clean_r1, "dist_r1": mean_dist_r1, "random": random_baseline, "pass": passed}
+    print(f"  Recall@1 Clean={mean_clean_r1:.2f}, Distractor={mean_dist_r1:.2f} (Random={random_baseline:.4f})  → {'PASS' if passed else 'FAIL'}")
     return result
 
 
@@ -270,6 +280,12 @@ def test6_replacement():
     vars = flax.core.freeze(unfrozen)
 
     keys_before = np.array(vars['memory']['keys'])
+    vals_before = np.array(vars['memory']['vals'])
+    imp_before = np.array(vars['memory']['importance'])
+    conf_before = np.array(vars['memory']['confidence'])
+    created_before = np.array(vars['memory']['created_at'])
+    last_acc_before = np.array(vars['memory']['last_access'])
+    acc_cnt_before = np.array(vars['memory']['access_count'])
 
     # Write one more
     rng, k = jax.random.split(rng)
@@ -277,15 +293,29 @@ def test6_replacement():
     vars  = write_one(bank, vars, h_new, wp=jnp.array([2.0]))
 
     keys_after = np.array(vars['memory']['keys'])
+    vals_after = np.array(vars['memory']['vals'])
+    imp_after = np.array(vars['memory']['importance'])
+    conf_after = np.array(vars['memory']['confidence'])
+    created_after = np.array(vars['memory']['created_at'])
+    last_acc_after = np.array(vars['memory']['last_access'])
+    acc_cnt_after = np.array(vars['memory']['access_count'])
     
-    # Assert exact replacement
-    diff = np.sum((keys_before - keys_after)**2, axis=1)
-    slot0_changed = diff[0] > 1e-5
-    other_unchanged = np.all(diff[1:] < 1e-5)
+    # Assert exact replacement on all metadata
+    diff_keys = np.sum((keys_before - keys_after)**2, axis=1)
+    diff_vals = np.sum((vals_before - vals_after)**2, axis=1)
+    
+    slot0_changed = (diff_keys[0] > 1e-5) and (diff_vals[0] > 1e-5) and \
+                    (imp_before[0] != imp_after[0]) and (conf_before[0] != conf_after[0]) and \
+                    (created_before[0] != created_after[0]) and (last_acc_before[0] != last_acc_after[0])
+    
+    other_unchanged = np.all(diff_keys[1:] < 1e-5) and np.all(diff_vals[1:] < 1e-5) and \
+                      np.all(imp_before[1:] == imp_after[1:]) and np.all(conf_before[1:] == conf_after[1:]) and \
+                      np.all(created_before[1:] == created_after[1:]) and np.all(last_acc_before[1:] == last_acc_after[1:]) and \
+                      np.all(acc_cnt_before[1:] == acc_cnt_after[1:])
 
     passed = slot0_changed and other_unchanged
     result = {"slot0_changed": slot0_changed, "other_unchanged": other_unchanged, "pass": passed}
-    print(f"  Exact slot replaced (lowest importance): {passed}  → {'PASS' if passed else 'FAIL'}")
+    print(f"  Exact slot replaced (ALL METADATA for lowest importance): {passed}  → {'PASS' if passed else 'FAIL'}")
     return result
 
 

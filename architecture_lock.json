@@ -14,7 +14,9 @@
     "mem_created_at",
     "mem_last_access",
     "mem_access_count",
-    "mem_state"
+    "mem_state",
+    "mem_global_step",
+    "global_step"
   ],
   "locked_flow": [
     "decay_memory",

@@ -425,11 +425,11 @@ class TinyMemoryBank(nn.Module):
             k_norm_updated = keys_ / (jnp.linalg.norm(keys_, axis=-1, keepdims=True) + 1e-8)
 
             new_state = (keys_, vals_, state_, imp_, conf_, created_, last_acc_, acc_cnt_, k_norm_updated)
-            return new_state, None
+            return new_state, target_idx
 
         init_state = (keys, vals, state, imp, conf, created, last_acc, acc_cnt, k_norm)
         (new_keys, new_vals, new_state, new_imp, new_conf,
-         new_created, new_last_acc, new_acc_cnt, _), _ = jax.lax.scan(
+         new_created, new_last_acc, new_acc_cnt, _), target_indices = jax.lax.scan(
             update_single_write, init_state,
             (k_new_norm, v_new, i_new, c_new, is_eos, write_prob)
         )
@@ -442,6 +442,8 @@ class TinyMemoryBank(nn.Module):
         self.mem_created_at.value  = new_created
         self.mem_last_access.value = new_last_acc
         self.mem_access_count.value= new_acc_cnt
+        
+        return target_indices
 
     # -----------------------------------------------------------------------
     # LOCKED OPERATION 4: fuse

@@ -151,10 +151,7 @@ def run_benchmark():
         
     @jax.jit
     def eval_step_bank(params, mem_state, batch):
-        _, updated_mem = mdl.apply({'params': params, 'memory': mem_state}, batch['write_ids'], batch['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'])
-        out, new_mem = mdl.apply({'params': params, 'memory': updated_mem['memory']}, batch['query_ids'], batch['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), batch['target_ids'], deterministic=True, memory_mode='bank', mutable=['memory'])
-        logits, sim, _, _ = out
-        return jnp.argmax(logits, axis=-1), sim, new_mem['memory']
+        return None
     
     # Pre-extract all train batches into a single stacked dictionary for XLA scan
     all_train_batches = list(train_loader.iter_batches(shuffle=False))
@@ -174,6 +171,10 @@ def run_benchmark():
         
         for name, mode in modes.items():
             print(f"  --- Training & Evaluating {name} (Seed {seed}) ---")
+            
+            # Reset mode_rng to ensure exactly identical dropout schedules across baselines
+            mode_rng = jax.random.PRNGKey(seed)
+            
             params = initial_params
             tx = optax.adamw(learning_rate=1e-3)
             opt_state = tx.init(params)
@@ -185,7 +186,7 @@ def run_benchmark():
             
             for epoch in range(num_epochs):
                 start_time = time.time()
-                rng, epoch_rng = jax.random.split(rng)
+                mode_rng, epoch_rng = jax.random.split(mode_rng)
                 
                 if mode == 'none':
                     params, opt_state, mem_state, losses = train_epoch_none(params, opt_state, mem_state, batched_train_data, epoch_rng)
@@ -214,22 +215,27 @@ def run_benchmark():
             write_idx = 0
             
             for batch in loader.iter_batches(shuffle=False):
+                mode_rng, step_rng = jax.random.split(mode_rng)
                 if mode == 'none':
                     preds, sim = eval_step_none(params, eval_mem_state, batch)
                 elif mode == 'nn':
                     preds, sim, eval_fact_store = eval_step_nn(params, eval_mem_state, eval_fact_store, write_idx, batch)
+                    # For NN Memory, it writes sequentially
+                    written_indices = jnp.arange(write_idx, write_idx + batch_size) % config.memory_capacity
                 else:
-                    preds, sim, eval_mem_state = eval_step_bank(params, eval_mem_state, batch)
+                    written_indices, updated_mem = mdl.apply({'params': params, 'memory': eval_mem_state}, batch['write_ids'], batch['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'])
+                    out, new_mem = mdl.apply({'params': params, 'memory': updated_mem['memory']}, batch['query_ids'], batch['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), batch['target_ids'], deterministic=True, memory_mode='bank', mutable=['memory'])
+                    logits, sim, _, _ = out
+                    preds = jnp.argmax(logits, axis=-1)
+                    eval_mem_state = new_mem['memory']
                 
                 em = exact_match(preds, batch['target_ids'], pad_id=loader.pad_id)
                 f1 = batch_token_f1(preds, batch['target_ids'], pad_id=loader.pad_id)
                 
-                # Retrieval Metrics (Ground truth is write_idx to write_idx + batch_size - 1)
-                gt_indices = jnp.arange(write_idx, write_idx + batch_size)
-                
                 if mode != 'none':
                     for i in range(batch_size):
-                        gt_idx = int(write_idx + i)
+                        # Use the EXACT slot index where the fact was written
+                        gt_idx = int(written_indices[i])
                         r1 = recall_at_k(np.array(sim[i]), gt_idx, k_values=[1])[1]
                         mrr = mean_reciprocal_rank(np.array(sim[i]), gt_idx)
                         r1s.append(r1)

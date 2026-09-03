@@ -231,9 +231,10 @@ class TransformerQAModel(nn.Module):
         """Encode fact and write to memory bank."""
         h_eos = self.encode_fact(input_ids, mask, deterministic=deterministic)
         h_eos_proj = self.memory_proj_in(h_eos)
+        written_indices = None
         if memory_mode == 'bank':
-            self.bank.write(h_eos_proj, is_eos, write_prob)
-        return h_eos_proj
+            written_indices = self.bank.write(h_eos_proj, is_eos, write_prob)
+        return h_eos_proj, written_indices
 
     def decode_oracle(self, write_ids, write_mask, query_ids, query_mask,
                       target_ids, deterministic=False):
@@ -270,7 +271,8 @@ class TransformerQAModel(nn.Module):
         h_eos_proj = self.memory_proj_in(h_eos)
         
         if memory_mode == 'none':
-            h_fused_proj = jnp.zeros((h_eos.shape[0], self.embed_dim))
+            h_fused = h_eos_proj
+            h_fused_proj = self.memory_proj_out(h_fused)
         elif memory_mode == 'nn':
             if fact_store is None:
                 fact_store = jnp.zeros((self.config.memory_capacity, self.config.hidden_size))
@@ -340,8 +342,8 @@ class TransformerQAModel(nn.Module):
         sim = jnp.zeros((h_eos.shape[0], self.config.memory_capacity))
 
         if memory_mode == 'none':
-            h_fused_proj = jnp.zeros((h_eos.shape[0], self.embed_dim))
-            h_fused = jnp.zeros_like(h_eos_proj)
+            h_fused = h_eos_proj
+            h_fused_proj = self.memory_proj_out(h_fused)
         elif memory_mode == 'nn':
             if fact_store is None:
                 fact_store = jnp.zeros((self.config.memory_capacity, self.config.hidden_size))

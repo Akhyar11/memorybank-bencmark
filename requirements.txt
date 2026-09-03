@@ -1,9 +1,6 @@
-jax>=0.11.0
-jaxlib>=0.11.0
-flax>=0.12.7
+torch>=2.0.0
 numpy
 pyyaml
-optax
 tokenizers
 pandas
 tqdm

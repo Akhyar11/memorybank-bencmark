@@ -119,22 +119,45 @@ class TinyMemoryBank(nn.Module):
             'global_step':  torch.zeros((1,),        dtype=torch.int32, device=device),
         }
 
+    def load_memory_state(self, state_dict):
+        """Load memory state from dictionary."""
+        for key in ['keys', 'vals', 'importance', 'confidence', 'created_at', 'last_access', 'access_count', 'state']:
+            buffer_name = f'mem_{key}'
+            if key in state_dict and hasattr(self, buffer_name):
+                getattr(self, buffer_name).copy_(state_dict[key])
+        if 'global_step' in state_dict:
+            self.global_step.copy_(state_dict['global_step'])
+
+    def get_memory_state(self):
+        """Export current memory state as a dictionary."""
+        return {
+            'keys': self.mem_keys.clone(),
+            'vals': self.mem_vals.clone(),
+            'importance': self.mem_importance.clone(),
+            'confidence': self.mem_confidence.clone(),
+            'created_at': self.mem_created_at.clone(),
+            'last_access': self.mem_last_access.clone(),
+            'access_count': self.mem_access_count.clone(),
+            'state': self.mem_state.clone(),
+            'global_step': self.global_step.clone(),
+        }
+
     # -----------------------------------------------------------------------
     # LOCKED OPERATION 2: read
     # -----------------------------------------------------------------------
-    def read(self, h_eos: torch.Tensor, read_prob: torch.Tensor = None) -> torch.Tensor:
+    def read(self, h_eos: torch.Tensor, read_prob: torch.Tensor = None, return_scores: bool = False):
         step = self.global_step.item()
         cfg  = self.config
 
         # 1. Query projection
-        q    = self.q_proj(h_eos)       # (batch, dim)
-        keys = self.mem_keys            # (capacity, dim)
-        vals = self.mem_vals            # (capacity, dim)
+        q    = self.q_proj(h_eos)             # (batch, dim)
+        keys = self.mem_keys.clone()          # (capacity, dim)
+        vals = self.mem_vals.clone()          # (capacity, dim)
 
-        importance  = self.mem_importance
-        confidence  = self.mem_confidence
-        last_access = self.mem_last_access
-        state       = self.mem_state
+        importance  = self.mem_importance.clone()
+        confidence  = self.mem_confidence.clone()
+        last_access = self.mem_last_access.clone()
+        state       = self.mem_state.clone()
 
         # 2. Cosine similarity
         q_norm = q / (torch.norm(q, dim=-1, keepdim=True) + 1e-8)
@@ -142,7 +165,7 @@ class TinyMemoryBank(nn.Module):
         sim = torch.matmul(q_norm, k_norm.T)  # (batch, capacity)
 
         # 3. Recency
-        dt      = torch.clamp(torch.tensor(step) - last_access, min=0).float()
+        dt      = torch.clamp(torch.tensor(step, device=last_access.device) - last_access, min=0).float()
         recency = torch.exp(-cfg.mem_decay_rate * dt)  # (capacity,)
 
         # 4. Broadcast metadata to (batch, capacity)
@@ -182,8 +205,6 @@ class TinyMemoryBank(nn.Module):
 
         # 10. Weighted aggregation
         batch_size = topk_indices.size(0)
-        # Gather vals for each index: topk_indices is (batch, k)
-        # We want topk_vals of shape (batch, k, dim)
         expanded_indices = topk_indices.unsqueeze(-1).expand(-1, -1, vals.size(-1))
         topk_vals = torch.gather(vals.unsqueeze(0).expand(batch_size, -1, -1), 1, expanded_indices)
 
@@ -191,11 +212,9 @@ class TinyMemoryBank(nn.Module):
         read_result = torch.sum(attn_weights.unsqueeze(-1) * topk_vals, dim=1)  # (batch, dim)
         read_result = torch.where(attn_sum > 0, read_result, torch.zeros_like(read_result))
 
-        # 11. Access Reinforcement
+        # 11. Access Reinforcement (Episodic buffer update under torch.no_grad)
         eta_a = cfg.mem_reinforcement_rate
-        
-        # We can update the memory buffers in-place in PyTorch
-        if self.training or not self.training: # Always reinforce on read
+        with torch.no_grad():
             for b in range(batch_size):
                 for i in range(k):
                     if valid_mask[b, i]:
@@ -204,6 +223,13 @@ class TinyMemoryBank(nn.Module):
                         self.mem_access_count[idx] += 1
                         self.mem_importance[idx] = torch.clamp(self.mem_importance[idx] + eta_a, min=0.0, max=1.0)
 
+        # Cache actual composite retrieval score for evaluation & scientific ranking
+        self.last_scores = score.detach()
+        self.last_topk_indices = topk_indices.detach()
+        self.last_valid_mask = valid_mask.detach()
+
+        if return_scores:
+            return read_result, score
         return read_result
 
     # -----------------------------------------------------------------------
@@ -222,61 +248,67 @@ class TinyMemoryBank(nn.Module):
 
         target_indices = []
 
-        # We must process batch sequentially so writes see preceding updates
-        for b in range(batch_size):
-            k_n = k_new[b]
-            v_n = v_new[b]
-            i_n = i_new[b]
-            c_n = c_new[b]
-            is_e = is_eos[b]
-            w_p = write_prob[b]
+        # Episodic buffer mutation under torch.no_grad (P0-07)
+        with torch.no_grad():
+            k_new_d = k_new.detach()
+            v_new_d = v_new.detach()
+            i_new_d = i_new.detach()
+            c_new_d = c_new.detach()
 
-            do_write = (is_e > 0.5) and (w_p >= cfg.memory_write_threshold)
-            
-            k_n_norm = k_n / (torch.norm(k_n) + 1e-8)
-            k_norm = self.mem_keys / (torch.norm(self.mem_keys, dim=-1, keepdim=True) + 1e-8)
+            for b in range(batch_size):
+                k_n = k_new_d[b]
+                v_n = v_new_d[b]
+                i_n = i_new_d[b]
+                c_n = c_new_d[b]
+                is_e = is_eos[b]
+                w_p = write_prob[b]
 
-            sim_ = torch.matmul(k_norm, k_n_norm)
-            
-            valid_search = (self.mem_state != STATE_EXPIRED)
-            sim_masked   = torch.where(valid_search, sim_, torch.tensor(-1.0, device=sim_.device))
-            
-            max_sim     = torch.max(sim_masked)
-            nearest_idx = torch.argmax(sim_masked).item()
-            
-            tau = cfg.memory_write_threshold
-            is_update = (max_sim >= tau) and valid_search[nearest_idx]
-            
-            # INSERT logic
-            sort_keys = torch.where(
-                self.mem_state == STATE_EXPIRED, torch.tensor(0, device=sim_.device),
-                torch.where(self.mem_state == STATE_DORMANT, torch.tensor(1, device=sim_.device), torch.tensor(2, device=sim_.device))
-            )
-            tiebreak   = self.mem_importance / (torch.max(self.mem_importance) + 1e-8) * 0.5
-            sort_score = sort_keys.float() + tiebreak
-            insert_idx = torch.argmin(sort_score).item()
-            
-            target_idx = nearest_idx if is_update else insert_idx
-            target_indices.append(target_idx)
-            
-            if do_write:
-                self.mem_keys[target_idx] = k_n
-                if is_update:
-                    eta = self.mem_confidence[nearest_idx].item()
-                    self.mem_vals[target_idx] = (1.0 - eta) * self.mem_vals[nearest_idx] + eta * v_n
-                    self.mem_importance[target_idx] = torch.max(self.mem_importance[nearest_idx], i_n)
-                    self.mem_confidence[target_idx] = torch.clamp(self.mem_confidence[nearest_idx] + 0.1, min=0.0, max=1.0)
-                    self.mem_state[target_idx] = STATE_ACTIVE
-                    self.mem_last_access[target_idx] = step
-                    self.mem_access_count[target_idx] += 1
-                else:
-                    self.mem_vals[target_idx] = v_n
-                    self.mem_importance[target_idx] = i_n
-                    self.mem_confidence[target_idx] = c_n
-                    self.mem_state[target_idx] = STATE_ACTIVE
-                    self.mem_last_access[target_idx] = step
-                    self.mem_created_at[target_idx] = step
-                    self.mem_access_count[target_idx] = 1
+                do_write = (is_e > 0.5) and (w_p >= cfg.memory_write_threshold)
+                
+                k_n_norm = k_n / (torch.norm(k_n) + 1e-8)
+                k_norm = self.mem_keys / (torch.norm(self.mem_keys, dim=-1, keepdim=True) + 1e-8)
+
+                sim_ = torch.matmul(k_norm, k_n_norm)
+                
+                valid_search = (self.mem_state != STATE_EXPIRED)
+                sim_masked   = torch.where(valid_search, sim_, torch.tensor(-1.0, device=sim_.device))
+                
+                max_sim     = torch.max(sim_masked)
+                nearest_idx = torch.argmax(sim_masked).item()
+                
+                tau = cfg.memory_write_threshold
+                is_update = (max_sim >= tau) and valid_search[nearest_idx]
+                
+                # INSERT logic
+                sort_keys = torch.where(
+                    self.mem_state == STATE_EXPIRED, torch.tensor(0, device=sim_.device),
+                    torch.where(self.mem_state == STATE_DORMANT, torch.tensor(1, device=sim_.device), torch.tensor(2, device=sim_.device))
+                )
+                tiebreak   = self.mem_importance / (torch.max(self.mem_importance) + 1e-8) * 0.5
+                sort_score = sort_keys.float() + tiebreak
+                insert_idx = torch.argmin(sort_score).item()
+                
+                target_idx = nearest_idx if is_update else insert_idx
+                target_indices.append(target_idx)
+                
+                if do_write:
+                    self.mem_keys[target_idx] = k_n
+                    if is_update:
+                        eta = self.mem_confidence[nearest_idx].item()
+                        self.mem_vals[target_idx] = (1.0 - eta) * self.mem_vals[nearest_idx] + eta * v_n
+                        self.mem_importance[target_idx] = torch.max(self.mem_importance[nearest_idx], i_n)
+                        self.mem_confidence[target_idx] = torch.clamp(self.mem_confidence[nearest_idx] + 0.1, min=0.0, max=1.0)
+                        self.mem_state[target_idx] = STATE_ACTIVE
+                        self.mem_last_access[target_idx] = step
+                        self.mem_access_count[target_idx] += 1
+                    else:
+                        self.mem_vals[target_idx] = v_n
+                        self.mem_importance[target_idx] = i_n
+                        self.mem_confidence[target_idx] = c_n
+                        self.mem_state[target_idx] = STATE_ACTIVE
+                        self.mem_last_access[target_idx] = step
+                        self.mem_created_at[target_idx] = step
+                        self.mem_access_count[target_idx] = 1
 
         if target_indices:
             return torch.tensor(target_indices, dtype=torch.long, device=h_eos.device)
@@ -294,11 +326,14 @@ class TinyMemoryBank(nn.Module):
     # LOCKED OPERATION 5: forward (decay → read → fuse)
     # -----------------------------------------------------------------------
     def forward(self, h_eos: torch.Tensor, read_prob: torch.Tensor,
-                 write_prob: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
+                 write_prob: torch.Tensor, deterministic: bool = False, return_scores: bool = False):
         self.global_step[0] += 1
 
         self.decay_memory()
-        read_val = self.read(h_eos, read_prob=read_prob)
+        if return_scores:
+            read_val, score = self.read(h_eos, read_prob=read_prob, return_scores=True)
+        else:
+            read_val = self.read(h_eos, read_prob=read_prob, return_scores=False)
 
         if deterministic:
             is_read = read_prob > self.config.memory_read_threshold
@@ -307,4 +342,6 @@ class TinyMemoryBank(nn.Module):
             m_eff = read_val * read_prob.unsqueeze(-1)
 
         fused_h = self.fuse(h_eos, m_eff)
+        if return_scores:
+            return fused_h, score
         return fused_h

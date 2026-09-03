@@ -111,8 +111,12 @@ class TransformerQAModel(nn.Module):
         self.memory_proj_in = nn.Linear(embed_dim, config.hidden_size)
         self.memory_proj_out = nn.Linear(config.hidden_size, embed_dim)
         
-        self.nn_proj_in = nn.Linear(embed_dim, embed_dim)
+        # Independent Projections for True Key-Value NN Baseline (P0-08)
+        self.nn_k_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.nn_v_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.nn_proj_out = nn.Linear(embed_dim, embed_dim)
+        # Backwards compatibility alias
+        self.nn_proj_in = self.nn_k_proj
         
         self.bank = TinyMemoryBank(config)
         
@@ -190,8 +194,9 @@ class TransformerQAModel(nn.Module):
             written_indices = self.bank.write(h_eos_proj, is_eos, write_prob)
             return h_eos_proj, written_indices
         elif memory_mode == 'nn':
-            h_eos_proj = self.nn_proj_in(h_eos)
-            return h_eos_proj, written_indices
+            k_proj = self.nn_k_proj(h_eos)
+            v_proj = self.nn_v_proj(h_eos)
+            return (k_proj, v_proj), written_indices
         else:
             return h_eos, written_indices
 
@@ -200,22 +205,28 @@ class TransformerQAModel(nn.Module):
         h_eos = self.encode_query(input_ids, mask)
         
         if memory_mode == 'none':
-            h_eos_proj = h_eos
-            h_fused = h_eos
-            h_fused_proj = self.memory_proj_out(h_fused)
+            # P0-06: No Memory clean baseline
+            h_fused_proj = h_eos
         elif memory_mode == 'nn':
-            h_eos_proj = self.nn_proj_in(h_eos)
+            # P0-08: True Key-Value NN Memory
+            q = self.nn_k_proj(h_eos)
             if fact_store is None:
-                fact_store = torch.zeros(self.config.memory_capacity, self.config.hidden_size, device=device)
-            q_n = h_eos_proj / (torch.norm(h_eos_proj, dim=-1, keepdim=True) + 1e-8)
-            k_n = fact_store / (torch.norm(fact_store, dim=-1, keepdim=True) + 1e-8)
+                fact_keys = torch.zeros(self.config.memory_capacity, self.embed_dim, device=device)
+                fact_vals = torch.zeros(self.config.memory_capacity, self.embed_dim, device=device)
+            elif isinstance(fact_store, tuple):
+                fact_keys, fact_vals = fact_store
+            else:
+                fact_keys, fact_vals = fact_store, fact_store
+
+            q_n = q / (torch.norm(q, dim=-1, keepdim=True) + 1e-8)
+            k_n = fact_keys / (torch.norm(fact_keys, dim=-1, keepdim=True) + 1e-8)
             sim = torch.matmul(q_n, k_n.T)
-            active_mask = torch.any(fact_store != 0, dim=-1).unsqueeze(0)
+            active_mask = torch.any(fact_keys != 0, dim=-1).unsqueeze(0)
             masked_sim = torch.where(active_mask, sim, torch.tensor(-1e9, device=device))
             attn = F.softmax(masked_sim, dim=-1)
-            retrieved = torch.matmul(attn, fact_store)
-            h_fused = h_eos_proj + retrieved
-            h_fused_proj = self.nn_proj_out(h_fused)
+            retrieved = torch.matmul(attn, fact_vals)
+            h_fused = self.nn_proj_out(h_eos + retrieved)
+            h_fused_proj = h_fused
         else:
             h_eos_proj = self.memory_proj_in(h_eos)
             h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=True)
@@ -259,35 +270,40 @@ class TransformerQAModel(nn.Module):
         sim = torch.zeros(h_eos.size(0), self.config.memory_capacity, device=device)
         
         if memory_mode == 'none':
+            # P0-06: No Memory clean baseline
             h_eos_proj = h_eos
             h_fused = h_eos
-            h_fused_proj = self.memory_proj_out(h_fused)
+            h_fused_proj = h_eos
         elif memory_mode == 'nn':
-            h_eos_proj = self.nn_proj_in(h_eos)
+            # P0-08: True Key-Value NN Memory
+            q = self.nn_k_proj(h_eos)
+            h_eos_proj = q
             if fact_store is None:
-                fact_store = torch.zeros(self.config.memory_capacity, self.config.hidden_size, device=device)
-            q_n = h_eos_proj / (torch.norm(h_eos_proj, dim=-1, keepdim=True) + 1e-8)
-            k_n = fact_store / (torch.norm(fact_store, dim=-1, keepdim=True) + 1e-8)
+                fact_keys = torch.zeros(self.config.memory_capacity, self.embed_dim, device=device)
+                fact_vals = torch.zeros(self.config.memory_capacity, self.embed_dim, device=device)
+            elif isinstance(fact_store, tuple):
+                fact_keys, fact_vals = fact_store
+            else:
+                fact_keys, fact_vals = fact_store, fact_store
+
+            q_n = q / (torch.norm(q, dim=-1, keepdim=True) + 1e-8)
+            k_n = fact_keys / (torch.norm(fact_keys, dim=-1, keepdim=True) + 1e-8)
             sim = torch.matmul(q_n, k_n.T)
-            active_mask = torch.any(fact_store != 0, dim=-1).unsqueeze(0)
+            active_mask = torch.any(fact_keys != 0, dim=-1).unsqueeze(0)
             masked_sim = torch.where(active_mask, sim, torch.tensor(-1e9, device=device))
             attn = F.softmax(masked_sim, dim=-1)
-            retrieved = torch.matmul(attn, fact_store)
-            h_fused = h_eos_proj + retrieved
-            h_fused_proj = self.nn_proj_out(h_fused)
+            retrieved = torch.matmul(attn, fact_vals)
+            h_fused = self.nn_proj_out(h_eos + retrieved)
+            h_fused_proj = h_fused
         else:
             h_eos_proj = self.memory_proj_in(h_eos)
-            h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=not self.training)
+            # P1-02: Use actual composite scores directly from TinyMemoryBank
+            h_fused, actual_scores = self.bank(
+                h_eos_proj, read_prob, write_prob,
+                deterministic=not self.training, return_scores=True
+            )
             h_fused_proj = self.memory_proj_out(h_fused)
-            
-            q = self.bank.q_proj(h_eos_proj)
-            keys = self.bank.mem_keys
-            state = self.bank.mem_state
-            q_n = q / (torch.norm(q, dim=-1, keepdim=True) + 1e-8)
-            k_n = keys / (torch.norm(keys, dim=-1, keepdim=True) + 1e-8)
-            sim_bank = torch.matmul(q_n, k_n.T)
-            active_mask = (state != 0).unsqueeze(0)
-            sim = torch.where(active_mask, sim_bank, torch.tensor(-1e9, device=device))
+            sim = actual_scores
 
         context = h_fused_proj.unsqueeze(1)
         logits = self._decode_from_context(context, target_ids)

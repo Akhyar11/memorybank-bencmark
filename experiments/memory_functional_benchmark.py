@@ -1,5 +1,5 @@
 """
-experiments/memory_functional_benchmark.py – STEP 9 / Requirement #27
+experiments/memory_functional_benchmark.py (PyTorch Version)
 
 Complete 11-test Memory Bank functional benchmark.
 Tests the Memory Bank itself independently of the language model.
@@ -21,9 +21,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import jax
-import jax.numpy as jnp
-import flax.core
+import torch
 import numpy as np
 
 from models.tiny_memory_bank import TinyMemoryBank, TinyMemoryConfig, STATE_ACTIVE, STATE_EXPIRED, STATE_DORMANT
@@ -49,45 +47,34 @@ def make_config(capacity=32, dim=16, hidden=16, top_k=4,
 
 def fresh_bank(config, seed=0):
     """Create bank with fresh (empty) memory."""
+    torch.manual_seed(seed)
     bank = TinyMemoryBank(config=config)
-    rng  = jax.random.PRNGKey(seed)
-    h0   = jnp.ones((1, config.hidden_size))
-    vars = bank.init(rng, h0, jnp.ones((1,)), jnp.ones((1,)), False)
-    # Overwrite memory with truly empty state
-    mem = {
-        'keys':         jnp.zeros((config.memory_capacity, config.memory_dim)),
-        'vals':         jnp.zeros((config.memory_capacity, config.memory_dim)),
-        'importance':   jnp.zeros((config.memory_capacity,)),
-        'confidence':   jnp.zeros((config.memory_capacity,)),
-        'created_at':   jnp.zeros((config.memory_capacity,), jnp.int32),
-        'last_access':  jnp.zeros((config.memory_capacity,), jnp.int32),
-        'access_count': jnp.zeros((config.memory_capacity,), jnp.int32),
-        'state':        jnp.full((config.memory_capacity,), STATE_EXPIRED, jnp.int32),
-        'global_step':  jnp.zeros((), jnp.int32),
-    }
-    vars = {'params': vars['params'], 'memory': mem}
-    return bank, vars
+    bank.load_memory_state(bank.empty_memory_state())
+    return bank
 
 
-def write_one(bank, vars, h, eos=None, wp=None):
-    if eos is None: eos = jnp.ones((h.shape[0],))
-    if wp  is None: wp  = jnp.ones((h.shape[0],))
-    _, new_mem = bank.apply(vars, h, eos, wp, method=bank.write, mutable=['memory'])
-    return {'params': vars['params'], 'memory': new_mem['memory']}
+def write_one(bank, h, eos=None, wp=None):
+    if eos is None:
+        eos = torch.ones(h.shape[0], device=h.device)
+    if wp is None:
+        wp = torch.ones(h.shape[0], device=h.device)
+    bank.write(h, eos, wp)
+    return bank
 
 
-def read_one(bank, vars, h):
-    out, new_mem = bank.apply(vars, h, method=bank.read, mutable=['memory'])
-    vars = {'params': vars['params'], 'memory': new_mem['memory']}
-    return out, vars
+def read_one(bank, h):
+    out = bank.read(h)
+    return out
 
 
 def cosine_float(a, b):
     a = np.array(a).flatten()
     b = np.array(b).flatten()
-    na = np.linalg.norm(a); nb = np.linalg.norm(b)
-    if na < 1e-8 or nb < 1e-8: return 0.0
-    return float(np.dot(a/na, b/nb))
+    na = np.linalg.norm(a)
+    nb = np.linalg.norm(b)
+    if na < 1e-8 or nb < 1e-8:
+        return 0.0
+    return float(np.dot(a / na, b / nb))
 
 
 # ---------------------------------------------------------------------------
@@ -96,12 +83,13 @@ def cosine_float(a, b):
 def test1_basic_write():
     print("\n[TEST 1] Basic Write")
     config = make_config()
-    bank, vars = fresh_bank(config, seed=1)
+    bank = fresh_bank(config, seed=1)
 
-    h = jax.random.normal(jax.random.PRNGKey(1), (1, config.hidden_size))
-    vars = write_one(bank, vars, h)
+    torch.manual_seed(1)
+    h = torch.randn(1, config.hidden_size)
+    write_one(bank, h)
 
-    active = int(jnp.sum(vars['memory']['state'] == STATE_ACTIVE))
+    active = int(torch.sum(bank.mem_state == STATE_ACTIVE))
     result = {"active_after_write": active, "expected": 1, "pass": active == 1}
     print(f"  active_count after 1 write = {active}  → {'PASS' if result['pass'] else 'FAIL'}")
     return result
@@ -113,18 +101,18 @@ def test1_basic_write():
 def test2_basic_read():
     print("\n[TEST 2] Basic Read")
     config = make_config()
-    bank, vars = fresh_bank(config, seed=2)
+    bank = fresh_bank(config, seed=2)
 
-    h = jax.random.normal(jax.random.PRNGKey(2), (1, config.hidden_size))
-    h = h / jnp.linalg.norm(h)
+    torch.manual_seed(2)
+    h = torch.randn(1, config.hidden_size)
+    h = h / torch.norm(h)
 
-    vars        = write_one(bank, vars, h)
-    R, _        = read_one(bank, vars, h)
-    # Also apply the actual `v_proj` using the current parameters.
-    expected_v, _ = bank.apply(vars, h, method=lambda mdl, x: mdl.v_proj(x), mutable=['memory'])
+    write_one(bank, h)
+    R = read_one(bank, h)
+    expected_v = bank.v_proj(h)
 
-    sim = float(jnp.sum(R[0] * expected_v[0]) / (jnp.linalg.norm(R[0]) * jnp.linalg.norm(expected_v[0]) + 1e-8))
-    passed = sim > 0.1  # generous: bank randomly initialised
+    sim = cosine_float(R[0].detach().numpy(), expected_v[0].detach().numpy())
+    passed = sim > 0.1
     result = {"cosine_sim": sim, "pass": passed}
     print(f"  Write-Read cosine similarity = {sim:.4f}  → {'PASS' if passed else 'FAIL'}")
     return result
@@ -135,47 +123,40 @@ def test2_basic_read():
 # ---------------------------------------------------------------------------
 def test3_distractor_retrieval(n_distractors=10, seeds=3):
     print(f"\n[TEST 3] Distractor Retrieval (N={n_distractors})")
-    config = make_config(capacity=64, top_k=8)
+    config = make_config(capacity=64, top_k=8, write_threshold=0.9)
 
     r1_scores, mrr_scores = [], []
     for seed in range(seeds):
-        bank, vars = fresh_bank(config, seed=seed)
-        rng = jax.random.PRNGKey(seed + 100)
+        bank = fresh_bank(config, seed=seed)
+        with torch.no_grad():
+            bank.q_proj.weight.data.copy_(bank.k_proj.weight.data)
+        torch.manual_seed(seed + 100)
 
-        rng, k1 = jax.random.split(rng)
-        h_target = jax.random.normal(k1, (1, config.hidden_size))
-        h_target = h_target / jnp.linalg.norm(h_target)
-        vars = write_one(bank, vars, h_target)
-        gt_idx = 0  # first slot written
+        h_target = torch.randn(1, config.hidden_size)
+        h_target = h_target / torch.norm(h_target)
+        write_one(bank, h_target)
+        gt_idx = 0
 
-        for i in range(n_distractors):
-            rng, k = jax.random.split(rng)
-            h_d = jax.random.normal(k, (1, config.hidden_size))
-            h_d = h_d / jnp.linalg.norm(h_d)
-            vars = write_one(bank, vars, h_d)
+        for _ in range(n_distractors):
+            h_d = torch.randn(1, config.hidden_size)
+            h_d = h_d / torch.norm(h_d)
+            write_one(bank, h_d)
 
-        # Compute per-slot cosine scores against query
-        q, _ = bank.apply(vars, h_target, method=lambda mdl, x: mdl.q_proj(x), mutable=['memory'])
-        keys  = vars['memory']['keys']
-        q_n   = q[0] / (jnp.linalg.norm(q[0]) + 1e-8)
-        k_n   = keys / (jnp.linalg.norm(keys, axis=-1, keepdims=True) + 1e-8)
-        scores = np.array(jnp.matmul(q_n, k_n.T))
+        # Retrieve scores using actual bank scoring
+        _, actual_scores = bank.read(h_target, return_scores=True)
+        scores = actual_scores[0].detach().numpy()
 
-        state  = np.array(vars['memory']['state'])
-        # Mask inactive
-        scores[state != STATE_ACTIVE] = -1e9
-
-        r1  = recall_at_k(scores, gt_idx, k_values=[1, config.memory_top_k])
+        r1 = recall_at_k(scores, gt_idx, k_values=[1, config.memory_top_k])
         mrr = mean_reciprocal_rank(scores, gt_idx)
         r1_scores.append(r1[1])
         mrr_scores.append(mrr)
 
     result = {
-        "Recall@1":   np.mean(r1_scores),
-        "MRR":        np.mean(mrr_scores),
-        "pass": np.mean(r1_scores) >= 0.5,  # Needs to actually recall correctly at least half the time
+        "Recall@1": np.mean(r1_scores),
+        "MRR": np.mean(mrr_scores),
+        "pass": np.mean(r1_scores) >= 0.5,
     }
-    print(f"  Recall@1={result['Recall@1']:.4f}  MRR={result['MRR']:.4f}")
+    print(f"  Recall@1={result['Recall@1']:.4f}  MRR={result['MRR']:.4f}  → {'PASS' if result['pass'] else 'FAIL'}")
     return result
 
 
@@ -184,47 +165,40 @@ def test3_distractor_retrieval(n_distractors=10, seeds=3):
 # ---------------------------------------------------------------------------
 def test4_interference(n_distractors=20, seeds=3):
     print(f"\n[TEST 4] Interference (N={n_distractors})")
-    config = make_config(capacity=64, top_k=8)
+    config = make_config(capacity=64, top_k=8, write_threshold=0.9)
 
     clean_r1, dist_r1 = [], []
     for seed in range(seeds):
-        bank, vars = fresh_bank(config, seed=seed)
-        rng = jax.random.PRNGKey(seed + 200)
+        bank = fresh_bank(config, seed=seed)
+        with torch.no_grad():
+            bank.q_proj.weight.data.copy_(bank.k_proj.weight.data)
+        torch.manual_seed(seed + 200)
 
-        rng, k1 = jax.random.split(rng)
-        h_target = jax.random.normal(k1, (1, config.hidden_size))
-        h_target = h_target / jnp.linalg.norm(h_target)
-        vars = write_one(bank, vars, h_target)
-        vars_clean = {'params': vars['params'], 'memory': {k: v for k, v in vars['memory'].items()}}
+        h_target = torch.randn(1, config.hidden_size)
+        h_target = h_target / torch.norm(h_target)
+        write_one(bank, h_target)
         gt_idx = 0
 
-        def get_metrics(v):
-            q, _ = bank.apply(v, h_target, method=lambda mdl, x: mdl.q_proj(x), mutable=['memory'])
-            keys  = v['memory']['keys']
-            q_n   = q[0] / (jnp.linalg.norm(q[0]) + 1e-8)
-            k_n   = keys / (jnp.linalg.norm(keys, axis=-1, keepdims=True) + 1e-8)
-            scores = np.array(jnp.matmul(q_n, k_n.T))
-            state  = np.array(v['memory']['state'])
-            scores[state != STATE_ACTIVE] = -1e9
-            r1  = recall_at_k(scores, gt_idx, k_values=[1])
+        def get_r1(b):
+            _, scores_t = b.read(h_target, return_scores=True)
+            scores = scores_t[0].detach().numpy()
+            r1 = recall_at_k(scores, gt_idx, k_values=[1])
             return r1[1]
 
-        clean_r1.append(get_metrics(vars_clean))
+        clean_r1.append(get_r1(bank))
 
-        for i in range(n_distractors):
-            rng, k = jax.random.split(rng)
-            h_d = jax.random.normal(k, (1, config.hidden_size))
-            vars = write_one(bank, vars, h_d)
+        for _ in range(n_distractors):
+            h_d = torch.randn(1, config.hidden_size)
+            h_d = h_d / torch.norm(h_d)
+            write_one(bank, h_d)
 
-        dist_r1.append(get_metrics(vars))
+        dist_r1.append(get_r1(bank))
 
     mean_clean_r1 = np.mean(clean_r1)
     mean_dist_r1 = np.mean(dist_r1)
     random_baseline = 1.0 / (n_distractors + 1)
     
-    # Must be significantly better than random
     passed = mean_dist_r1 > random_baseline * 2
-    
     result = {"clean_r1": mean_clean_r1, "dist_r1": mean_dist_r1, "random": random_baseline, "pass": passed}
     print(f"  Recall@1 Clean={mean_clean_r1:.2f}, Distractor={mean_dist_r1:.2f} (Random={random_baseline:.4f})  → {'PASS' if passed else 'FAIL'}")
     return result
@@ -240,16 +214,15 @@ def test5_capacity_scaling():
 
     for cap in capacities:
         config = make_config(capacity=cap, top_k=4, write_threshold=0.9, dim=16, hidden=16)
-        bank, vars = fresh_bank(config, seed=5)
-        rng = jax.random.PRNGKey(500)
+        bank = fresh_bank(config, seed=5)
+        torch.manual_seed(500)
 
         n_writes = min(cap, 20)
-        for i in range(n_writes):
-            rng, k = jax.random.split(rng)
-            h = jax.random.normal(k, (1, config.hidden_size))
-            vars = write_one(bank, vars, h)
+        for _ in range(n_writes):
+            h = torch.randn(1, config.hidden_size)
+            write_one(bank, h)
 
-        active = int(jnp.sum(vars['memory']['state'] == STATE_ACTIVE))
+        active = int(torch.sum(bank.mem_state == STATE_ACTIVE))
         results[cap] = {"active": active, "written": n_writes,
                         "pass": active >= int(n_writes * 0.8)}
         print(f"  capacity={cap:3d}: written={n_writes} active={active}  → {'PASS' if results[cap]['pass'] else 'FAIL'}")
@@ -263,58 +236,57 @@ def test5_capacity_scaling():
 def test6_replacement():
     print("\n[TEST 6] Replacement Policy")
     cap = 4
-    config = make_config(capacity=cap, write_threshold=1.1) # force insert
-    bank, vars = fresh_bank(config, seed=6)
-    rng = jax.random.PRNGKey(600)
+    config = make_config(capacity=cap, write_threshold=1.1)  # force insert
+    bank = fresh_bank(config, seed=6)
+    torch.manual_seed(600)
 
     # Fill to capacity
-    for i in range(cap):
-        rng, k = jax.random.split(rng)
-        h = jax.random.normal(k, (1, config.hidden_size))
-        vars = write_one(bank, vars, h, wp=jnp.array([2.0]))
+    for _ in range(cap):
+        h = torch.randn(1, config.hidden_size)
+        write_one(bank, h, wp=torch.tensor([2.0]))
 
-    unfrozen = flax.core.unfreeze(vars)
-    unfrozen['memory']['state'] = jnp.full((cap,), STATE_ACTIVE, dtype=jnp.int32)
+    bank.mem_state.fill_(STATE_ACTIVE)
     # Slot 0 has lowest importance
-    unfrozen['memory']['importance'] = jnp.array([0.1, 0.5, 0.9, 0.7], dtype=jnp.float32)
-    vars = flax.core.freeze(unfrozen)
+    bank.mem_importance.copy_(torch.tensor([0.1, 0.5, 0.9, 0.7]))
+    bank.mem_confidence.fill_(0.9)
 
-    keys_before = np.array(vars['memory']['keys'])
-    vals_before = np.array(vars['memory']['vals'])
-    imp_before = np.array(vars['memory']['importance'])
-    conf_before = np.array(vars['memory']['confidence'])
-    created_before = np.array(vars['memory']['created_at'])
-    last_acc_before = np.array(vars['memory']['last_access'])
-    acc_cnt_before = np.array(vars['memory']['access_count'])
+    keys_before = bank.mem_keys.clone()
+    vals_before = bank.mem_vals.clone()
+    imp_before = bank.mem_importance.clone()
+    conf_before = bank.mem_confidence.clone()
+    created_before = bank.mem_created_at.clone()
+    last_acc_before = bank.mem_last_access.clone()
+    acc_cnt_before = bank.mem_access_count.clone()
+
+    # Step forward in time before writing one more
+    bank.global_step[0] = 10
 
     # Write one more
-    rng, k = jax.random.split(rng)
-    h_new = jax.random.normal(k, (1, config.hidden_size))
-    vars  = write_one(bank, vars, h_new, wp=jnp.array([2.0]))
+    h_new = torch.randn(1, config.hidden_size)
+    write_one(bank, h_new, wp=torch.tensor([2.0]))
 
-    keys_after = np.array(vars['memory']['keys'])
-    vals_after = np.array(vars['memory']['vals'])
-    imp_after = np.array(vars['memory']['importance'])
-    conf_after = np.array(vars['memory']['confidence'])
-    created_after = np.array(vars['memory']['created_at'])
-    last_acc_after = np.array(vars['memory']['last_access'])
-    acc_cnt_after = np.array(vars['memory']['access_count'])
-    
-    # Assert exact replacement on all metadata
-    diff_keys = np.sum((keys_before - keys_after)**2, axis=1)
-    diff_vals = np.sum((vals_before - vals_after)**2, axis=1)
-    
+    keys_after = bank.mem_keys.clone()
+    vals_after = bank.mem_vals.clone()
+    imp_after = bank.mem_importance.clone()
+    conf_after = bank.mem_confidence.clone()
+    created_after = bank.mem_created_at.clone()
+    last_acc_after = bank.mem_last_access.clone()
+    acc_cnt_after = bank.mem_access_count.clone()
+
+    diff_keys = torch.sum((keys_before - keys_after) ** 2, dim=1)
+    diff_vals = torch.sum((vals_before - vals_after) ** 2, dim=1)
+
     slot0_changed = (diff_keys[0] > 1e-5) and (diff_vals[0] > 1e-5) and \
                     (imp_before[0] != imp_after[0]) and (conf_before[0] != conf_after[0]) and \
                     (created_before[0] != created_after[0]) and (last_acc_before[0] != last_acc_after[0])
-    
-    other_unchanged = np.all(diff_keys[1:] < 1e-5) and np.all(diff_vals[1:] < 1e-5) and \
-                      np.all(imp_before[1:] == imp_after[1:]) and np.all(conf_before[1:] == conf_after[1:]) and \
-                      np.all(created_before[1:] == created_after[1:]) and np.all(last_acc_before[1:] == last_acc_after[1:]) and \
-                      np.all(acc_cnt_before[1:] == acc_cnt_after[1:])
 
-    passed = slot0_changed and other_unchanged
-    result = {"slot0_changed": slot0_changed, "other_unchanged": other_unchanged, "pass": passed}
+    other_unchanged = torch.all(diff_keys[1:] < 1e-5) and torch.all(diff_vals[1:] < 1e-5) and \
+                      torch.all(imp_before[1:] == imp_after[1:]) and torch.all(conf_before[1:] == conf_after[1:]) and \
+                      torch.all(created_before[1:] == created_after[1:]) and torch.all(last_acc_before[1:] == last_acc_after[1:]) and \
+                      torch.all(acc_cnt_before[1:] == acc_cnt_after[1:])
+
+    passed = bool(slot0_changed and other_unchanged)
+    result = {"slot0_changed": bool(slot0_changed), "other_unchanged": bool(other_unchanged), "pass": passed}
     print(f"  Exact slot replaced (ALL METADATA for lowest importance): {passed}  → {'PASS' if passed else 'FAIL'}")
     return result
 
@@ -325,33 +297,24 @@ def test6_replacement():
 def test7_recency():
     print("\n[TEST 7] Recency Effect")
     config = make_config(top_k=1)
-    bank, vars = fresh_bank(config, seed=7)
-    
-    # Inject two identical slots except for recency
-    unfrozen = flax.core.unfreeze(vars)
-    unfrozen['memory']['keys'] = unfrozen['memory']['keys'].at[0:2].set(jnp.ones((2, config.memory_dim)))
-    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[0].set(jnp.full((config.memory_dim,), 1.0))
-    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[1].set(jnp.full((config.memory_dim,), 2.0))
-    unfrozen['memory']['state'] = unfrozen['memory']['state'].at[0:2].set(STATE_ACTIVE)
-    unfrozen['memory']['importance'] = jnp.zeros_like(unfrozen['memory']['importance'])
-    unfrozen['memory']['confidence'] = jnp.zeros_like(unfrozen['memory']['confidence'])
-    
-    unfrozen['memory']['last_access'] = unfrozen['memory']['last_access'].at[0].set(10) # older
-    unfrozen['memory']['last_access'] = unfrozen['memory']['last_access'].at[1].set(100) # newer
-    unfrozen['memory']['global_step'] = jnp.array(100, dtype=jnp.int32)
-    vars = flax.core.freeze(unfrozen)
+    bank = fresh_bank(config, seed=7)
 
-    # Query with exact key
-    # We must construct a query_h that perfectly maps to key=1.0 via q_proj. 
-    # Actually, we can bypass q_proj if we use the same key for both slots and an ambiguous query.
-    # Since both slots have the exact same key (all ones), they will have identical cosine sim.
-    # The only difference is recency. Slot 1 is newer, so it should be retrieved.
-    h_query = jax.random.normal(jax.random.PRNGKey(77), (1, config.hidden_size))
-    read_val, _ = read_one(bank, vars, h_query)
-    
-    # Since top_k=1, read_val will be a weighted sum of JUST slot 1 (val=2.0)
-    # We check if the mean value is closer to 2.0 than 1.0.
-    val_mean = float(jnp.mean(read_val))
+    bank.mem_keys[0:2] = 1.0
+    bank.mem_vals[0] = 1.0
+    bank.mem_vals[1] = 2.0
+    bank.mem_state[0:2] = STATE_ACTIVE
+    bank.mem_importance.zero_()
+    bank.mem_confidence.zero_()
+
+    bank.mem_last_access[0] = 10   # older
+    bank.mem_last_access[1] = 100  # newer
+    bank.global_step[0] = 100
+
+    torch.manual_seed(77)
+    h_query = torch.randn(1, config.hidden_size)
+    read_val = read_one(bank, h_query)
+
+    val_mean = float(torch.mean(read_val))
     passed = abs(val_mean - 2.0) < abs(val_mean - 1.0)
 
     result = {"val_mean": val_mean, "pass": passed}
@@ -365,25 +328,23 @@ def test7_recency():
 def test8_importance():
     print("\n[TEST 8] Importance Effect")
     config = make_config(top_k=1)
-    bank, vars = fresh_bank(config, seed=8)
+    bank = fresh_bank(config, seed=8)
 
-    unfrozen = flax.core.unfreeze(vars)
-    unfrozen['memory']['keys'] = unfrozen['memory']['keys'].at[0:2].set(jnp.ones((2, config.memory_dim)))
-    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[0].set(jnp.full((config.memory_dim,), 1.0))
-    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[1].set(jnp.full((config.memory_dim,), 2.0))
-    unfrozen['memory']['state'] = unfrozen['memory']['state'].at[0:2].set(STATE_ACTIVE)
-    unfrozen['memory']['last_access'] = jnp.zeros_like(unfrozen['memory']['last_access'])
-    unfrozen['memory']['confidence'] = jnp.zeros_like(unfrozen['memory']['confidence'])
-    
-    # Slot 0 has higher importance
-    unfrozen['memory']['importance'] = unfrozen['memory']['importance'].at[0].set(0.9)
-    unfrozen['memory']['importance'] = unfrozen['memory']['importance'].at[1].set(0.1)
-    vars = flax.core.freeze(unfrozen)
+    bank.mem_keys[0:2] = 1.0
+    bank.mem_vals[0] = 1.0
+    bank.mem_vals[1] = 2.0
+    bank.mem_state[0:2] = STATE_ACTIVE
+    bank.mem_last_access.zero_()
+    bank.mem_confidence.zero_()
 
-    h_query = jax.random.normal(jax.random.PRNGKey(88), (1, config.hidden_size))
-    read_val, _ = read_one(bank, vars, h_query)
-    
-    val_mean = float(jnp.mean(read_val))
+    bank.mem_importance[0] = 0.9
+    bank.mem_importance[1] = 0.1
+
+    torch.manual_seed(88)
+    h_query = torch.randn(1, config.hidden_size)
+    read_val = read_one(bank, h_query)
+
+    val_mean = float(torch.mean(read_val))
     passed = abs(val_mean - 1.0) < abs(val_mean - 2.0)
 
     result = {"val_mean": val_mean, "pass": passed}
@@ -397,25 +358,23 @@ def test8_importance():
 def test9_confidence():
     print("\n[TEST 9] Confidence Effect")
     config = make_config(top_k=1)
-    bank, vars = fresh_bank(config, seed=9)
+    bank = fresh_bank(config, seed=9)
 
-    unfrozen = flax.core.unfreeze(vars)
-    unfrozen['memory']['keys'] = unfrozen['memory']['keys'].at[0:2].set(jnp.ones((2, config.memory_dim)))
-    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[0].set(jnp.full((config.memory_dim,), 1.0))
-    unfrozen['memory']['vals'] = unfrozen['memory']['vals'].at[1].set(jnp.full((config.memory_dim,), 2.0))
-    unfrozen['memory']['state'] = unfrozen['memory']['state'].at[0:2].set(STATE_ACTIVE)
-    unfrozen['memory']['last_access'] = jnp.zeros_like(unfrozen['memory']['last_access'])
-    unfrozen['memory']['importance'] = jnp.zeros_like(unfrozen['memory']['importance'])
-    
-    # Slot 1 has higher confidence
-    unfrozen['memory']['confidence'] = unfrozen['memory']['confidence'].at[0].set(0.1)
-    unfrozen['memory']['confidence'] = unfrozen['memory']['confidence'].at[1].set(0.9)
-    vars = flax.core.freeze(unfrozen)
+    bank.mem_keys[0:2] = 1.0
+    bank.mem_vals[0] = 1.0
+    bank.mem_vals[1] = 2.0
+    bank.mem_state[0:2] = STATE_ACTIVE
+    bank.mem_last_access.zero_()
+    bank.mem_importance.zero_()
 
-    h_query = jax.random.normal(jax.random.PRNGKey(99), (1, config.hidden_size))
-    read_val, _ = read_one(bank, vars, h_query)
-    
-    val_mean = float(jnp.mean(read_val))
+    bank.mem_confidence[0] = 0.1
+    bank.mem_confidence[1] = 0.9
+
+    torch.manual_seed(99)
+    h_query = torch.randn(1, config.hidden_size)
+    read_val = read_one(bank, h_query)
+
+    val_mean = float(torch.mean(read_val))
     passed = abs(val_mean - 2.0) < abs(val_mean - 1.0)
 
     result = {"val_mean": val_mean, "pass": passed}
@@ -428,34 +387,31 @@ def test9_confidence():
 # ---------------------------------------------------------------------------
 def test10_forgetting():
     print("\n[TEST 10] Forgetting (Decay State Transitions)")
-    config = make_config(decay_rate=1.0)  # fast decay for test
-    bank, vars = fresh_bank(config, seed=10)
+    config = make_config(decay_rate=1.0)
+    bank = fresh_bank(config, seed=10)
 
-    h = jax.random.normal(jax.random.PRNGKey(1000), (1, config.hidden_size))
-    vars = write_one(bank, vars, h)
+    torch.manual_seed(1000)
+    h = torch.randn(1, config.hidden_size)
+    write_one(bank, h)
 
-    initial_state = int(vars['memory']['state'][0])
+    initial_state = int(bank.mem_state[0])
 
-    # dt=0 → still ACTIVE (no time passed)
-    _, v0 = bank.apply(vars, method=bank.decay_memory, mutable=['memory'])
-    s0    = int(v0['memory']['state'][0])
+    # dt=0 → still ACTIVE
+    bank.decay_memory()
+    s0 = int(bank.mem_state[0])
 
-    # dt=1 → R=exp(-1)≈0.368 < 0.5 → DORMANT
-    unfrozen = flax.core.unfreeze(vars)
-    unfrozen['memory']['global_step'] = jnp.array(1, dtype=jnp.int32)
-    vars_t1 = flax.core.freeze(unfrozen)
-    _, v1 = bank.apply(vars_t1, method=bank.decay_memory, mutable=['memory'])
-    s1    = int(v1['memory']['state'][0])
+    # dt=1 → DORMANT
+    bank.global_step[0] = 1
+    bank.decay_memory()
+    s1 = int(bank.mem_state[0])
 
-    # dt=10000 → R≈0 → EXPIRED
-    unfrozen = flax.core.unfreeze(vars)
-    unfrozen['memory']['global_step'] = jnp.array(10000, dtype=jnp.int32)
-    vars_t2 = flax.core.freeze(unfrozen)
-    _, v2 = bank.apply(vars_t2, method=bank.decay_memory, mutable=['memory'])
-    s2    = int(v2['memory']['state'][0])
+    # dt=10000 → EXPIRED
+    bank.global_step[0] = 10000
+    bank.decay_memory()
+    s2 = int(bank.mem_state[0])
 
     state_names = {0: "EXPIRED", 1: "ACTIVE", 2: "DORMANT"}
-    transitions  = f"initial={state_names[initial_state]} → dt=1:{state_names[s1]} → dt=10000:{state_names[s2]}"
+    transitions = f"initial={state_names[initial_state]} → dt=1:{state_names[s1]} → dt=10000:{state_names[s2]}"
     passed = (s1 in (STATE_DORMANT, STATE_EXPIRED)) and (s2 == STATE_EXPIRED)
 
     result = {"initial": state_names[initial_state],
@@ -473,52 +429,31 @@ def test10_forgetting():
 def test11_counterfactual():
     print("\n[TEST 11] Counterfactual Causal Test")
     config = make_config()
-    bank, vars = fresh_bank(config, seed=11)
+    bank = fresh_bank(config, seed=11)
 
-    K = jax.random.normal(jax.random.PRNGKey(1100), (1, config.hidden_size))
-    K = K / jnp.linalg.norm(K)
+    torch.manual_seed(1100)
+    K = torch.randn(1, config.hidden_size)
+    K = K / torch.norm(K)
 
-    # Exp A: write K with original params
-    vars_A = {'params': vars['params'], 'memory': {
-        **{k: jnp.zeros_like(v) if v.dtype != jnp.int32 else jnp.zeros_like(v)
-           for k, v in vars['memory'].items()},
-        'state': jnp.full((config.memory_capacity,), STATE_EXPIRED, jnp.int32),
-        'global_step': jnp.zeros((), jnp.int32),
-    }}
-    vars_A = write_one(bank, vars_A, K)
-    R_A, _ = read_one(bank, vars_A, K)
+    # Exp A
+    bank.load_memory_state(bank.empty_memory_state())
+    write_one(bank, K)
+    R_A = read_one(bank, K).clone()
 
-    # Exp B: negate v_proj → V_B = -V_A for same K
-    unfrozen = flax.core.unfreeze(vars)
-    unfrozen['params']['v_proj']['kernel'] = -unfrozen['params']['v_proj']['kernel']
-    vars_B_params = flax.core.freeze(unfrozen)
+    # Exp B: negate v_proj
+    with torch.no_grad():
+        bank.v_proj.weight.data.neg_()
 
-    vars_B = {'params': vars_B_params['params'], 'memory': {
-        **{k: jnp.zeros_like(v) for k, v in vars['memory'].items()
-           if v.dtype != jnp.int32},
-        **{k: jnp.zeros_like(v) for k, v in vars['memory'].items()
-           if v.dtype == jnp.int32},
-        'state': jnp.full((config.memory_capacity,), STATE_EXPIRED, jnp.int32),
-        'global_step': jnp.zeros((), jnp.int32),
-    }}
-    # Simpler: fresh memory dict
-    mem_empty = {
-        'keys':         jnp.zeros((config.memory_capacity, config.memory_dim)),
-        'vals':         jnp.zeros((config.memory_capacity, config.memory_dim)),
-        'importance':   jnp.zeros((config.memory_capacity,)),
-        'confidence':   jnp.zeros((config.memory_capacity,)),
-        'created_at':   jnp.zeros((config.memory_capacity,), jnp.int32),
-        'last_access':  jnp.zeros((config.memory_capacity,), jnp.int32),
-        'access_count': jnp.zeros((config.memory_capacity,), jnp.int32),
-        'state':        jnp.full((config.memory_capacity,), STATE_EXPIRED, jnp.int32),
-        'global_step':  jnp.zeros((), jnp.int32),
-    }
-    vars_B = {'params': vars_B_params['params'], 'memory': mem_empty}
-    vars_B = write_one(bank, vars_B, K)
-    R_B, _ = read_one(bank, vars_B, K)
+    bank.load_memory_state(bank.empty_memory_state())
+    write_one(bank, K)
+    R_B = read_one(bank, K).clone()
 
-    sim_cross = cosine_float(np.array(R_A[0]), np.array(R_B[0]))
-    passed    = sim_cross < 0.99  # different values → different retrieval
+    # Restore v_proj
+    with torch.no_grad():
+        bank.v_proj.weight.data.neg_()
+
+    sim_cross = cosine_float(R_A[0].detach().numpy(), R_B[0].detach().numpy())
+    passed = sim_cross < 0.99
 
     result = {"cross_sim": sim_cross,
               "causal_effect": sim_cross < 0.99,
@@ -532,7 +467,7 @@ def test11_counterfactual():
 # ---------------------------------------------------------------------------
 def run_all_tests():
     print("=" * 60)
-    print("  MEMORY BANK FUNCTIONAL BENCHMARK (11 Tests)")
+    print("  MEMORY BANK FUNCTIONAL BENCHMARK (11 Tests - PyTorch)")
     print("=" * 60)
 
     results = {}
@@ -584,7 +519,8 @@ def run_all_tests():
     for k, v in top_level_pass.items():
         status = "PASS" if v else "FAIL"
         print(f"  {names[k]:30s} {status}")
-        if not v: all_pass = False
+        if not v:
+            all_pass = False
 
     print("-" * 60)
     print(f"  OVERALL: {'ALL PASS' if all_pass else 'SOME FAILURES'}")

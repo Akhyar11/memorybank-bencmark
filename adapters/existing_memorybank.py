@@ -1,183 +1,100 @@
 """
-MemoryBankAdapter – Fixed adapter for benchmark experiments.
-
-Fixes applied:
-- BUG-P0-014: advance_time() now uses correct path memory['global_step']
-- BUG-P0-015: get_memory_state() now uses correct memory paths
-- BUG-P0-016: setup() no longer calls get_v_proj / write during init
-- BUG-P0-018: reset_memory() now produces truly empty memory state
+MemoryBankAdapter – PyTorch adapter for benchmark experiments.
 """
-import jax
-import jax.numpy as jnp
-import flax.core
+import torch
+import numpy as np
 from models.tiny_model import TinyModel, TinyMemoryConfig
+from models.tiny_memory_bank import STATE_ACTIVE, STATE_EXPIRED, STATE_DORMANT
 
 
 class MemoryBankAdapter:
     """
-    Adapter that maintains the Flax variable state of TinyModel for benchmarks.
+    Adapter that maintains the state of TinyModel for benchmarks (PyTorch Version).
     Provides a clean API: setup, reset_memory, write_only, read_only,
     decay_memory, advance_time, get_memory_state, get_v_proj.
     """
 
     def __init__(self, config_path: str = None):
-        # config_path is accepted but ignored; we use TinyMemoryConfig directly.
-        self.config  = TinyMemoryConfig()
-        self.model   = TinyModel(config=self.config)
-        self.variables = None
-        self.rng     = jax.random.PRNGKey(42)
-
-        # JIT-compiled model entry points
-        self._jit_call = jax.jit(
-            lambda v, h, r, w, d: self.model.apply(
-                v, h, r, w, d, mutable=['memory']
-            )
-        )
-        self._jit_read_only = jax.jit(
-            lambda v, h: self.model.apply(
-                v, h, method=self.model.read_only, mutable=['memory']
-            )
-        )
-        self._jit_write_only = jax.jit(
-            lambda v, h, e, w: self.model.apply(
-                v, h, e, w, method=self.model.write_only, mutable=['memory']
-            )
-        )
-        self._jit_decay = jax.jit(
-            lambda v: self.model.apply(
-                v, method=self.model.decay_memory, mutable=['memory']
-            )
-        )
+        self.config = TinyMemoryConfig()
+        self.model = TinyModel(config=self.config)
 
     def setup(self):
-        """
-        Initialise model parameters with dummy forward pass.
-        Memory starts completely empty (all slots EXPIRED, no data written).
-        """
-        self.rng, init_rng = jax.random.split(self.rng)
-        dim   = self.config.hidden_size
-        dummy = jnp.zeros((1, dim), dtype=jnp.float32)
-        dummy_p = jnp.ones((1,), dtype=jnp.float32)
-
-        # Use a simple init that touches all sub-modules WITHOUT writing to memory
-        self.variables = self.model.init(
-            init_rng, dummy, dummy_p, dummy_p, False
-        )
-
-    def _blank_memory(self) -> dict:
-        """Return a fresh, truly empty memory state (all slots EXPIRED)."""
-        cfg = self.config
-        cap = cfg.memory_capacity
-        dim = cfg.memory_dim
-
-        from models.tiny_memory_bank import STATE_EXPIRED
-        return {
-            'keys':         jnp.zeros((cap, dim),  dtype=jnp.float32),
-            'vals':         jnp.zeros((cap, dim),  dtype=jnp.float32),
-            'importance':   jnp.zeros((cap,),      dtype=jnp.float32),
-            'confidence':   jnp.zeros((cap,),      dtype=jnp.float32),
-            'created_at':   jnp.zeros((cap,),      dtype=jnp.int32),
-            'last_access':  jnp.zeros((cap,),      dtype=jnp.int32),
-            'access_count': jnp.zeros((cap,),      dtype=jnp.int32),
-            'state':        jnp.full((cap,), STATE_EXPIRED, dtype=jnp.int32),
-            'global_step':  jnp.zeros((),          dtype=jnp.int32),
-        }
+        """Initialise model parameters and ensure blank memory state."""
+        self.reset_memory()
 
     def reset_memory(self):
-        """
-        Reset only the memory state to completely empty.
-        Learned parameters are preserved.
-        """
-        assert self.variables is not None, "Call setup() first."
-        self.variables = {
-            'params': self.variables['params'],
-            'memory': self._blank_memory(),
-        }
+        """Reset memory state to completely empty."""
+        self.model.bank.load_memory_state(self.model.bank.empty_memory_state())
 
     def load_weights(self, path: str):
-        """Load model weights from a msgpack file."""
-        import flax.serialization
-        with open(path, 'rb') as f:
-            data = f.read()
-        self.variables = flax.serialization.from_bytes(self.variables, data)
+        """Load model weights from a file."""
+        self.model.load_state_dict(torch.load(path, map_location='cpu'))
 
     def save_weights(self, path: str):
-        """Save model weights to a msgpack file."""
-        import flax.serialization
-        data = flax.serialization.to_bytes(self.variables)
-        with open(path, 'wb') as f:
-            f.write(data)
+        """Save model weights to a file."""
+        torch.save(self.model.state_dict(), path)
 
     def advance_time(self, time_steps: int):
-        """
-        Advance the global_step counter to simulate time passing.
-        Fix: BUG-P0-014 – path is memory['global_step'], not memory['bank']['global_step'].
-        """
-        assert self.variables is not None, "Call setup() first."
-        mem = dict(self.variables['memory'])
-        mem['global_step'] = mem['global_step'] + time_steps
-        self.variables = {'params': self.variables['params'], 'memory': mem}
+        """Advance the global_step counter to simulate time passing."""
+        self.model.bank.global_step[0] += time_steps
 
     def get_memory_state(self):
-        """
-        Return (state, importance, confidence) arrays.
-        Fix: BUG-P0-015 – direct path into memory dict.
-        """
-        assert self.variables is not None, "Call setup() first."
-        mem = self.variables['memory']
-        return mem['state'], mem['importance'], mem['confidence']
+        """Return (state, importance, confidence) as NumPy arrays."""
+        bank = self.model.bank
+        state = bank.mem_state.detach().cpu().numpy()
+        importance = bank.mem_importance.detach().cpu().numpy()
+        confidence = bank.mem_confidence.detach().cpu().numpy()
+        return state, importance, confidence
 
     def get_active_count(self) -> int:
         """Return number of ACTIVE memory slots."""
-        from models.tiny_memory_bank import STATE_ACTIVE
         state, _, _ = self.get_memory_state()
-        return int(jnp.sum(state == STATE_ACTIVE))
+        return int(np.sum(state == STATE_ACTIVE))
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
     def __call__(self, inputs, read_prob=None, write_prob=None, deterministic=True):
-        """Full pipeline: decay → read → fuse."""
-        assert self.variables is not None, "Call setup() first."
-        if read_prob is None:
-            read_prob = jnp.ones((inputs.shape[0],))
-        if write_prob is None:
-            write_prob = jnp.ones((inputs.shape[0],))
+        """Full pipeline: decay → read → fuse → decode."""
+        if isinstance(inputs, np.ndarray):
+            inputs = torch.from_numpy(inputs).float()
+        if read_prob is not None and isinstance(read_prob, np.ndarray):
+            read_prob = torch.from_numpy(read_prob).float()
+        if write_prob is not None and isinstance(write_prob, np.ndarray):
+            write_prob = torch.from_numpy(write_prob).float()
 
-        out, new_vars = self._jit_call(
-            self.variables, inputs, read_prob, write_prob, deterministic
-        )
-        self.variables = {'params': self.variables['params'], 'memory': new_vars['memory']}
-        return out
+        out = self.model(inputs, read_prob=read_prob, write_prob=write_prob, deterministic=deterministic)
+        return out.detach().cpu().numpy()
 
     def read_only(self, inputs):
         """Read from memory without stepping global clock or decaying."""
-        assert self.variables is not None, "Call setup() first."
-        out, new_vars = self._jit_read_only(self.variables, inputs)
-        self.variables = {'params': self.variables['params'], 'memory': new_vars['memory']}
-        return out
+        if isinstance(inputs, np.ndarray):
+            inputs = torch.from_numpy(inputs).float()
+        out = self.model.read_only(inputs)
+        return out.detach().cpu().numpy()
 
     def write_only(self, inputs, is_eos, write_prob=None):
         """Write to memory without reading or fusing."""
-        assert self.variables is not None, "Call setup() first."
+        if isinstance(inputs, np.ndarray):
+            inputs = torch.from_numpy(inputs).float()
+        if isinstance(is_eos, np.ndarray):
+            is_eos = torch.from_numpy(is_eos).float()
         if write_prob is None:
-            write_prob = jnp.ones((inputs.shape[0],))
-        _, new_vars = self._jit_write_only(
-            self.variables, inputs, is_eos, write_prob
-        )
-        self.variables = {'params': self.variables['params'], 'memory': new_vars['memory']}
+            write_prob = torch.ones(inputs.shape[0], device=inputs.device)
+        elif isinstance(write_prob, np.ndarray):
+            write_prob = torch.from_numpy(write_prob).float()
+
+        idx = self.model.write_only(inputs, is_eos, write_prob)
+        return idx.detach().cpu().numpy() if idx is not None else None
 
     def decay_memory(self):
         """Trigger decay without any read/write."""
-        assert self.variables is not None, "Call setup() first."
-        _, new_vars = self._jit_decay(self.variables)
-        self.variables = {'params': self.variables['params'], 'memory': new_vars['memory']}
+        eff_R = self.model.decay_memory()
+        return eff_R.detach().cpu().numpy()
 
     def get_v_proj(self, inputs):
-        """Return v_proj(inputs) – used for expected-value computation in tests."""
-        assert self.variables is not None, "Call setup() first."
-        return self.model.apply(self.variables, inputs, method=self.model.get_v_proj)
+        """Return v_proj(inputs) as NumPy array."""
+        if isinstance(inputs, np.ndarray):
+            inputs = torch.from_numpy(inputs).float()
+        out = self.model.get_v_proj(inputs)
+        return out.detach().cpu().numpy()
 
     def get_h_eos(self, inputs):
-        """Return inputs as-is (TinyModel inputs are already h_eos vectors)."""
         return inputs

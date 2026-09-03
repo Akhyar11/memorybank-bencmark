@@ -7,7 +7,6 @@ Fixes applied:
 - Added token F1
 - Added exact match
 """
-import jax.numpy as jnp
 import numpy as np
 
 
@@ -20,6 +19,8 @@ def compute_cosine_similarity(retrieved, target):
     Returns:
         sim: (batch,) or scalar
     """
+    retrieved = np.array(retrieved)
+    target    = np.array(target)
     if retrieved.ndim == 1:
         retrieved = retrieved[None, :]
         target    = target[None, :]
@@ -27,9 +28,9 @@ def compute_cosine_similarity(retrieved, target):
     else:
         squeeze   = False
 
-    r_norm = retrieved / (jnp.linalg.norm(retrieved, axis=-1, keepdims=True) + 1e-8)
-    t_norm = target    / (jnp.linalg.norm(target,    axis=-1, keepdims=True) + 1e-8)
-    sim    = jnp.sum(r_norm * t_norm, axis=-1)
+    r_norm = retrieved / (np.linalg.norm(retrieved, axis=-1, keepdims=True) + 1e-8)
+    t_norm = target    / (np.linalg.norm(target,    axis=-1, keepdims=True) + 1e-8)
+    sim    = np.sum(r_norm * t_norm, axis=-1)
     return sim[0] if squeeze else sim
 
 

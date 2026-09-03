@@ -13,11 +13,12 @@ class TextDataset(Dataset):
     """
     PyTorch Dataset for text QA (write_fact_A, query_B, expected_output_A).
     """
-    def __init__(self, csv_file, tokenizer_path, max_input_len=32, max_target_len=16, max_samples=None):
+    def __init__(self, csv_file, tokenizer_path, batch_size=32, max_input_len=32, max_target_len=16, max_samples=None):
         df = pd.read_csv(csv_file)
         if max_samples is not None:
             df = df.head(max_samples)
         self.df = df
+        self.batch_size = batch_size
 
         self.tokenizer = Tokenizer.from_file(tokenizer_path)
 
@@ -120,3 +121,6 @@ def get_dataloader(csv_file, tokenizer_path, batch_size=32, max_input_len=32, ma
     loader.eos_id = dataset.eos_id
     
     return loader
+
+# Backward compatibility alias
+TextDataLoader = TextDataset

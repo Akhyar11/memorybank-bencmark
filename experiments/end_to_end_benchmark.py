@@ -81,62 +81,38 @@ def run_benchmark():
     tx = optax.adamw(learning_rate=1e-3)
 
     @jax.jit
-    def train_epoch_none(params, opt_state, mem_state, batched_data, rng):
-        def scan_step(carry, xs):
-            p, opt = carry
-            b, r = xs
-            def loss_fn(p_inner):
-                logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': mem_state}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='none', rngs={'dropout': r})
-                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size)
-            loss, grads = jax.value_and_grad(loss_fn)(p)
-            updates, opt = tx.update(grads, opt, p)
-            p = optax.apply_updates(p, updates)
-            return (p, opt), loss
-        
-        num_b = batched_data['query_ids'].shape[0]
-        rngs = jax.random.split(rng, num_b)
-        (params, opt_state), losses = jax.lax.scan(scan_step, (params, opt_state), (batched_data, rngs))
-        return params, opt_state, mem_state, losses
+    def train_step_none(params, opt_state, mem_state, b, r):
+        def loss_fn(p_inner):
+            logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': mem_state}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='none', rngs={'dropout': r})
+            return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size)
+        loss, grads = jax.value_and_grad(loss_fn)(params)
+        updates, opt_state = tx.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, opt_state, mem_state, loss
 
     @jax.jit
-    def train_epoch_nn(params, opt_state, mem_state, fact_store, write_idx, batched_data, rng):
-        def scan_step(carry, xs):
-            p, opt, fs, widx = carry
-            b, r = xs
-            def loss_fn(p_inner):
-                h_eos_proj, _ = mdl.apply({'params': p_inner}, b['write_ids'], b['write_mask'], True, jnp.ones(batch_size), deterministic=False, memory_mode='none', method=mdl.write_only, rngs={'dropout': r})
-                new_fs = jax.lax.dynamic_update_slice(fs, h_eos_proj, (widx, 0))
-                logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': mem_state}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='nn', fact_store=new_fs, rngs={'dropout': r})
-                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), new_fs
-            (loss, fs), grads = jax.value_and_grad(loss_fn, has_aux=True)(p)
-            updates, opt = tx.update(grads, opt, p)
-            p = optax.apply_updates(p, updates)
-            return (p, opt, fs, (widx + batch_size) % config.memory_capacity), loss
-            
-        num_b = batched_data['query_ids'].shape[0]
-        rngs = jax.random.split(rng, num_b)
-        (params, opt_state, fact_store, write_idx), losses = jax.lax.scan(scan_step, (params, opt_state, fact_store, write_idx), (batched_data, rngs))
-        return params, opt_state, fact_store, write_idx, losses
+    def train_step_nn(params, opt_state, mem_state, fs, widx, b, r):
+        def loss_fn(p_inner):
+            h_eos_proj, _ = mdl.apply({'params': p_inner}, b['write_ids'], b['write_mask'], True, jnp.ones(batch_size), deterministic=False, memory_mode='none', method=mdl.write_only, rngs={'dropout': r})
+            new_fs = jax.lax.dynamic_update_slice(fs, h_eos_proj, (widx, 0))
+            logits, _, _, _ = mdl.apply({'params': p_inner, 'memory': mem_state}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='nn', fact_store=new_fs, rngs={'dropout': r})
+            return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), new_fs
+        (loss, fs_new), grads = jax.value_and_grad(loss_fn, has_aux=True)(params)
+        updates, opt_state = tx.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, opt_state, fs_new, (widx + batch_size) % config.memory_capacity, loss
 
     @jax.jit
-    def train_epoch_bank(params, opt_state, mem_state, batched_data, rng):
-        def scan_step(carry, xs):
-            p, opt, m = carry
-            b, r = xs
-            def loss_fn(p_inner):
-                _, updated_m = mdl.apply({'params': p_inner, 'memory': m}, b['write_ids'], b['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'], rngs={'dropout': r})
-                out, new_m = mdl.apply({'params': p_inner, 'memory': updated_m['memory']}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='bank', rngs={'dropout': r}, mutable=['memory'])
-                logits = out[0]
-                return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), new_m['memory']
-            (loss, m), grads = jax.value_and_grad(loss_fn, has_aux=True)(p)
-            updates, opt = tx.update(grads, opt, p)
-            p = optax.apply_updates(p, updates)
-            return (p, opt, m), loss
-            
-        num_b = batched_data['query_ids'].shape[0]
-        rngs = jax.random.split(rng, num_b)
-        (params, opt_state, mem_state), losses = jax.lax.scan(scan_step, (params, opt_state, mem_state), (batched_data, rngs))
-        return params, opt_state, mem_state, losses
+    def train_step_bank(params, opt_state, mem_state, b, r):
+        def loss_fn(p_inner):
+            _, updated_m = mdl.apply({'params': p_inner, 'memory': mem_state}, b['write_ids'], b['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'], rngs={'dropout': r})
+            out, new_m = mdl.apply({'params': p_inner, 'memory': updated_m['memory']}, b['query_ids'], b['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), b['target_ids'], deterministic=False, memory_mode='bank', rngs={'dropout': r}, mutable=['memory'])
+            logits = out[0]
+            return cross_entropy_loss(logits, b['target_ids'], loader.pad_id, loader.vocab_size), new_m['memory']
+        (loss, m_new), grads = jax.value_and_grad(loss_fn, has_aux=True)(params)
+        updates, opt_state = tx.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, opt_state, m_new, loss
         
     @jax.jit
     def eval_step_none(params, mem_state, batch):
@@ -154,11 +130,7 @@ def run_benchmark():
     def eval_step_bank(params, mem_state, batch):
         return None
     
-    # Pre-extract all train batches into a single stacked dictionary for XLA scan
-    all_train_batches = list(train_loader.iter_batches(shuffle=False))
-    batched_train_data = {
-        k: jnp.stack([b[k] for b in all_train_batches]) for k in all_train_batches[0].keys() if k not in ['valid_count', 'fact_str_ids', 'query_str_ids']
-    }
+    # We will use train_loader.iter_batches() directly in Python loops.
     
     for seed in seeds:
         print(f"\n[Seed {seed}] Initializing Model Backbone...")
@@ -189,15 +161,21 @@ def run_benchmark():
                 start_time = time.time()
                 mode_rng, epoch_rng = jax.random.split(mode_rng)
                 
-                if mode == 'none':
-                    params, opt_state, mem_state, losses = train_epoch_none(params, opt_state, mem_state, batched_train_data, epoch_rng)
-                elif mode == 'nn':
-                    params, opt_state, fact_store, write_idx, losses = train_epoch_nn(params, opt_state, mem_state, fact_store, write_idx, batched_train_data, epoch_rng)
-                else:
-                    params, opt_state, mem_state, losses = train_epoch_bank(params, opt_state, mem_state, batched_train_data, epoch_rng)
+                losses = []
                 
-                # Block to measure time properly
-                losses = jax.block_until_ready(losses)
+                for batch in train_loader.iter_batches(shuffle=True):
+                    epoch_rng, step_rng = jax.random.split(epoch_rng)
+                    jax_batch = {k: jnp.array(v) for k, v in batch.items() if k not in ('fact_str_ids', 'query_str_ids', 'fact_ids', 'query_ids', 'valid_count')}
+                    
+                    if mode == 'none':
+                        params, opt_state, mem_state, loss = train_step_none(params, opt_state, mem_state, jax_batch, step_rng)
+                    elif mode == 'nn':
+                        params, opt_state, fact_store, write_idx, loss = train_step_nn(params, opt_state, mem_state, fact_store, write_idx, jax_batch, step_rng)
+                    else:
+                        params, opt_state, mem_state, loss = train_step_bank(params, opt_state, mem_state, jax_batch, step_rng)
+                    
+                    losses.append(loss)
+                
                 
                 end_time = time.time()
                 epoch_time = end_time - start_time

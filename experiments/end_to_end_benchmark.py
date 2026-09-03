@@ -44,7 +44,18 @@ def collate_fn(batch):
     return torch.utils.data.dataloader.default_collate(batch)
 
 
-def run_benchmark(num_epochs=100, seeds=(42, 43, 44), batch_size=8, max_train_samples=None, max_test_samples=128):
+def run_benchmark(
+    num_epochs=100,
+    seeds=(42, 43, 44),
+    batch_size=8,
+    max_train_samples=None,
+    max_test_samples=128,
+    embed_dim=32,
+    num_layers=1,
+    num_heads=2,
+    ff_dim=216,
+    memory_capacity=128
+):
     print("===========================================")
     print("      END-TO-END MEMORY BENCHMARK          ")
     print("===========================================")
@@ -66,7 +77,7 @@ def run_benchmark(num_epochs=100, seeds=(42, 43, 44), batch_size=8, max_train_sa
 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 
-    config = TinyMemoryConfig(memory_capacity=128, memory_dim=256, hidden_size=256)
+    config = TinyMemoryConfig(memory_capacity=memory_capacity, memory_dim=embed_dim, hidden_size=embed_dim)
     modes = {"No Memory": "none", "NN Memory": "nn", "Memory Bank": "bank"}
 
     results = {name: collections.defaultdict(list) for name in modes.keys()}
@@ -94,9 +105,12 @@ def run_benchmark(num_epochs=100, seeds=(42, 43, 44), batch_size=8, max_train_sa
 
             mdl = TransformerQAModel(
                 config=config, vocab_size=train_dataset.vocab_size,
-                embed_dim=256, num_layers=4, num_heads=4,
+                embed_dim=embed_dim, num_layers=num_layers, num_heads=num_heads, ff_dim=ff_dim,
                 pad_id=train_dataset.pad_id, bos_id=train_dataset.bos_id, eos_id=train_dataset.eos_id
             ).to(device)
+
+            param_count = sum(p.numel() for p in mdl.parameters())
+            print(f"      Model Parameters: {param_count:,}")
 
             optimizer = torch.optim.AdamW(mdl.parameters(), lr=1e-3)
 

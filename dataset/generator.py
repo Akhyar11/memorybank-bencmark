@@ -41,8 +41,9 @@ def generate_clustered_pairs(key, num_samples, dim, num_clusters=50):
     key, k1, k2, k3 = jax.random.split(key, 4)
     h_write, assignments, cluster_centers = generate_clustered_dataset(k1, num_samples, dim, num_clusters)
 
-    # Generate a random projection matrix W to simulate lexical/semantic shift
-    W = jax.random.normal(k2, (dim, dim)) / jnp.sqrt(dim)
+    # Generate an orthogonal projection matrix W to simulate lexical/semantic shift
+    W_raw = jax.random.normal(k2, (dim, dim))
+    W, _ = jnp.linalg.qr(W_raw)
     
     # Generate query = W @ cluster_center + different independent noise
     projected_centers = jnp.dot(cluster_centers, W)

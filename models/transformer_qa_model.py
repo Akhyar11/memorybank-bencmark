@@ -227,11 +227,12 @@ class TransformerQAModel(nn.Module):
     # ------------------------------------------------------------------
     # Memory operations
     # ------------------------------------------------------------------
-    def write_only(self, input_ids, mask, is_eos, write_prob, deterministic=False):
+    def write_only(self, input_ids, mask, is_eos, write_prob, deterministic=False, memory_mode='bank'):
         """Encode fact and write to memory bank."""
         h_eos = self.encode_fact(input_ids, mask, deterministic=deterministic)
         h_eos_proj = self.memory_proj_in(h_eos)
-        self.bank.write(h_eos_proj, is_eos, write_prob)
+        if memory_mode == 'bank':
+            self.bank.write(h_eos_proj, is_eos, write_prob)
         return h_eos_proj
 
     def decode_oracle(self, write_ids, write_mask, query_ids, query_mask,
@@ -260,18 +261,34 @@ class TransformerQAModel(nn.Module):
         return self.__call__(input_ids, mask, read_prob, write_prob, target_ids, deterministic=True)
 
     def greedy_decode(self, input_ids, mask, read_prob, write_prob,
-                      max_len=16, deterministic=True):
+                      max_len=16, deterministic=True, memory_mode='bank', fact_store=None):
         """Greedy decoding for inference."""
         bos_id = self.bos_id
         pad_id = self.pad_id
         eos_id = self.eos_id
         h_eos   = self.encode_query(input_ids, mask, deterministic=True)
         h_eos_proj = self.memory_proj_in(h_eos)
-        h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=True)
-        h_fused_proj = self.memory_proj_out(h_fused)
+        
+        if memory_mode == 'none':
+            h_fused_proj = jnp.zeros((h_eos.shape[0], self.embed_dim))
+        elif memory_mode == 'nn':
+            if fact_store is None:
+                fact_store = jnp.zeros((self.config.memory_capacity, self.config.hidden_size))
+            q_n = h_eos_proj / (jnp.linalg.norm(h_eos_proj, axis=-1, keepdims=True) + 1e-8)
+            k_n = fact_store / (jnp.linalg.norm(fact_store, axis=-1, keepdims=True) + 1e-8)
+            sim = jnp.dot(q_n, k_n.T)
+            active_mask = jnp.any(fact_store != 0, axis=-1)[None, :]
+            sim = jnp.where(active_mask, sim, -1e9)
+            attn = jax.nn.softmax(sim, axis=-1)
+            retrieved = jnp.dot(attn, fact_store)
+            h_fused = h_eos_proj + retrieved
+            h_fused_proj = self.memory_proj_out(h_fused)
+        else:
+            h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=True)
+            h_fused_proj = self.memory_proj_out(h_fused)
 
         context     = h_fused_proj[:, None, :]  # (batch, 1, dim)
-        batch_size  = h_fused.shape[0]
+        batch_size  = h_eos.shape[0]
         next_token  = jnp.full((batch_size, 1), bos_id, dtype=jnp.int32)
         output_tokens = []
         is_finished   = jnp.zeros((batch_size,), dtype=jnp.bool_)
@@ -302,7 +319,7 @@ class TransformerQAModel(nn.Module):
         return jnp.stack(output_tokens, axis=1)
 
     def __call__(self, input_ids, mask, read_prob, write_prob, target_ids,
-                 deterministic=False):
+                 deterministic=False, memory_mode='bank', fact_store=None):
         """
         Main forward pass (QA inference).
 
@@ -319,14 +336,39 @@ class TransformerQAModel(nn.Module):
         """
         h_eos   = self.encode_query(input_ids, mask, deterministic=deterministic)
         h_eos_proj = self.memory_proj_in(h_eos)
-        h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=deterministic)
-        h_fused_proj = self.memory_proj_out(h_fused)
+        
+        sim = jnp.zeros((h_eos.shape[0], self.config.memory_capacity))
+
+        if memory_mode == 'none':
+            h_fused_proj = jnp.zeros((h_eos.shape[0], self.embed_dim))
+            h_fused = jnp.zeros_like(h_eos_proj)
+        elif memory_mode == 'nn':
+            if fact_store is None:
+                fact_store = jnp.zeros((self.config.memory_capacity, self.config.hidden_size))
+            q_n = h_eos_proj / (jnp.linalg.norm(h_eos_proj, axis=-1, keepdims=True) + 1e-8)
+            k_n = fact_store / (jnp.linalg.norm(fact_store, axis=-1, keepdims=True) + 1e-8)
+            sim = jnp.dot(q_n, k_n.T)
+            active_mask = jnp.any(fact_store != 0, axis=-1)[None, :]
+            masked_sim = jnp.where(active_mask, sim, -1e9)
+            attn = jax.nn.softmax(masked_sim, axis=-1)
+            retrieved = jnp.dot(attn, fact_store)
+            h_fused = h_eos_proj + retrieved
+            h_fused_proj = self.memory_proj_out(h_fused)
+        else:
+            h_fused = self.bank(h_eos_proj, read_prob, write_prob, deterministic=deterministic)
+            h_fused_proj = self.memory_proj_out(h_fused)
+            
+            # Compute sim externally for retrieval logging
+            q = self.bank.q_proj(h_eos_proj)
+            keys = self.bank.mem_keys.value
+            state = self.bank.mem_state.value
+            q_n = q / (jnp.linalg.norm(q, axis=-1, keepdims=True) + 1e-8)
+            k_n = keys / (jnp.linalg.norm(keys, axis=-1, keepdims=True) + 1e-8)
+            sim_bank = jnp.dot(q_n, k_n.T)
+            active_mask = (state != 0)[None, :]
+            sim = jnp.where(active_mask, sim_bank, -1e9)
 
         context = h_fused_proj[:, None, :]  # (batch, 1, hidden_size) for cross-attention
         logits  = self._decode_from_context(context, target_ids, deterministic=deterministic)
-
-        # Retrieve sim scores from internal read (for logging purposes)
-        # We cannot call read again here; return zeros as placeholder for sim
-        sim = jnp.zeros((h_eos.shape[0], self.config.memory_capacity))
 
         return logits, sim, h_eos_proj, h_fused

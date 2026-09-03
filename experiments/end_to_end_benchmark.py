@@ -200,7 +200,7 @@ def run_benchmark(
             # Evaluation Phase
             # ---------------------------------------------------------------
             mdl.eval()
-            ems, f1s, r1s, mrrs = [], [], [], []
+            ems, f1s, r1s, r5s, mrrs = [], [], [], [], []
 
             # Reset memory state before evaluation (P0-01)
             if mode == 'bank':

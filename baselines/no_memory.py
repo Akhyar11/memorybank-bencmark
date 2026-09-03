@@ -1,19 +1,21 @@
-import jax
-import jax.numpy as jnp
-import flax.linen as nn
+"""
+baselines/no_memory.py (Pure PyTorch Version)
+
+Baseline with absolutely no memory contribution.
+Passes the encoder query representation directly to downstream decoder.
+"""
+import torch
+import torch.nn as nn
+
 
 class NoMemory(nn.Module):
     """
-    Baseline with absolutely no memory. It just passes the input through.
+    No-Memory Baseline: passes query representation through with zero memory contribution.
     """
-    dim: int
+    def __init__(self, dim: int):
+        super().__init__()
+        self.dim = dim
 
-    def setup(self):
-        self.fusion_proj = nn.Dense(self.dim, use_bias=False)
-        
-    @nn.compact
-    def __call__(self, h_eos):
-        # Pretend it retrieved zeros
-        read_val = jnp.zeros_like(h_eos)
-        fused = self.fusion_proj(jnp.concatenate([h_eos, read_val], axis=-1))
-        return fused
+    def forward(self, h_eos: torch.Tensor):
+        # Query passes directly; memory contribution is strictly zero
+        return h_eos

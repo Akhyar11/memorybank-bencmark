@@ -1,27 +1,19 @@
-import flax.linen as nn
-import jax.numpy as jnp
+"""
+models/text_encoder.py (Pure PyTorch Version)
+"""
+import torch
+import torch.nn as nn
+
 
 class TextEmbedding(nn.Module):
-    vocab_size: int = 2000
-    embed_dim: int = 32
-    
-    @nn.compact
-    def __call__(self, input_ids):
-        """
-        Mengubah token ID menjadi vektor embedding.
-        
-        Args:
-            input_ids: array integer dengan shape (batch_size, sequence_length)
-                       berisi token dari BPE Tokenizer.
-        
-        Returns:
-            Vektor dense dengan shape (batch_size, sequence_length, embed_dim)
-        """
-        # Inisialisasi layer embedding JAX/Flax
-        embeddings = nn.Embed(
-            num_embeddings=self.vocab_size, 
-            features=self.embed_dim,
-            name="text_embedding_layer"
-        )(input_ids)
-        
-        return embeddings
+    """
+    Embedding layer for token inputs (PyTorch Version).
+    """
+    def __init__(self, vocab_size: int = 2000, embed_dim: int = 32):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.embed_dim = embed_dim
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+
+    def forward(self, input_ids: torch.Tensor):
+        return self.embedding(input_ids)

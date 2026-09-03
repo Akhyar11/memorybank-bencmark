@@ -34,7 +34,7 @@ def compute_cosine_similarity(retrieved, target):
     return sim[0] if squeeze else sim
 
 
-def recall_at_k(scores, ground_truth_idx, k_values=(1, 3, 5)):
+def recall_at_k(scores, ground_truth_idx=None, k_values=(1, 3, 5), gt_idx=None):
     """
     Recall@K for a single query against ranked scores.
 
@@ -46,17 +46,22 @@ def recall_at_k(scores, ground_truth_idx, k_values=(1, 3, 5)):
     Returns:
         dict: {1: 0/1, 3: 0/1, 5: 0/1} – whether GT is in top-K
     """
-    scores  = np.array(scores)
+    if ground_truth_idx is None:
+        ground_truth_idx = gt_idx
+    scores = np.array(scores)
+    if len(scores) == 0 or ground_truth_idx is None:
+        return {k: 0.0 for k in k_values}
+
     sorted_indices = np.argsort(scores)[::-1]  # descending
 
     results = {}
     for k in k_values:
-        top_k   = sorted_indices[:k]
+        top_k = sorted_indices[:k]
         results[k] = 1.0 if ground_truth_idx in top_k else 0.0
     return results
 
 
-def mean_reciprocal_rank(scores, ground_truth_idx):
+def mean_reciprocal_rank(scores, ground_truth_idx=None, gt_idx=None):
     """
     Compute reciprocal rank of the ground truth slot.
 
@@ -67,12 +72,17 @@ def mean_reciprocal_rank(scores, ground_truth_idx):
     Returns:
         float: 1/rank if found, else 0.0
     """
+    if ground_truth_idx is None:
+        ground_truth_idx = gt_idx
     scores = np.array(scores)
+    if len(scores) == 0 or ground_truth_idx is None:
+        return 0.0
+
     sorted_indices = np.argsort(scores)[::-1]  # descending
     ranks = np.where(sorted_indices == ground_truth_idx)[0]
     if len(ranks) == 0:
         return 0.0
-    return 1.0 / (ranks[0] + 1)
+    return float(1.0 / (ranks[0] + 1))
 
 
 def exact_match(predictions, targets, pad_id=0):

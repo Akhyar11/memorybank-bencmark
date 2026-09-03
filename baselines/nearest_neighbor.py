@@ -1,46 +1,86 @@
-import jax
-import jax.numpy as jnp
-import flax.linen as nn
+"""
+baselines/nearest_neighbor.py (Pure PyTorch Version)
+
+Baseline: Standard Key-Value Nearest Neighbor Associative Memory.
+Independent from Memory Bank specific mechanisms:
+- NO importance scoring
+- NO confidence scoring
+- NO temporal decay or recency
+- NO read reinforcement
+- NO i_proj or composite formulas
+Uses pure cosine similarity between query projection and stored keys to retrieve associated values.
+"""
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 
 class NearestNeighborMemory(nn.Module):
     """
-    Baseline that simply retrieves from an external fixed dataset using Cosine Similarity.
-    It doesn't 'write' online, it just assumes a pre-populated key-value store.
+    Standard Key-Value Nearest Neighbor Memory Baseline (PyTorch Version).
+    Retrieves from a stored key-value buffer using pure Cosine Similarity.
     """
-    capacity: int
-    dim: int
-    top_k: int = 4
+    def __init__(self, capacity: int, dim: int, top_k: int = 4):
+        super().__init__()
+        self.capacity = capacity
+        self.dim = dim
+        self.top_k = top_k
 
-    def setup(self):
-        # We pretend it's pre-populated or we can populate it manually
-        self.mem_keys = self.variable('memory', 'keys', jnp.zeros, (self.capacity, self.dim))
-        self.mem_vals = self.variable('memory', 'vals', jnp.zeros, (self.capacity, self.dim))
-        
-        self.q_proj = nn.Dense(self.dim, use_bias=False)
-        self.fusion_proj = nn.Dense(self.dim, use_bias=False)
-        
-    def read(self, h_eos):
+        # Key and Value buffers (non-trainable persistent store)
+        self.register_buffer('mem_keys', torch.zeros(capacity, dim))
+        self.register_buffer('mem_vals', torch.zeros(capacity, dim))
+        self.register_buffer('active_mask', torch.zeros(capacity, dtype=torch.bool))
+
+        # Projections
+        self.q_proj = nn.Linear(dim, dim, bias=False)
+        self.k_proj = nn.Linear(dim, dim, bias=False)
+        self.v_proj = nn.Linear(dim, dim, bias=False)
+        self.fusion_proj = nn.Linear(dim * 2, dim, bias=False)
+
+    def write(self, h_k: torch.Tensor, h_v: torch.Tensor = None, slot_idx: int = 0):
+        """Write key-value representation into a specified slot."""
+        with torch.no_grad():
+            k = self.k_proj(h_k).detach()
+            v = self.v_proj(h_v if h_v is not None else h_k).detach()
+            self.mem_keys[slot_idx] = k[0] if k.ndim > 1 else k
+            self.mem_vals[slot_idx] = v[0] if v.ndim > 1 else v
+            self.active_mask[slot_idx] = True
+
+    def read(self, h_eos: torch.Tensor, return_scores: bool = False):
+        """
+        Pure nearest neighbor retrieval via cosine similarity:
+        Query -> dot product with stored keys -> top-k softmax -> weighted values.
+        """
+        batch_size = h_eos.size(0)
         q = self.q_proj(h_eos)
-        keys = self.mem_keys.value
-        vals = self.mem_vals.value
-        
-        q_norm = q / (jnp.linalg.norm(q, axis=-1, keepdims=True) + 1e-8)
-        k_norm = keys / (jnp.linalg.norm(keys, axis=-1, keepdims=True) + 1e-8)
-        
-        sim = jnp.matmul(q_norm, k_norm.T) # (batch, capacity)
-        
-        topk_sim, topk_indices = jax.lax.top_k(sim, self.top_k)
-        
-        attn_weights = jax.nn.softmax(topk_sim, axis=-1)
-        
-        def gather(idx): return vals[idx]
-        topk_vals = jax.vmap(gather)(topk_indices) # (batch, k, dim)
-        
-        read_val = jnp.sum(attn_weights[..., None] * topk_vals, axis=1)
+
+        q_norm = q / (torch.norm(q, dim=-1, keepdim=True) + 1e-8)
+        k_norm = self.mem_keys / (torch.norm(self.mem_keys, dim=-1, keepdim=True) + 1e-8)
+
+        # Pure cosine similarity (batch, capacity)
+        sim = torch.matmul(q_norm, k_norm.T)
+
+        # Mask inactive slots
+        active = self.active_mask.unsqueeze(0).expand(batch_size, -1)
+        sim_masked = torch.where(active, sim, torch.tensor(-1e9, device=sim.device))
+
+        k = min(self.top_k, self.capacity)
+        topk_sim, topk_indices = torch.topk(sim_masked, k, dim=-1)
+
+        # Softmax over top-k
+        attn_weights = F.softmax(topk_sim, dim=-1)
+
+        # Gather vals
+        expanded_indices = topk_indices.unsqueeze(-1).expand(-1, -1, self.dim)
+        topk_vals = torch.gather(self.mem_vals.unsqueeze(0).expand(batch_size, -1, -1), 1, expanded_indices)
+
+        read_val = torch.sum(attn_weights.unsqueeze(-1) * topk_vals, dim=1)
+
+        if return_scores:
+            return read_val, sim_masked, topk_indices
         return read_val
 
-    @nn.compact
-    def __call__(self, h_eos):
+    def forward(self, h_eos: torch.Tensor):
         read_val = self.read(h_eos)
-        fused = self.fusion_proj(jnp.concatenate([h_eos, read_val], axis=-1))
+        fused = self.fusion_proj(torch.cat([h_eos, read_val], dim=-1))
         return fused

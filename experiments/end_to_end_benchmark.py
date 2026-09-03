@@ -165,7 +165,7 @@ def run_benchmark():
                 
                 for batch in train_loader.iter_batches(shuffle=True):
                     epoch_rng, step_rng = jax.random.split(epoch_rng)
-                    jax_batch = {k: jnp.array(v) for k, v in batch.items() if k not in ('fact_str_ids', 'query_str_ids', 'fact_ids', 'query_ids', 'valid_count')}
+                    jax_batch = {k: jnp.array(v) for k, v in batch.items() if k not in ('fact_str_ids', 'query_str_ids', 'valid_count')}
                     
                     if mode == 'none':
                         params, opt_state, mem_state, loss = train_step_none(params, opt_state, mem_state, jax_batch, step_rng)

@@ -186,8 +186,7 @@ def run_benchmark():
                 steps = len(losses)
                 step_time_ms = (epoch_time / max(steps, 1)) * 1000
                 
-                if (epoch + 1) % 10 == 0 or epoch == 0:
-                    print(f"    Epoch {epoch+1:3d} Loss: {np.mean(losses):.4f} | Time: {epoch_time:.2f}s | {step_time_ms:.2f} ms/step")
+                print(f"    Epoch {epoch+1:3d} Loss: {np.mean(losses):.4f} | Time: {epoch_time:.2f}s | {step_time_ms:.2f} ms/step")
                 
             # Evaluation
             ems, f1s, r1s, mrrs = [], [], [], []

@@ -229,7 +229,7 @@ def run_benchmark():
                     # For NN Memory, it writes sequentially
                     written_indices = jnp.arange(write_idx, write_idx + batch_size) % config.memory_capacity
                 else:
-                    written_indices, updated_mem = mdl.apply({'params': params, 'memory': eval_mem_state}, jax_batch['write_ids'], jax_batch['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'])
+                    (h_eos_proj, written_indices), updated_mem = mdl.apply({'params': params, 'memory': eval_mem_state}, jax_batch['write_ids'], jax_batch['write_mask'], jnp.ones(batch_size), jnp.ones(batch_size), True, method=mdl.write_only, mutable=['memory'])
                     out, new_mem = mdl.apply({'params': params, 'memory': updated_mem['memory']}, jax_batch['query_ids'], jax_batch['query_mask'], jnp.ones(batch_size), jnp.zeros(batch_size), jax_batch['target_ids'], deterministic=True, memory_mode='bank', mutable=['memory'])
                     logits, sim, _, _ = out
                     preds = jnp.argmax(logits, axis=-1)

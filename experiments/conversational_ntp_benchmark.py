@@ -54,7 +54,8 @@ def run_conversational_benchmark(
     ff_dim: int = 216,
     learning_rate: float = 1e-3,
     checkpoint_dir: Optional[str] = None,
-    write_threshold: float = 0.5
+    write_threshold: float = 0.5,
+    mode_filter: str = "all"
 ) -> Dict[str, Any]:
     print("==================================================================")
     print("       PURE DECODER-ONLY CONVERSATIONAL NTP BENCHMARK             ")
@@ -85,11 +86,19 @@ def run_conversational_benchmark(
             if len(test_items) >= max_test_samples:
                 break
 
-    modes = {
+    all_modes = {
         "No Memory": "none",
         "NN Memory": "nn",
         "Memory Bank": "bank"
     }
+    if mode_filter.lower() in ("bank", "memory_bank", "memorybank"):
+        modes = {"Memory Bank": "bank"}
+    elif mode_filter.lower() in ("none", "no_memory"):
+        modes = {"No Memory": "none"}
+    elif mode_filter.lower() in ("nn", "nn_memory"):
+        modes = {"NN Memory": "nn"}
+    else:
+        modes = all_modes
 
     results = {name: collections.defaultdict(list) for name in modes.keys()}
 
@@ -261,13 +270,25 @@ if __name__ == "__main__":
     parser.add_argument("--max_train_samples", type=int, default=500)
     parser.add_argument("--max_test_samples", type=int, default=50)
     parser.add_argument("--write_threshold", type=float, default=0.85)
+    parser.add_argument("--mode", type=str, default="all", choices=["all", "bank", "none", "nn"],
+                        help="Model mode to train/evaluate: 'bank' (Memory Bank only), 'none', 'nn', or 'all'")
+    parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44],
+                        help="Random seeds to run (e.g. --seeds 42 or --seeds 42 43 44)")
+    parser.add_argument("--train_jsonl", type=str, default="dataset/conversations_100M_train.jsonl")
+    parser.add_argument("--test_jsonl", type=str, default="dataset/conversations_100M_test.jsonl")
+    parser.add_argument("--checkpoint_dir", type=str, default=None)
     args = parser.parse_args()
 
     run_conversational_benchmark(
+        train_jsonl=args.train_jsonl,
+        test_jsonl=args.test_jsonl,
+        seeds=tuple(args.seeds),
         num_epochs=args.epochs,
         max_steps_per_epoch=args.max_steps_per_epoch,
         batch_size=args.batch_size,
         max_train_samples=args.max_train_samples,
         max_test_samples=args.max_test_samples,
-        write_threshold=args.write_threshold
+        write_threshold=args.write_threshold,
+        mode_filter=args.mode,
+        checkpoint_dir=args.checkpoint_dir
     )

@@ -1132,6 +1132,483 @@ def build_memory_update_and_correction_flow(p: Dict[str, Any], turns_count: int)
     }
 
 
+def build_math_and_logic_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Mathematical reasoning, logic puzzles, probability, and finance calculations."""
+    turns, facts = [], []
+    math_challenges = [
+        (
+            "Tolong bantu hitung: Sebuah toko memberi diskon bertingkat 20% lalu ditambah diskon member 10%. Jika harga awal baju Rp 250.000, berapa harga akhir yang harus dibayar?",
+            "Mari kita hitung secara bertahap:\n1. **Diskon Pertama (20%)**: Rp 250.000 × 20% = Rp 50.000. Harga menjadi Rp 200.000.\n2. **Diskon Member (10%)**: Dihitung dari harga setelah diskon pertama: Rp 200.000 × 10% = Rp 20.000.\n3. **Harga Akhir**: Rp 200.000 - Rp 20.000 = **Rp 180.000**.\n\n*Catatan*: Diskon 20% + 10% tidak sama dengan 30% langsung (diskon efektifnya adalah 28%)."
+        ),
+        (
+            "Ada teka-teki logika: Di sebuah ruangan ada 3 sakelar lampu (A, B, C) di luar, dan 1 lampu pijar di dalam ruangan tertutup. Kita hanya boleh masuk ke ruangan satu kali untuk memastikan sakelar mana yang menyalakan lampu. Bagaimana caranya?",
+            "Caranya memanfaatkan sifat panas lampu pijar:\n1. Nyalakan sakelar A selama 5-10 menit hingga lampu cukup panas, lalu matikan sakelar A.\n2. Segera nyalakan sakelar B, lalu langsung masuk ke dalam ruangan.\n3. **Analisis kondisi lampu**:\n   - Jika lampu menyala terang -> Sakelar B.\n   - Jika lampu mati tetapi bohlam terasa hangat/panas saat disentuh -> Sakelar A.\n   - Jika lampu mati dan bohlam terasa dingin -> Sakelar C."
+        ),
+        (
+            "Bagaimana cara menghitung Return on Investment (ROI) jika modal investasi awal Rp 15.000.000 dan setelah satu tahun nilai asetnya menjadi Rp 18.750.000?",
+            "Rumus ROI adalah: `((Nilai Akhir - Modal Awal) / Modal Awal) × 100%`.\n\nPerhitungannya:\n1. Keuntungan bersih: Rp 18.750.000 - Rp 15.000.000 = Rp 3.750.000.\n2. Rasio keuntungan: Rp 3.750.000 / Rp 15.000.000 = 0,25.\n3. Persentase ROI: 0,25 × 100% = **25% per tahun**.\n\nIni merupakan kinerja imbal hasil investasi yang sangat impresif."
+        )
+    ]
+    q_math, a_math = random.choice(math_challenges)
+    turns.append({"role": "user", "content": q_math})
+    turns.append({"role": "assistant", "content": a_math})
+
+    name = p["name"]
+    turns.append({"role": "user", "content": f"Penjelasan logikanya sangat runtut dan mudah dipahami! Kenalkan namaku {name}, aku berdomisili di {p['city']} dan bekerja sebagai {p['job']}."})
+    turns.append({"role": "assistant", "content": f"Salam kenal hangat, {name}! Senang bisa membantu seorang {p['job']} dari kota {p['city']}. Pendekatan matematis analitis seperti ini memang sangat berguna untuk mengambil keputusan rasional sehari-hari."})
+    facts.append({"turn": 2, "key": "name", "value": name})
+    facts.append({"turn": 2, "key": "city", "value": p["city"]})
+    facts.append({"turn": 2, "key": "job", "value": p["job"]})
+
+    turns.append({"role": "user", "content": f"Sambil memecahkan hitung-hitungan logika, biasanya aku rileks menyeruput {p['drink']} favoritku."})
+    turns.append({"role": "assistant", "content": f"Suasana yang sangat menyenangkan! Kehadiran {p['drink']} memang teman terbaik untuk menjaga konsentrasi saat berpikir analitis."})
+    facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["job", "city", "drink"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "math_and_logic_reasoning",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_linux_devops_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Linux terminal commands, system administration, and infrastructure operations."""
+    turns, facts = [], []
+    linux_queries = [
+        (
+            "Bagaimana cara menemukan file berukuran di atas 500MB di Linux yang menghabiskan ruang disk server?",
+            "Gunakan perintah `find` yang dikombinasikan dengan format human-readable:\n```bash\nfind / -type f -size +500M -exec ls -lh {} + 2>/dev/null | awk '{ print $5, $9 }'\n```\nAtau gunakan `ncdu /` (NCurses Disk Usage) untuk penelusuran direktori secara interaktif."
+        ),
+        (
+            "Bagaimana perintah systemctl untuk mengecek log error aplikasi yang crash secara realtime?",
+            "Gunakan `journalctl` dengan flag `-u` (unit) dan `-f` (follow):\n```bash\nsudo journalctl -u nama-service -f -n 50 --no-pager\n```\nTambahkan flag `-p err` jika kamu hanya ingin memfilter log dengan level error ke atas."
+        ),
+        (
+            "Apa bedanya izin chmod 755 dan chmod 644 pada file dan direktori Linux?",
+            "- **chmod 755 (`rwxr-xr-x`)**: Pemilik file punya izin Read, Write, Execute. Group dan pengguna lain hanya punya izin Read dan Execute. Standar untuk folder dan binary eksekusi.\n- **chmod 644 (`rw-r--r--`)**: Pemilik file punya izin Read dan Write. Group dan pengguna lain hanya Read. Standar aman untuk dokumen dan file konfigurasi web server."
+        )
+    ]
+    q_lin, a_lin = random.choice(linux_queries)
+    turns.append({"role": "user", "content": q_lin})
+    turns.append({"role": "assistant", "content": a_lin})
+
+    conn = random.choice(MID_CONV_PERSONA_DROPS).format(name=p["name"], city=p["city"], job=p["job"])
+    turns.append({"role": "user", "content": f"Perintahnya langsung bekerja dengan baik di server! {conn} Di pekerjaan ini kami sering mengelola service berbasis {p['lang']}."})
+    turns.append({"role": "assistant", "content": f"Mantap sekali {p['name']}! Senang bisa membantu. Sebagai {p['job']} di {p['city']}, menguasai troubleshooting Linux sangat vital untuk stabilitas environment aplikasi {p['lang']}."})
+    facts.append({"turn": 2, "key": "name", "value": p["name"]})
+    facts.append({"turn": 2, "key": "city", "value": p["city"]})
+    facts.append({"turn": 2, "key": "job", "value": p["job"]})
+    facts.append({"turn": 2, "key": "lang", "value": p["lang"]})
+
+    turns.append({"role": "user", "content": f"Kalau lagi standby maintenance server malam hari, cemilan wajibanku itu sepiring {p['food']} hangat."})
+    turns.append({"role": "assistant", "content": f"Cemilan pengganjal lapar yang mantap! Santapan {p['food']} pasti ampuh mengusir rasa kantuk saat bertugas."})
+    facts.append({"turn": 4, "key": "food", "value": p["food"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["job", "city", "lang", "food"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "linux_and_devops",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_business_and_startup_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Startup methodology, CAC/LTV, MVP validation, and product marketing."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    biz_questions = [
+        (
+            "Bagaimana cara memvalidasi ide produk baru dengan biaya minimum sebelum membuat aplikasi lengkapnya?",
+            "Gunakan pendekatan **Pre-totyping dan Smoke Test**:\n1. Buat landing page satu halaman yang menjelaskan value proposition produk secara tajam.\n2. Pasang tombol 'Daftar Minat' atau 'Pre-Order' untuk mengukur konversi pengunjung.\n3. Jalankan iklan terarah kecil-kecilan (Rp 100-200 ribu) untuk menguji apakah ada minat pasar nyata sebelum menulis satu baris kode pun."
+        ),
+        (
+            "Apa yang dimaksud dengan rasio LTV / CAC dalam bisnis dan berapa angka yang sehat?",
+            "LTV (Customer Lifetime Value) adalah total estimasi profit dari satu pelanggan selama menggunakan produk kita, sedangkan CAC (Customer Acquisition Cost) adalah biaya pemasaran untuk mendapatkan pelanggan tersebut.\n\n- **Rasio 3:1**: Standar industri startup yang sehat dan sustainable.\n- **Rasio < 1:1**: Bisnis merugi pada setiap pelanggan baru.\n- **Rasio > 5:1**: Bisnis mungkin kurang agresif berinvestasi dalam akuisisi pasar."
+        )
+    ]
+    q_b, a_b = random.choice(biz_questions)
+    turns.append({"role": "user", "content": q_b})
+    turns.append({"role": "assistant", "content": a_b})
+
+    turns.append({"role": "user", "content": f"Prinsip bisnis ini mau kuadopsi untuk mengembangkan usaha sampinganku, yaitu {p['side_biz']}."})
+    turns.append({"role": "assistant", "content": f"Aplikasi yang sangat relevan, {p['name']}! Menerapkan validasi pasar pada {p['side_biz']} akan meminimalisir risiko modal dan mempercepat pertumbuhan pelanggan setia."})
+    facts.append({"turn": 4, "key": "side_biz", "value": p["side_biz"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["side_biz", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "business_and_startup",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_english_language_learning_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Linguistics, English grammar, translation nuances, and idiomatic expressions."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    lang_topics = [
+        (
+            "Bisa jelaskan perbedaan penggunaan Present Perfect Tense ('I have lost my key') vs Simple Past Tense ('I lost my key')?",
+            "Perbedaannya ada pada **relevansi dengan masa sekarang (present result)**:\n- **Simple Past** (*I lost my key*): Menjelaskan peristiwa di masa lalu sebagai fakta sejarah. Kunci tersebut mungkin sekarang sudah ditemukan kembali.\n- **Present Perfect** (*I have lost my key*): Menjelaskan bahwa kejadian masa lalu berdampak langsung ke saat ini (artinya: saat ini saya masih belum bisa masuk ke rumah karena kuncinya masih hilang)."
+        ),
+        (
+            "Apa arti ungkapan idiom bahasa Inggris 'Hit the nail on the head' dan bagaimana contoh kalimatnya?",
+            "Idiom **'Hit the nail on the head'** artinya: **Tepat sasaran** atau mendeskripsikan situasi/masalah secara persis dan akurat tanpa meleset.\n\nContoh kalimat:\n*\"During the retrospective meeting, Sarah really hit the nail on the head regarding our bottleneck.\"* (Saat meeting evaluasi, Sarah benar-benar tepat sasaran mengenai masalah hambatan kita)."
+        )
+    ]
+    q_l, a_l = random.choice(lang_topics)
+    turns.append({"role": "user", "content": q_l})
+    turns.append({"role": "assistant", "content": a_l})
+
+    turns.append({"role": "user", "content": f"Belajar bahasa asing memang jadi salah satu hobi santai favoritku, selain aktif {p['hobby']}."})
+    turns.append({"role": "assistant", "content": f"Luar biasa, {p['name']}! Memadukan rasa ingin tahu linguistik dengan aktivitas {p['hobby']} adalah latihan stimulasi otak yang sangat positif."})
+    facts.append({"turn": 4, "key": "hobby", "value": p["hobby"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["hobby", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "language_and_linguistics",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_office_communication_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Professional workplace communication, email drafting, and polite correspondence."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    turns.append({"role": "user", "content": "Bisa bantu buatkan draf email formal yang sopan untuk mengajukan permohonan cuti tahunan kepada atasan selama 3 hari kerja?"})
+    turns.append({"role": "assistant", "content": (
+        "Tentu, ini draf email formal yang profesional dan santun:\n\n"
+        "**Subjek**: Permohonan Cuti Tahunan - [Nama Lengkap]\n\n"
+        "Yth. Bapak/Ibu [Nama Atasan],\n\n"
+        "Semoga Bapak/Ibu senantiasa dalam keadaan sehat.\n\n"
+        "Melalui email ini, saya bermaksud mengajukan permohonan cuti tahunan selama 3 (tiga) hari kerja, terhitung mulai tanggal [Tanggal Mulai] hingga [Tanggal Selesai].\n\n"
+        "Sebelum masa cuti dimulai, saya telah memastikan seluruh tanggung jawab utama dan tugas berjalan telah diselesaikan. Untuk urusan mendesak yang memerlukan koordinasi, rekan saya [Nama Rekan Backup] siap membantu, dan saya tetap dapat dihubungi melalui pesan singkat bila ada keperluan darurat.\n\n"
+        "Terima kasih atas perhatian dan persetujuan yang Bapak/Ibu berikan.\n\n"
+        "Hormat saya,\n[Nama Lengkap]\n[Posisi/Jabatan]"
+    )})
+
+    turns.append({"role": "user", "content": f"Pas waktu istirahat kantor siang tadi, aku makan siang dengan menu kesukaanku yaitu {p['food']}."})
+    turns.append({"role": "assistant", "content": f"Menu makan siang yang lezat dan berenergi! Santap hidangan {p['food']} pasti mengembalikan stamina untuk menyelesaikan sisa pekerjaan."})
+    facts.append({"turn": 4, "key": "food", "value": p["food"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["food", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "workplace_and_office_communication",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_indonesian_history_and_culture_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Indonesian history, philosophy of traditional arts, and cultural heritage."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    history_topics = [
+        (
+            "Apa makna filosofis di balik motif Batik Parang Rusak dalam kebudayaan Jawa?",
+            "Motif **Batik Parang Rusak** memiliki simbol garis lengkung diagonal menyerupai ombak karang samudra yang tidak pernah putus. Makna filosofisnya adalah **pantang menyerah, keteguhan hati, dan pengendalian hawa nafsu** dalam menghadapi gelombang rintangan kehidupan."
+        ),
+        (
+            "Bagaimana peran jalur rempah maritim Nusantara dalam membentuk peradaban perdagangan dunia kuno?",
+            "Jalur rempah Nusantara (terutama cengkih dan pala dari Maluku) telah menghubungkan kepulauan Indonesia dengan India, Timur Tengah, dan Eropa sejak abad pertama Masehi. Perdagangan maritim ini melahirkan kota-kota pelabuhan kosmopolitan seperti Sriwijaya, Malaka, dan Banten."
+        )
+    ]
+    q_h, a_h = random.choice(history_topics)
+    turns.append({"role": "user", "content": q_h})
+    turns.append({"role": "assistant", "content": a_h})
+
+    turns.append({"role": "user", "content": f"Bicara soal kekayaan nusantara, salah satu tempat liburan impian yang ingin kukunjungi adalah {p['travel']}."})
+    turns.append({"role": "assistant", "content": f"Pilihan destinasi yang sarat pesona! Mengunjungi {p['travel']} pasti memberikan perpaduan indahnya bentang alam dan nilai budaya yang luhur."})
+    facts.append({"turn": 4, "key": "travel", "value": p["travel"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["travel", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "history_and_culture",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_home_diy_and_maintenance_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Practical home maintenance, plant care, and everyday DIY troubleshooting."""
+    turns, facts = [], []
+    diy_tips = [
+        (
+            "Ada tips praktis cara mengatasi saluran pipa wastafel dapur yang mulai mampet karena sisa lemak masakan?",
+            "Gunakan metode alami tanpa bahan kimia keras:\n1. Tuangkan 1 cangkir **baking soda** (soda kue) kering langsung ke lubang saluran.\n2. Susul dengan 1 cangkir **cuka makan** (akan terjadi reaksi berbusa aktif yang meluruhkan kerak minyak).\n3. Diamkan selama 20-30 menit, lalu siram dengan 1 teko **air panas mendidih** untuk membilas lemak yang sudah larut."
+        ),
+        (
+            "Bagaimana cara merawat tanaman monstera indoor agar daunnya tidak menguning dan tetap rimbun?",
+            "Penyebab utama daun menguning adalah *overwatering* (kelebihan air):\n- Siram hanya jika media tanam 2-3 cm bagian atas sudah terasa kering saat disentuh jarimu.\n- Tempatkan di dekat jendela dengan **cahaya terang tidak langsung** (bright indirect light).\n- Pastikan pot memiliki lubang drainase yang lancar agar akar tidak busuk."
+        )
+    ]
+    q_diy, a_diy = random.choice(diy_tips)
+    turns.append({"role": "user", "content": q_diy})
+    turns.append({"role": "assistant", "content": a_diy})
+
+    p_drop = random.choice(MID_CONV_PERSONA_DROPS).format(name=p["name"], city=p["city"], job=p["job"])
+    turns.append({"role": "user", "content": f"Tipsnya sangat aplikatif, langsung kupraktikkan! {p_drop}"})
+    turns.append({"role": "assistant", "content": f"Senang sekali bisa membantu, {p['name']}! Sebagai seorang {p['job']} di {p['city']}, merawat hunian agar selalu rapi dan nyaman adalah kunci menjaga ketenangan pikiran."})
+    facts.append({"turn": 2, "key": "name", "value": p["name"]})
+    facts.append({"turn": 2, "key": "city", "value": p["city"]})
+    facts.append({"turn": 2, "key": "job", "value": p["job"]})
+
+    turns.append({"role": "user", "content": f"Di rumah aku juga ditemani peliharaan kesayanganku, yaitu seekor {p['pet_type']} bernama {p['pet_name']}."})
+    turns.append({"role": "assistant", "content": f"Luar biasa menggemaskan! Kehadiran {p['pet_type']} bernama {p['pet_name']} pasti selalu bikin suasana rumah semakin ceria."})
+    facts.append({"turn": 4, "key": "pet_type", "value": p["pet_type"]})
+    facts.append({"turn": 4, "key": "pet_name", "value": p["pet_name"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["pet_name", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "home_maintenance_and_diy",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_psychology_and_mindset_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Cognitive behavioral insights, imposter syndrome, and psychological resilience."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    psy_topics = [
+        (
+            "Bagaimana cara mengatasi sindrom imposter (merasa tidak kompeten dan takut dianggap penipu) di lingkungan karir profesional?",
+            "Sindrom imposter sangat umum dialami orang-orang berdedikasi tinggi. Tiga langkah mengatasinya:\n1. **Dokumentasikan Fakta Nyata**: Catat pencapaian, apresiasi klien/tim, dan masalah riil yang berhasil kamu selesaikan.\n2. **Ubah Mindset Sempurna**: Mengakui bahwa 'tidak tahu segalanya' adalah hal wajar; yang terpenting adalah kemampuan belajar dan beradaptasi.\n3. **Bicara dengan Mentor**: Berbagi rasa ragu dengan rekan senior akan menyadarkanmu bahwa hampir semua profesional pernah mengalami fase yang sama."
+        ),
+        (
+            "Apa itu 'Cognitive Reframing' dan bagaimana melatihnya saat menghadapi masalah berat?",
+            "Cognitive Reframing adalah teknik psikologi untuk mengubah cara kita memandang situasi negatif menjadi perspektif konstruktif. Daripada berpikir 'Ini bencana yang menghancurkan hariku', ubah menjadi 'Ini situasi menantang yang menguji ketahanan dan mengajarkan strategi baru bagi diriku'."
+        )
+    ]
+    q_p, a_p = random.choice(psy_topics)
+    turns.append({"role": "user", "content": q_p})
+    turns.append({"role": "assistant", "content": a_p})
+
+    turns.append({"role": "user", "content": f"Biar pikiranku tetap tenang dan fokus, biasanya aku meluangkan waktu sejenak untuk {p['hobby']}."})
+    turns.append({"role": "assistant", "content": f"Metode grounding yang sangat sehat, {p['name']}. Melakukan {p['hobby']} memicu pelepasan endorfin dan memberikan ruang jeda bagi pikiran untuk kembali seimbang."})
+    facts.append({"turn": 4, "key": "hobby", "value": p["hobby"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["hobby", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "psychology_and_mindset",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
 ALL_FLOWS = [
     build_debugging_diagnostic_flow,
     build_culinary_recipe_safety_flow,
@@ -1140,7 +1617,15 @@ ALL_FLOWS = [
     build_casual_storytelling_banter_flow,
     build_science_and_philosophy_flow,
     build_creative_and_gaming_flow,
-    build_memory_update_and_correction_flow
+    build_memory_update_and_correction_flow,
+    build_math_and_logic_flow,
+    build_linux_devops_flow,
+    build_business_and_startup_flow,
+    build_english_language_learning_flow,
+    build_office_communication_flow,
+    build_indonesian_history_and_culture_flow,
+    build_home_diy_and_maintenance_flow,
+    build_psychology_and_mindset_flow
 ]
 
 

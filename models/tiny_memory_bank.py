@@ -103,6 +103,11 @@ class TinyMemoryBank(nn.Module):
         self.mem_state.copy_(new_state)
         return effective_R
 
+    @property
+    def active_count(self) -> int:
+        """Number of currently non-expired (active or dormant) memory slots."""
+        return int((self.mem_state != STATE_EXPIRED).sum().item())
+
     def empty_memory_state(self):
         cap = self.config.memory_capacity
         dim = self.config.memory_dim

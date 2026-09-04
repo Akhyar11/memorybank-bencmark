@@ -546,7 +546,8 @@ class DecoderOnlyMemoryLM(nn.Module):
 
         # Read from memory
         m_retrieved = None
-        if memory_mode == 'bank' and self.bank.active_count > 0:
+        active_c = getattr(self.bank, 'active_count', int((self.bank.mem_state != 0).sum().item()))
+        if memory_mode == 'bank' and active_c > 0:
             m_retrieved, _ = self.bank.read(self.memory_proj_in(h_last))
 
         # Fused hidden state for first token prediction
@@ -587,4 +588,4 @@ class DecoderOnlyMemoryLM(nn.Module):
                 curr_h = h_step_last
 
         gen_tensor = torch.tensor([generated], device=device, dtype=torch.long)
-        return gen_tensor, {"did_write": did_write, "write_prob": w_prob.item(), "memory_active": getattr(self.bank, 'active_count', 0)}
+        return gen_tensor, {"did_write": did_write, "write_prob": w_prob.item(), "memory_active": active_c}

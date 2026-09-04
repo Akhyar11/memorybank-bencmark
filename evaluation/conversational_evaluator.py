@@ -13,6 +13,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from typing import Dict, Any, List, Optional, Tuple
+from tqdm import tqdm
 
 from evaluation.metrics import recall_at_k, mean_reciprocal_rank, exact_match, batch_token_f1
 
@@ -276,7 +277,8 @@ class ConversationalEvaluator:
         dataset_items: List[Dict[str, Any]],
         memory_mode: str = 'bank',
         write_threshold: float = 0.85,
-        context_window: Optional[int] = None
+        context_window: Optional[int] = None,
+        show_progress: bool = True
     ) -> Dict[str, Any]:
         """Evaluates a list of conversations and aggregates metrics."""
         results = {
@@ -287,7 +289,15 @@ class ConversationalEvaluator:
             "prob_increased_count": 0
         }
 
-        for item in dataset_items:
+        iterator = tqdm(
+            dataset_items,
+            desc=f"    [Eval {memory_mode:4s}]",
+            leave=False,
+            unit="dialogue",
+            dynamic_ncols=True
+        ) if (show_progress and len(dataset_items) > 5) else dataset_items
+
+        for item in iterator:
             res = self.evaluate_dialogue(
                 item, memory_mode=memory_mode, write_threshold=write_threshold,
                 context_window=context_window

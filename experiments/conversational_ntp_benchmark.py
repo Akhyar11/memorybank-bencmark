@@ -27,6 +27,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, RandomSampler
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -147,9 +148,15 @@ def run_conversational_benchmark(
                 ep_loss = 0.0
                 ep_batches = epoch_batches[ep]
                 n_batches = len(ep_batches)
-                t0 = time.time()
 
-                for batch in ep_batches:
+                pbar = tqdm(
+                    ep_batches,
+                    desc=f"    Epoch {ep+1:2d}/{num_epochs:2d}",
+                    leave=True,
+                    unit="batch",
+                    dynamic_ncols=True
+                )
+                for step_idx, batch in enumerate(pbar):
                     input_ids = batch['input_ids'].to(device)
                     target_ids = batch['target_ids'].to(device)
                     b_size = input_ids.size(0)
@@ -182,12 +189,13 @@ def run_conversational_benchmark(
                     ep_loss += loss.item()
                     total_train_tokens += int(batch['loss_mask'].sum().item())
 
-                avg_loss = ep_loss / max(n_batches, 1)
-                final_loss = avg_loss
-                elapsed = time.time() - t0
-                ms_per_step = (elapsed / max(n_batches, 1)) * 1000
-                if (ep + 1) == 1 or (ep + 1) % max(1, num_epochs // 5) == 0 or (ep + 1) == num_epochs:
-                    print(f"    Epoch {ep+1:3d}/{num_epochs:3d} Loss: {avg_loss:.4f} | Time: {elapsed:.2f}s | {ms_per_step:.2f} ms/step")
+                    avg_so_far = ep_loss / (step_idx + 1)
+                    pbar.set_postfix({
+                        "loss": f"{loss.item():.4f}",
+                        "avg": f"{avg_so_far:.4f}"
+                    })
+
+                final_loss = ep_loss / max(n_batches, 1)
 
             # Save checkpoint with explicit versioning
             torch.save({

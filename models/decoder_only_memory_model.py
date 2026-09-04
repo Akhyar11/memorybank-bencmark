@@ -512,3 +512,79 @@ class DecoderOnlyMemoryLM(nn.Module):
             "scores": retrieval_scores,
             "active_memory": active_memory
         }
+
+    def reset_memory(self):
+        """Reset Memory Bank to an empty state."""
+        self.bank.load_memory_state(self.bank.empty_memory_state())
+
+    def generate(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 30,
+        memory_mode: str = 'bank',
+        write_threshold: float = 0.6,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+        im_end_id: Optional[int] = None
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """
+        Autoregressively generate next tokens given prompt input_ids:
+        - Evaluates write-gate on the prompt representation
+        - If query, reads from memory bank
+        - Continuously fuses retrieved memory vector during generation step
+        """
+        device = input_ids.device
+        h = self.decode_step(input_ids)
+        h_last = h[:, -1, :]
+
+        # Write Head Check
+        w_prob = torch.sigmoid(self.write_head(h_last)).squeeze(-1)
+        did_write = False
+        if memory_mode == 'bank' and w_prob.item() >= write_threshold:
+            self.write_representation(h_last, write_prob=w_prob, memory_mode='bank', host_write_threshold=write_threshold)
+            did_write = True
+
+        # Read from memory
+        m_retrieved = None
+        if memory_mode == 'bank' and self.bank.active_count > 0:
+            m_retrieved, _ = self.bank.read(self.memory_proj_in(h_last))
+
+        # Fused hidden state for first token prediction
+        if m_retrieved is not None:
+            curr_h = self.fuse_with_memory_vector(h_last, m_retrieved, memory_mode=memory_mode)
+        else:
+            curr_h = h_last
+
+        curr_ids = input_ids.clone()
+        generated = []
+        stop_ids = [self.eos_id]
+        if im_end_id is not None:
+            stop_ids.append(im_end_id)
+
+        for _ in range(max_new_tokens):
+            logits = self.lm_head(curr_h)
+            if temperature > 0 and temperature != 1.0:
+                logits = logits / temperature
+            if top_k is not None and top_k > 0:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')
+                probs = F.softmax(logits, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1).squeeze(-1)
+            else:
+                next_token = torch.argmax(logits, dim=-1)
+
+            token_item = next_token.item()
+            if token_item in stop_ids:
+                break
+            generated.append(token_item)
+
+            curr_ids = torch.cat([curr_ids, next_token.unsqueeze(0)], dim=1)
+            h_step = self.decode_step(curr_ids)
+            h_step_last = h_step[:, -1, :]
+            if m_retrieved is not None:
+                curr_h = self.fuse_with_memory_vector(h_step_last, m_retrieved, memory_mode=memory_mode)
+            else:
+                curr_h = h_step_last
+
+        gen_tensor = torch.tensor([generated], device=device, dtype=torch.long)
+        return gen_tensor, {"did_write": did_write, "write_prob": w_prob.item(), "memory_active": getattr(self.bank, 'active_count', 0)}

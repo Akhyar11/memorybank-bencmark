@@ -202,7 +202,7 @@ def run_conversational_benchmark(
 
                 final_loss = ep_loss / max(steps_done, 1)
 
-            # Save checkpoint with explicit versioning
+            # Save checkpoint with explicit versioning and architecture config
             torch.save({
                 'architecture': 'decoder_only_memory_bank',
                 'version': '2.0',
@@ -210,7 +210,15 @@ def run_conversational_benchmark(
                 'seed': seed,
                 'model': model.state_dict(),
                 'final_loss': final_loss,
-                'total_train_tokens': total_train_tokens
+                'total_train_tokens': total_train_tokens,
+                'model_args': {
+                    'embed_dim': embed_dim,
+                    'num_layers': num_layers,
+                    'num_heads': num_heads,
+                    'ff_dim': ff_dim,
+                    'vocab_size': vocab_size,
+                    'write_threshold': write_threshold
+                }
             }, ckpt_path)
 
             # Evaluation on test conversations

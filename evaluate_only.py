@@ -31,7 +31,8 @@ def load_checkpoint(ckpt_path, device):
     return ckpt
 
 
-def evaluate_checkpoint(ckpt_path, dataset_dir, batch_size=32, max_test_samples=None, device=None):
+def evaluate_checkpoint(ckpt_path, dataset_dir, batch_size=32, max_test_samples=None, device=None,
+                        write_threshold=0.85, mem_alpha=2.0, reinforcement_rate=0.01):
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -61,7 +62,14 @@ def evaluate_checkpoint(ckpt_path, dataset_dir, batch_size=32, max_test_samples=
 
     embed_dim   = 32
     memory_cap  = 128
-    config = TinyMemoryConfig(memory_capacity=memory_cap, memory_dim=embed_dim, hidden_size=embed_dim)
+    config = TinyMemoryConfig(
+        memory_capacity=memory_cap,
+        memory_dim=embed_dim,
+        hidden_size=embed_dim,
+        memory_write_threshold=write_threshold,
+        mem_alpha=mem_alpha,
+        mem_reinforcement_rate=reinforcement_rate,
+    )
 
     model = TransformerQAModel(
         config=config,
@@ -197,6 +205,9 @@ def main():
     parser.add_argument('--list', action='store_true', help='List available checkpoints')
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_test_samples', type=int, default=None)
+    parser.add_argument('--write_threshold', type=float, default=0.85, help='Write similarity threshold for Memory Bank')
+    parser.add_argument('--mem_alpha', type=float, default=2.0, help='Weight for cosine similarity during read')
+    parser.add_argument('--reinforcement_rate', type=float, default=0.01, help='Reinforcement rate for accessed slots')
     args = parser.parse_args()
 
     ckpt_dir = args.checkpoint_dir
@@ -230,6 +241,7 @@ def main():
     print(f"=== EVALUATE ONLY MODE ===")
     print(f"Device    : {device}")
     print(f"Checkpoint dir : {os.path.abspath(ckpt_dir)}")
+    print(f"Config    : write_threshold={args.write_threshold}, mem_alpha={args.mem_alpha}, reinforcement_rate={args.reinforcement_rate}")
     print(f"Found {len(ckpt_files)} checkpoint(s)")
 
     all_results = []
@@ -238,7 +250,10 @@ def main():
         result = evaluate_checkpoint(ckpt_path, dataset_dir,
             batch_size=args.batch_size,
             max_test_samples=args.max_test_samples,
-            device=device)
+            device=device,
+            write_threshold=args.write_threshold,
+            mem_alpha=args.mem_alpha,
+            reinforcement_rate=args.reinforcement_rate)
         if result:
             all_results.append(result)
 

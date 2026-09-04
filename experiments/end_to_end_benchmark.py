@@ -57,6 +57,9 @@ def run_benchmark(
     memory_capacity=128,
     checkpoint_dir=None,
     resume=False,
+    memory_write_threshold=0.85,
+    mem_alpha=2.0,
+    mem_reinforcement_rate=0.01,
 ):
     print("===========================================")
     print("      END-TO-END MEMORY BENCHMARK          ")
@@ -85,7 +88,14 @@ def run_benchmark(
 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 
-    config = TinyMemoryConfig(memory_capacity=memory_capacity, memory_dim=embed_dim, hidden_size=embed_dim)
+    config = TinyMemoryConfig(
+        memory_capacity=memory_capacity,
+        memory_dim=embed_dim,
+        hidden_size=embed_dim,
+        memory_write_threshold=memory_write_threshold,
+        mem_alpha=mem_alpha,
+        mem_reinforcement_rate=mem_reinforcement_rate,
+    )
     modes = {"No Memory": "none", "NN Memory": "nn", "Memory Bank": "bank"}
 
     results = {name: collections.defaultdict(list) for name in modes.keys()}

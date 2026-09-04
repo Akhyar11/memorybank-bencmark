@@ -541,14 +541,19 @@ class DecoderOnlyMemoryLM(nn.Module):
         w_prob = torch.sigmoid(self.write_head(h_last)).squeeze(-1)
         did_write = False
         if memory_mode == 'bank' and w_prob.item() >= write_threshold:
-            self.write_representation(h_last, write_prob=w_prob, memory_mode='bank', host_write_threshold=write_threshold)
-            did_write = True
+            _, written_idx = self.write_representation(
+                h_last, write_prob=w_prob, memory_mode='bank', host_write_threshold=write_threshold
+            )
+            did_write = written_idx is not None and (written_idx >= 0).any().item()
 
         # Read from memory
         m_retrieved = None
         active_c = getattr(self.bank, 'active_count', int((self.bank.mem_state != 0).sum().item()))
+        if callable(active_c):
+            active_c = active_c()
         if memory_mode == 'bank' and active_c > 0:
-            m_retrieved, _ = self.bank.read(self.memory_proj_in(h_last))
+            read_out = self.bank.read(self.memory_proj_in(h_last))
+            m_retrieved = read_out[0] if isinstance(read_out, tuple) else read_out
 
         # Fused hidden state for first token prediction
         if m_retrieved is not None:

@@ -324,3 +324,41 @@ class TestMemoryBankDecoderIntegration:
         assert slot2 != -1, "Write must succeed"
         assert model.bank.mem_state[slot2] == STATE_ACTIVE
 
+    def test_generate_with_memory_bank(self, decoder_lm):
+        """
+        Verifies that model.generate() works smoothly when memory_mode='bank',
+        both before and after memory writes (ensuring no unpacking ValueError).
+        """
+        model, _ = decoder_lm
+        model.eval()
+        model.reset_memory()
+
+        tokens = torch.tensor([[10, 20, 30]], dtype=torch.long)
+
+        # Turn 1: empty bank, set write_head bias high so write triggers
+        model.write_head.bias.data.fill_(10.0)
+        with torch.no_grad():
+            gen_tokens, info = model.generate(
+                input_ids=tokens,
+                max_new_tokens=5,
+                memory_mode="bank",
+                write_threshold=0.5
+            )
+
+        assert gen_tokens.shape[1] <= 5
+        assert info["did_write"] is True
+        assert info["memory_active"] > 0
+
+        # Turn 2: bank has active memory, reading and fusing must work without unpacking error
+        with torch.no_grad():
+            gen_tokens_2, info_2 = model.generate(
+                input_ids=tokens,
+                max_new_tokens=5,
+                memory_mode="bank",
+                write_threshold=0.99
+            )
+
+        assert gen_tokens_2.shape[1] <= 5
+        assert info_2["memory_active"] > 0
+
+

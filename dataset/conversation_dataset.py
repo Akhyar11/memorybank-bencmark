@@ -18,12 +18,30 @@ from tokenizers import Tokenizer
 
 def get_or_create_tokenizer(tokenizer_path: str = "dataset/tokenizer.json") -> Tokenizer:
     tok = Tokenizer.from_file(tokenizer_path)
-    # Ensure special tokens exist
-    special_tokens = ["[PAD]", "[UNK]", "[BOS]", "[EOS]", "<|im_start|>", "<|im_end|>"]
     vocab = tok.get_vocab()
-    missing = [t for t in special_tokens if t not in vocab]
-    if missing:
-        tok.add_special_tokens(missing)
+    # Check if standard pad/bos/eos/unk exist in either <TAG> or [TAG] form
+    needed = []
+    if not any(p in vocab for p in ["<PAD>", "[PAD]", "<pad>"]):
+        needed.append("<PAD>")
+    if not any(b in vocab for b in ["<BOS>", "[BOS]", "<s>", "<bos>"]):
+        needed.append("<BOS>")
+    if not any(e in vocab for e in ["<EOS>", "[EOS]", "</s>", "<eos>"]):
+        needed.append("<EOS>")
+    if not any(u in vocab for u in ["<UNK>", "[UNK]", "<unk>"]):
+        needed.append("<UNK>")
+    if "<|im_start|>" not in vocab:
+        needed.append("<|im_start|>")
+    if "<|im_end|>" not in vocab:
+        needed.append("<|im_end|>")
+    if "\n" not in vocab:
+        needed.append("\n")
+
+    if needed:
+        tok.add_special_tokens(needed)
+        try:
+            tok.save(tokenizer_path)
+        except Exception:
+            pass
     return tok
 
 
@@ -43,11 +61,36 @@ class ConversationDataset(Dataset):
         self.max_seq_len = max_seq_len
         self.tokenizer = get_or_create_tokenizer(tokenizer_path)
         
-        self.pad_id = self.tokenizer.token_to_id("[PAD]")
+        # Resolve PAD ID
+        self.pad_id = None
+        for candidate in ["<PAD>", "[PAD]", "<pad>"]:
+            cid = self.tokenizer.token_to_id(candidate)
+            if cid is not None:
+                self.pad_id = cid
+                break
         if self.pad_id is None:
             self.pad_id = 0
-        self.bos_id = self.tokenizer.token_to_id("[BOS]")
-        self.eos_id = self.tokenizer.token_to_id("[EOS]")
+
+        # Resolve BOS ID
+        self.bos_id = None
+        for candidate in ["<BOS>", "[BOS]", "<s>", "<bos>"]:
+            cid = self.tokenizer.token_to_id(candidate)
+            if cid is not None:
+                self.bos_id = cid
+                break
+        if self.bos_id is None:
+            self.bos_id = 2
+
+        # Resolve EOS ID
+        self.eos_id = None
+        for candidate in ["<EOS>", "[EOS]", "</s>", "<eos>"]:
+            cid = self.tokenizer.token_to_id(candidate)
+            if cid is not None:
+                self.eos_id = cid
+                break
+        if self.eos_id is None:
+            self.eos_id = 3
+
         self.im_start_id = self.tokenizer.token_to_id("<|im_start|>")
         self.im_end_id = self.tokenizer.token_to_id("<|im_end|>")
         self.vocab_size = self.tokenizer.get_vocab_size()

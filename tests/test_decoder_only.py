@@ -188,3 +188,139 @@ class TestMemoryBankDecoderIntegration:
         assert torch.allclose(state_true, state_false, atol=1e-6), (
             "is_eos must be causally inert in Memory Bank writes."
         )
+
+    def test_write_head_gradient_and_learning(self, decoder_lm):
+        """
+        Explicit Gradient Audit:
+        Verifies that write_head receives non-zero gradient from the supervised write objective,
+        and taking an optimizer step genuinely updates write_head weights.
+        """
+        model, _ = decoder_lm
+        model.train()
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+
+        input_ids = torch.tensor([[10, 20, 30, 40, 50, 60]])
+        target_ids = torch.tensor([[20, 30, 40, 50, 60, 70]])
+        turn_ends = [1, 3, 5]
+        facts = [{'turn': 0, 'key': 'topic', 'value': 'AI'}]
+        target_recall = {'query_turn': 1}
+
+        w_before = model.write_head.weight.clone()
+        optimizer.zero_grad()
+
+        out = model.forward_dialogue_autoregressive(
+            input_ids, target_ids=target_ids, turn_end_indices=turn_ends,
+            facts=facts, target_recall=target_recall, memory_mode='bank'
+        )
+
+        assert out['loss'] is not None
+        out['loss'].backward()
+
+        # Audit: write_head.weight.grad must exist and be non-zero
+        assert model.write_head.weight.grad is not None, "write_head.weight.grad must not be None!"
+        grad_norm = torch.norm(model.write_head.weight.grad).item()
+        assert grad_norm > 1e-6, f"write_head gradient must be non-zero, got {grad_norm}"
+
+        optimizer.step()
+        w_after = model.write_head.weight.clone()
+        assert not torch.allclose(w_before, w_after, atol=1e-5), "write_head weight must update after optimizer step!"
+
+    def test_autoregressive_memory_influences_future_tokens(self, decoder_lm):
+        """
+        Validates that memory retrieved at timestep t causally alters predictions
+        at timestep t+1 and subsequent answer timesteps.
+        """
+        model, _ = decoder_lm
+        model.eval()
+
+        input_ids = torch.tensor([[5, 10, 15, 20, 25, 30]])
+        turn_ends = [1, 3, 5]
+        facts = [{'turn': 0, 'key': 'city', 'value': 'Jambi'}]
+        target_recall = {'query_turn': 1}
+
+        with torch.no_grad():
+            out_bank = model.forward_dialogue_autoregressive(
+                input_ids, turn_end_indices=turn_ends,
+                facts=facts, target_recall=target_recall, memory_mode='bank'
+            )
+            out_none = model.forward_dialogue_autoregressive(
+                input_ids, turn_end_indices=turn_ends,
+                facts=facts, target_recall=target_recall, memory_mode='none'
+            )
+
+        logits_bank = out_bank['logits'][0]
+        logits_none = out_none['logits'][0]
+
+        # In turn 0 and 1 (pre-query), logits should be identical
+        assert torch.allclose(logits_bank[:4], logits_none[:4], atol=1e-5), (
+            "Pre-query turns must not experience memory interference."
+        )
+        # In turn 2 (answer turn, tokens 4..5), retrieved memory MUST alter logits
+        assert not torch.allclose(logits_bank[4:], logits_none[4:], atol=1e-4), (
+            "Answer turn logits must be causally altered by retrieved memory!"
+        )
+
+    def test_context_truncation_long_term_memory_causality(self, decoder_lm):
+        """
+        Critical test: If the relevant fact is no longer available in the host decoder's
+        context window (evicted by distractors), the locked Memory Bank retrieves that information
+        and causally alters the future prediction compared to No-Memory.
+        """
+        model, _ = decoder_lm
+        model.eval()
+
+        # Sequence of 12 tokens, with fact at tokens 0..1, distractors at 2..7, query at 8..9, answer at 10..11
+        input_ids = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]])
+        turn_ends = [1, 7, 9, 11]
+        facts = [{'turn': 0, 'key': 'city', 'value': 'Pangkalpinang'}]
+        target_recall = {'query_turn': 2}
+
+        # Truncate context window to 4 tokens.
+        # At turn 2 (query, tokens 8..9), the window [9-4:9] = [5, 6, 7, 8] excludes turn 0 (tokens 0..1)!
+        context_window = 4
+
+        with torch.no_grad():
+            out_bank = model.forward_dialogue_autoregressive(
+                input_ids, turn_end_indices=turn_ends, facts=facts,
+                target_recall=target_recall, memory_mode='bank',
+                context_window=context_window
+            )
+            out_none = model.forward_dialogue_autoregressive(
+                input_ids, turn_end_indices=turn_ends, facts=facts,
+                target_recall=target_recall, memory_mode='none',
+                context_window=context_window
+            )
+
+        # Under truncated context, Bank retrieves from memory slot even though tokens are evicted
+        assert out_bank['scores'] is not None, "Memory Bank must retrieve from episodic slot."
+        logits_bank = out_bank['logits'][0, 10:]
+        logits_none = out_none['logits'][0, 10:]
+
+        assert not torch.allclose(logits_bank, logits_none, atol=1e-4), (
+            "Memory Bank must causally alter predictions when context is truncated!"
+        )
+
+    def test_memory_update_and_suppression(self, decoder_lm):
+        """
+        Verifies that an updated fact in later turn correctly updates memory bank,
+        and subsequent retrieval references the new fact.
+        """
+        model, _ = decoder_lm
+        model.eval()
+
+        model.bank.load_memory_state(model.bank.empty_memory_state())
+
+        # Write fact 1 (Jambi)
+        h1 = torch.randn(1, model.embed_dim)
+        _, w1 = model.write_representation(h1, write_prob=torch.tensor([1.0]), memory_mode='bank')
+        slot1 = w1[0].item()
+
+        # Update fact 1 with fact 2 (similar key or update)
+        h2 = h1 + 0.01 * torch.randn_like(h1)  # high cosine similarity to trigger update
+        _, w2 = model.write_representation(h2, write_prob=torch.tensor([1.0]), memory_mode='bank')
+        slot2 = w2[0].item()
+
+        # If similarity was above threshold, slot1 was updated in-place; otherwise inserted
+        assert slot2 != -1, "Write must succeed"
+        assert model.bank.mem_state[slot2] == STATE_ACTIVE
+

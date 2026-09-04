@@ -152,40 +152,30 @@ def run_conversational_benchmark(
                 for batch in ep_batches:
                     input_ids = batch['input_ids'].to(device)
                     target_ids = batch['target_ids'].to(device)
-                    attention_mask = batch['attention_mask'].to(device)
+                    b_size = input_ids.size(0)
 
                     optimizer.zero_grad()
-                    out = model(
-                        input_ids=input_ids,
-                        attention_mask=attention_mask,
-                        target_ids=target_ids,
-                        memory_mode=mode
-                    )
-                    loss = out['loss']
+                    dialogue_losses = []
 
-                    # Auxiliary write supervision on turn boundaries:
-                    if mode == "bank":
-                        turn_indices_list = batch['turn_end_indices']
-                        facts_list = batch['facts']
-                        h = out['hidden_states']
-                        
-                        write_preds = []
-                        write_targets = []
-                        for b_i, (t_ends, facts) in enumerate(zip(turn_indices_list, facts_list)):
-                            fact_turns = {f['turn'] for f in facts}
-                            for t_num, t_pos in enumerate(t_ends):
-                                if t_pos < h.size(1):
-                                    wp_logit = model.write_head(h[b_i, t_pos])
-                                    tgt = 1.0 if t_num in fact_turns else 0.0
-                                    write_preds.append(wp_logit)
-                                    write_targets.append(torch.tensor([tgt], device=device))
-                        
-                        if write_preds:
-                            preds_t = torch.cat(write_preds)
-                            targets_t = torch.cat(write_targets)
-                            w_loss = F.binary_cross_entropy_with_logits(preds_t, targets_t)
-                            loss = loss + 0.1 * w_loss
+                    for b_i in range(b_size):
+                        curr_input = input_ids[b_i:b_i+1, :batch['seq_lens'][b_i]]
+                        curr_target = target_ids[b_i:b_i+1, :batch['seq_lens'][b_i]]
+                        t_ends = batch['turn_end_indices'][b_i]
+                        facts = batch['facts'][b_i]
+                        t_recall = batch['target_recall'][b_i]
 
+                        out_d = model.forward_dialogue_autoregressive(
+                            input_ids=curr_input,
+                            target_ids=curr_target,
+                            turn_end_indices=t_ends,
+                            facts=facts,
+                            target_recall=t_recall,
+                            memory_mode=mode,
+                            write_threshold=write_threshold
+                        )
+                        dialogue_losses.append(out_d['loss'])
+
+                    loss = torch.stack(dialogue_losses).mean()
                     loss.backward()
                     optimizer.step()
 
@@ -224,6 +214,7 @@ def run_conversational_benchmark(
             results[name]['occupancy'].append(eval_res['occupancy'])
             results[name]['suppression'].append(eval_res['suppression_rate'])
             results[name]['causal'].append(eval_res['causal_intervention_rate'])
+            results[name]['target_prob_increased'].append(eval_res.get('target_prob_increased_rate', 0.0))
 
             print(f"      [Eval {name} S{seed}] EM: {eval_res['em']:.2f}% | F1: {eval_res['f1']:.2f}% | "
                   f"R@1: {eval_res['r1']:.2f}% | R@5: {eval_res['r5']:.2f}% | MRR: {eval_res['mrr']:.4f}")
@@ -248,6 +239,7 @@ def run_conversational_benchmark(
             print(f"  Memory Occupancy : {np.mean(r['occupancy']):.2f}% ± {np.std(r['occupancy']):.2f}%")
             print(f"  Old Suppression  : {np.mean(r['suppression']):.2f}% ± {np.std(r['suppression']):.2f}%")
             print(f"  Causal Action    : {np.mean(r['causal']):.2f}% ± {np.std(r['causal']):.2f}%")
+            print(f"  Target Prob Inc. : {np.mean(r['target_prob_increased']):.2f}% ± {np.std(r['target_prob_increased']):.2f}%")
 
     print("\n" + "=" * 72)
     return results

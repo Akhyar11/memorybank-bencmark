@@ -139,11 +139,22 @@ class DecoderOnlyMemoryLM(nn.Module):
         """Standard upper-triangular boolean causal mask (True where masked)."""
         return torch.triu(torch.ones(seq_len, seq_len, dtype=torch.bool, device=device), diagonal=1)
 
-    def decode_step(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def decode_step(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        context_window: Optional[int] = None
+    ) -> torch.Tensor:
         """
         Runs purely the causal transformer decoder backbone over input_ids.
+        If context_window is provided, restricts input to the last context_window tokens.
         Returns: hidden states h of shape (batch_size, seq_len, embed_dim)
         """
+        if context_window is not None and input_ids.size(1) > context_window:
+            input_ids = input_ids[:, -context_window:]
+            if attention_mask is not None:
+                attention_mask = attention_mask[:, -context_window:]
+
         seq_len = input_ids.size(1)
         device = input_ids.device
 
@@ -168,11 +179,13 @@ class DecoderOnlyMemoryLM(nn.Module):
         self,
         h_rep: torch.Tensor,
         write_prob: Optional[torch.Tensor] = None,
-        memory_mode: str = 'bank'
+        memory_mode: str = 'bank',
+        host_write_threshold: Optional[float] = None
     ) -> Tuple[Any, Optional[torch.Tensor]]:
         """
         Writes representation into episodic memory.
         h_rep: (batch_size, embed_dim)
+        Decouples host write probability gating from Memory Bank's internal similarity threshold.
         """
         b_size = h_rep.size(0)
         device = h_rep.device
@@ -180,12 +193,18 @@ class DecoderOnlyMemoryLM(nn.Module):
         if write_prob is None:
             write_prob = self.compute_write_prob(h_rep)
 
+        # Host-level gating: if write_prob is below host_write_threshold, zero it out so bank.write does not write
+        if host_write_threshold is not None:
+            effective_wp = torch.where(write_prob >= host_write_threshold, write_prob, torch.zeros_like(write_prob))
+        else:
+            effective_wp = write_prob
+
         # is_eos is causally inert in Memory Bank, passed as ones for compatibility
         is_eos_inert = torch.ones(b_size, device=device)
 
         if memory_mode == 'bank':
             h_proj = self.memory_proj_in(h_rep)
-            written_indices = self.bank.write(h_proj, is_eos_inert, write_prob)
+            written_indices = self.bank.write(h_proj, is_eos_inert, effective_wp)
             return h_proj, written_indices
         elif memory_mode == 'nn':
             k_proj = self.nn_k_proj(h_rep)
@@ -253,6 +272,37 @@ class DecoderOnlyMemoryLM(nn.Module):
 
         return h_rep, None
 
+    def fuse_with_memory_vector(
+        self,
+        h: torch.Tensor,
+        m_retrieved: torch.Tensor,
+        memory_mode: str = 'bank'
+    ) -> torch.Tensor:
+        """
+        Fuses hidden states h with retrieved memory vector m_retrieved.
+        h: (batch_size, embed_dim) or (batch_size, seq_len, embed_dim)
+        m_retrieved: (batch_size, memory_dim)
+        """
+        if memory_mode == 'none':
+            return h
+
+        elif memory_mode == 'bank':
+            h_proj = self.memory_proj_in(h)
+            if h.dim() == 3 and m_retrieved.dim() == 2:
+                m_exp = m_retrieved.unsqueeze(1).expand(-1, h.size(1), -1)
+                fused_proj = self.bank.fuse(h_proj, m_exp)
+            else:
+                fused_proj = self.bank.fuse(h_proj, m_retrieved)
+            return self.memory_proj_out(fused_proj)
+
+        elif memory_mode == 'nn':
+            if h.dim() == 3 and m_retrieved.dim() == 2:
+                m_exp = m_retrieved.unsqueeze(1).expand(-1, h.size(1), -1)
+                return h + self.nn_proj_out(m_exp)
+            return h + self.nn_proj_out(m_retrieved)
+
+        return h
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -317,4 +367,148 @@ class DecoderOnlyMemoryLM(nn.Module):
             "hidden_states": h,
             "loss": loss,
             "scores": scores
+        }
+
+    def forward_dialogue_autoregressive(
+        self,
+        input_ids: torch.Tensor,
+        target_ids: Optional[torch.Tensor] = None,
+        turn_end_indices: Optional[List[int]] = None,
+        facts: Optional[List[Dict[str, Any]]] = None,
+        target_recall: Optional[Dict[str, Any]] = None,
+        memory_mode: str = 'bank',
+        write_threshold: float = 0.5,
+        context_window: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Processes a multi-turn conversation step-by-step in true causal autoregressive order.
+        - Sequentially iterates through turns.
+        - Factual turns: write_head computes write_prob, supervised via BCE; writes to episodic memory.
+        - Query turn: memory read at query boundary (prior to answering).
+        - Answer turn: memory vector is fused with answer token hidden states to predict next tokens.
+        - Returns:
+            logits: (1, seq_len, vocab_size)
+            ntp_loss: causal next-token prediction loss
+            write_loss: supervised BCE loss on write_head
+            loss: total loss (ntp_loss + 0.1 * write_loss)
+            scores: retrieval score tensor at query turn
+            active_memory: memory vector retrieved at query turn
+        """
+        device = input_ids.device
+        b_size, seq_len = input_ids.shape
+        assert b_size == 1, "forward_dialogue_autoregressive operates on single dialogue sequences for state isolation."
+
+        facts = facts or []
+        fact_turns = {f["turn"] for f in facts}
+        target_recall = target_recall or {}
+        query_turn = target_recall.get("query_turn")
+
+        # Isolated memory state initialization
+        if memory_mode == 'bank':
+            self.bank.load_memory_state(self.bank.empty_memory_state())
+        nn_keys, nn_vals = [], []
+
+        write_logits = []
+        write_targets = []
+        active_memory = None
+        retrieval_scores = None
+
+        # Build turn boundaries if not provided
+        if not turn_end_indices:
+            turn_end_indices = [seq_len - 1]
+
+        # Allocate full sequence hidden states & fused states
+        h_fused_full = torch.zeros(1, seq_len, self.embed_dim, device=device)
+
+        prev_end = -1
+        for turn_idx, end_idx in enumerate(turn_end_indices):
+            start_idx = prev_end + 1
+            if start_idx >= seq_len:
+                break
+            end_idx = min(end_idx, seq_len - 1)
+            turn_len = end_idx - start_idx + 1
+
+            # Decode causal context up to end_idx
+            prefix_ids = input_ids[:, :end_idx + 1]
+            h_prefix = self.decode_step(prefix_ids, context_window=context_window)
+            avail_len = min(turn_len, h_prefix.size(1))
+            h_turn = h_prefix[:, -avail_len:, :]
+            h_turn_end = h_prefix[:, -1, :]
+
+            # --- WRITE MECHANISM ---
+            # Evaluate host write_head on turn boundary
+            w_logit = self.write_head(h_turn_end)
+            w_prob = torch.sigmoid(w_logit).squeeze(-1)
+            is_fact = 1.0 if turn_idx in fact_turns else 0.0
+            write_logits.append(w_logit)
+            write_targets.append(torch.tensor([[is_fact]], device=device))
+
+            if is_fact > 0.5:
+                # Write factual turn to memory
+                if memory_mode == 'bank':
+                    self.write_representation(
+                        h_turn_end, write_prob=w_prob,
+                        memory_mode='bank', host_write_threshold=write_threshold
+                    )
+                elif memory_mode == 'nn':
+                    (k_p, v_p), _ = self.write_representation(h_turn_end, memory_mode='nn')
+                    nn_keys.append(k_p)
+                    nn_vals.append(v_p)
+
+            # --- READ MECHANISM ---
+            # Query boundary check: read memory at the conclusion of the query turn
+            if query_turn is not None and turn_idx == query_turn:
+                if memory_mode == 'bank':
+                    active_memory, retrieval_scores = self.bank.read(
+                        self.memory_proj_in(h_turn_end), return_scores=True
+                    )
+                elif memory_mode == 'nn' and len(nn_keys) > 0:
+                    k_store = torch.cat(nn_keys, dim=0)
+                    v_store = torch.cat(nn_vals, dim=0)
+                    k_q = self.nn_k_proj(h_turn_end)
+                    scores = torch.matmul(F.normalize(k_q, dim=-1), F.normalize(k_store, dim=-1).T)
+                    weights = F.softmax(scores, dim=-1)
+                    active_memory = torch.matmul(weights, v_store)
+                    retrieval_scores = scores
+
+            # --- FUSION MECHANISM ---
+            # If this is the answer turn (subsequent to query turn) and active memory exists:
+            fill_start = end_idx - avail_len + 1
+            if query_turn is not None and turn_idx == query_turn + 1 and active_memory is not None:
+                fused_turn = self.fuse_with_memory_vector(h_turn, active_memory, memory_mode=memory_mode)
+                h_fused_full[:, fill_start:end_idx + 1, :] = fused_turn
+            else:
+                h_fused_full[:, fill_start:end_idx + 1, :] = h_turn
+
+            prev_end = end_idx
+
+        # Compute next-token prediction logits
+        logits = self.lm_head(h_fused_full)
+
+        ntp_loss = None
+        write_loss = None
+        total_loss = None
+
+        if target_ids is not None:
+            ntp_loss = F.cross_entropy(
+                logits.view(-1, self.vocab_size),
+                target_ids.view(-1),
+                ignore_index=self.pad_id
+            )
+            total_loss = ntp_loss
+
+            if write_logits:
+                preds_t = torch.cat(write_logits)
+                targets_t = torch.cat(write_targets)
+                write_loss = F.binary_cross_entropy_with_logits(preds_t, targets_t)
+                total_loss = total_loss + 0.1 * write_loss
+
+        return {
+            "logits": logits,
+            "hidden_states": h_fused_full,
+            "loss": total_loss,
+            "ntp_loss": ntp_loss,
+            "write_loss": write_loss,
+            "scores": retrieval_scores,
+            "active_memory": active_memory
         }

@@ -64,7 +64,8 @@ class ConversationalEvaluator:
         self,
         conversation_item: Dict[str, Any],
         memory_mode: str = 'bank',
-        write_threshold: float = 0.85
+        write_threshold: float = 0.85,
+        context_window: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Processes a single multi-turn conversation step-by-step:
@@ -72,6 +73,7 @@ class ConversationalEvaluator:
         - Tracks logical fact_id -> memory slot mapping.
         - Queries memory at target_recall turn.
         - Generates answer and computes EM, F1, Recall@1, Recall@5, MRR.
+        - Evaluates causal target token probability difference under memory intervention.
         """
         eid = conversation_item["entity_id"]
         turns = conversation_item["turns"]
@@ -106,6 +108,7 @@ class ConversationalEvaluator:
         recall_metrics = {"r1": 0.0, "r5": 0.0, "mrr": 0.0, "em": 0.0, "f1": 0.0}
         old_value_suppressed = None
         causal_diff = False
+        target_prob_increased = False
 
         query_turn_idx = target_recall.get("query_turn")
 
@@ -119,7 +122,7 @@ class ConversationalEvaluator:
                 input_ids = torch.tensor([enc.ids], dtype=torch.long, device=self.device)
 
                 with torch.no_grad():
-                    h = self.model.decode_step(input_ids)
+                    h = self.model.decode_step(input_ids, context_window=context_window)
                     h_turn = h[:, -1, :]  # causal representation at end of fact turn
                     wp = self.model.compute_write_prob(h_turn)
 
@@ -130,9 +133,10 @@ class ConversationalEvaluator:
                         logical_id = f"{eid}_{fact_key}"
 
                         if memory_mode == 'bank':
-                            # Use genuine host model write probability (no artificial hardcoding)
+                            # Use host write probability with threshold decoupling
                             h_proj, written_idx = self.model.write_representation(
-                                h_turn, write_prob=wp, memory_mode='bank'
+                                h_turn, write_prob=wp, memory_mode='bank',
+                                host_write_threshold=write_threshold
                             )
                             slot = written_idx[0].item() if written_idx is not None and len(written_idx) > 0 else -1
                             if slot != -1:
@@ -161,17 +165,32 @@ class ConversationalEvaluator:
                 input_ids_q = torch.tensor([enc_q.ids], dtype=torch.long, device=self.device)
 
                 with torch.no_grad():
-                    h_q = self.model.decode_step(input_ids_q)
+                    h_q = self.model.decode_step(input_ids_q, context_window=context_window)
                     h_query_token = h_q[:, -1, :]
 
                     fact_store = None
-                    if memory_mode == 'nn' and len(nn_keys) > 0:
-                        fact_store = (torch.cat(nn_keys, dim=0), torch.cat(nn_vals, dim=0))
-
-                    fused_h, scores = self.model.read_and_fuse(
-                        h_query_token, memory_mode=memory_mode,
-                        fact_store=fact_store, return_scores=True
-                    )
+                    m_retrieved = None
+                    if memory_mode == 'bank':
+                        m_retrieved, scores = self.model.bank.read(
+                            self.model.memory_proj_in(h_query_token), return_scores=True
+                        )
+                        fused_h, _ = self.model.read_and_fuse(
+                            h_query_token, memory_mode='bank', return_scores=False
+                        )
+                    elif memory_mode == 'nn':
+                        if len(nn_keys) > 0:
+                            fact_store = (torch.cat(nn_keys, dim=0), torch.cat(nn_vals, dim=0))
+                        fused_h, scores = self.model.read_and_fuse(
+                            h_query_token, memory_mode='nn',
+                            fact_store=fact_store, return_scores=True
+                        )
+                        if fact_store is not None:
+                            k_q = self.model.nn_k_proj(h_query_token)
+                            weights = F.softmax(scores, dim=-1)
+                            m_retrieved = torch.matmul(weights, fact_store[1])
+                    else:
+                        fused_h = h_query_token
+                        scores = None
 
                     # Retrieval Metrics
                     target_key = target_recall.get("target_key")
@@ -185,7 +204,7 @@ class ConversationalEvaluator:
                         recall_metrics["r5"] = r_dict[5]
                         recall_metrics["mrr"] = mean_reciprocal_rank(scores_np, gt_slot)
 
-                    # Autoregressive generation of answer
+                    # Autoregressive generation of answer with persistent memory fusion
                     generated_tokens = []
                     curr_ids = input_ids_q
                     curr_h = fused_h
@@ -197,8 +216,12 @@ class ConversationalEvaluator:
                             break
                         generated_tokens.append(next_token)
                         curr_ids = torch.cat([curr_ids, torch.tensor([[next_token]], device=self.device)], dim=1)
-                        h_step = self.model.decode_step(curr_ids)
-                        curr_h = h_step[:, -1, :]
+                        h_step = self.model.decode_step(curr_ids, context_window=context_window)
+                        h_step_last = h_step[:, -1, :]
+                        if memory_mode != 'none' and m_retrieved is not None:
+                            curr_h = self.model.fuse_with_memory_vector(h_step_last, m_retrieved, memory_mode=memory_mode)
+                        else:
+                            curr_h = h_step_last
 
                     pred_answer = self.tokenizer.decode(generated_tokens)
                     gt_answer = target_recall.get("ground_truth", "")
@@ -214,9 +237,16 @@ class ConversationalEvaluator:
                         # Suppressed if generated answer has new fact and NOT old fact
                         old_value_suppressed = 1.0 if (contains_new and not contains_old) else 0.0
 
-                    # Causal intervention check: run same query with memory_mode='none'
+                    # Causal intervention check: compare target token prediction with vs without memory
                     fused_none, _ = self.model.read_and_fuse(h_query_token, memory_mode='none')
                     causal_diff = not torch.allclose(fused_h, fused_none, atol=1e-4)
+
+                    gt_enc = self.tokenizer.encode(gt_answer).ids if gt_answer else []
+                    if len(gt_enc) > 0 and gt_enc[0] < self.model.vocab_size:
+                        t_id = gt_enc[0]
+                        p_mem = F.softmax(self.model.lm_head(fused_h)[0], dim=-1)[t_id].item()
+                        p_none = F.softmax(self.model.lm_head(fused_none)[0], dim=-1)[t_id].item()
+                        target_prob_increased = (p_mem > p_none)
 
         # Memory occupancy
         occupancy = 0.0
@@ -237,6 +267,7 @@ class ConversationalEvaluator:
             "occupancy": occupancy,
             "old_value_suppressed": old_value_suppressed,
             "causal_difference": causal_diff,
+            "target_prob_increased": target_prob_increased,
             "topic": topic
         }
 
@@ -244,18 +275,23 @@ class ConversationalEvaluator:
         self,
         dataset_items: List[Dict[str, Any]],
         memory_mode: str = 'bank',
-        write_threshold: float = 0.85
+        write_threshold: float = 0.85,
+        context_window: Optional[int] = None
     ) -> Dict[str, Any]:
         """Evaluates a list of conversations and aggregates metrics."""
         results = {
             "r1": [], "r5": [], "mrr": [], "em": [], "f1": [],
             "write_attempts": 0, "successful_writes": 0,
             "duplicate_writes": 0, "replacements": 0,
-            "occupancies": [], "suppressions": [], "causal_diffs": 0
+            "occupancies": [], "suppressions": [], "causal_diffs": 0,
+            "prob_increased_count": 0
         }
 
         for item in dataset_items:
-            res = self.evaluate_dialogue(item, memory_mode=memory_mode, write_threshold=write_threshold)
+            res = self.evaluate_dialogue(
+                item, memory_mode=memory_mode, write_threshold=write_threshold,
+                context_window=context_window
+            )
             results["r1"].append(res["r1"])
             results["r5"].append(res["r5"])
             results["mrr"].append(res["mrr"])
@@ -270,6 +306,8 @@ class ConversationalEvaluator:
                 results["suppressions"].append(res["old_value_suppressed"])
             if res["causal_difference"]:
                 results["causal_diffs"] += 1
+            if res.get("target_prob_increased", False):
+                results["prob_increased_count"] += 1
 
         n = len(dataset_items)
         write_rate = (results["successful_writes"] / max(results["write_attempts"], 1)) * 100
@@ -288,5 +326,6 @@ class ConversationalEvaluator:
             "replacement_rate": float(rep_rate),
             "occupancy": float(np.mean(results["occupancies"]) * 100),
             "suppression_rate": float(suppression_rate),
-            "causal_intervention_rate": float(results["causal_diffs"] / max(n, 1) * 100)
+            "causal_intervention_rate": float(results["causal_diffs"] / max(n, 1) * 100),
+            "target_prob_increased_rate": float(results["prob_increased_count"] / max(n, 1) * 100)
         }

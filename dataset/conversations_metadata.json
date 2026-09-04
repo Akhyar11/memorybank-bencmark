@@ -1,0 +1,15 @@
+{
+  "generator": "generate_conversation_dataset.py",
+  "total_conversations": 2000,
+  "train_size": 1600,
+  "val_size": 200,
+  "test_size": 200,
+  "min_turns": 8,
+  "max_turns": 12,
+  "topics": [
+    "tech_and_career",
+    "lifestyle_and_health",
+    "travel_and_adventure",
+    "memory_update_and_correction"
+  ]
+}

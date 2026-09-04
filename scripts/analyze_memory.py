@@ -120,6 +120,17 @@ def analyze_memory_distribution(
             bos_id=ds.bos_id,
             eos_id=ds.eos_id
         )
+
+        # Load trained weights if checkpoint exists
+        ckpt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'checkpoints', 'seed42_memory_bank.pt')
+        if os.path.exists(ckpt_path):
+            ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+            model.load_state_dict(ckpt['model'])
+            print(f"  [INFO] Loaded trained checkpoint: {ckpt_path}")
+            print(f"         Baseline: {ckpt.get('baseline','?')} | Epochs: {ckpt.get('epoch','?')} | Final Loss: {ckpt.get('final_loss',float('nan')):.4f}")
+        else:
+            print("  [WARN] No trained checkpoint found. Using random weights.")
+
         model.eval()
 
         with torch.no_grad():

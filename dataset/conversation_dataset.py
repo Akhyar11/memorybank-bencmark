@@ -45,6 +45,35 @@ def get_or_create_tokenizer(tokenizer_path: str = "dataset/tokenizer.json") -> T
     return tok
 
 
+def decode_clean(tok: Tokenizer, token_ids: List[int]) -> str:
+    """
+    Decodes subwords cleanly according to SentencePiece/BPE prefix rule:
+    - Tokens starting with '▁' (U+2581) indicate a new word with a space.
+    - Tokens without '▁' attach directly to the previous token without space.
+    """
+    special_ids = {0, 1, 2, 3}
+    im_start = tok.token_to_id("<|im_start|>")
+    im_end = tok.token_to_id("<|im_end|>")
+    if im_start is not None:
+        special_ids.add(im_start)
+    if im_end is not None:
+        special_ids.add(im_end)
+
+    tokens = []
+    for tid in token_ids:
+        if tid in special_ids:
+            continue
+        t = tok.id_to_token(tid)
+        if t is not None:
+            tokens.append(t)
+
+    raw = "".join(tokens)
+    # Replace the prefix block with a space
+    clean = raw.replace("▁", " ").replace("  ", " ").strip()
+    return clean
+
+
+
 class ConversationDataset(Dataset):
     """
     Lazy / Index-based Dataset for Multi-Turn Conversational JSONL files.

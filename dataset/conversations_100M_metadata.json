@@ -1,0 +1,26 @@
+{
+  "generator": "generate_100m_tokens_dataset.py",
+  "seed": 42,
+  "total_tokens": 100001260,
+  "total_conversations": 128312,
+  "splits": {
+    "train": {
+      "filename": "conversations_100M_train.jsonl",
+      "total_tokens": 95000036,
+      "total_conversations": 121897,
+      "filesize_mb": 412.53
+    },
+    "val": {
+      "filename": "conversations_100M_val.jsonl",
+      "total_tokens": 2500699,
+      "total_conversations": 3213,
+      "filesize_mb": 10.85
+    },
+    "test": {
+      "filename": "conversations_100M_test.jsonl",
+      "total_tokens": 2500525,
+      "total_conversations": 3202,
+      "filesize_mb": 10.85
+    }
+  }
+}

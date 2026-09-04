@@ -44,10 +44,10 @@ def run_conversational_benchmark(
     tokenizer_path: str = "dataset/tokenizer.json",
     seeds: Tuple[int, ...] = (42, 43, 44),
     num_epochs: int = 5,
-    max_steps_per_epoch: int = 40,
-    batch_size: int = 8,
-    max_train_samples: int = 1000,
-    max_test_samples: int = 100,
+    max_steps_per_epoch: Optional[int] = None,
+    batch_size: int = 16,
+    max_train_samples: Optional[int] = None,
+    max_test_samples: Optional[int] = 200,
     embed_dim: int = 32,
     num_layers: int = 1,
     num_heads: int = 2,
@@ -77,13 +77,14 @@ def run_conversational_benchmark(
 
     train_ds = ConversationDataset(train_jsonl, tokenizer_path=tokenizer_path, max_samples=max_train_samples)
     test_ds = ConversationDataset(test_jsonl, tokenizer_path=tokenizer_path, max_samples=max_test_samples)
+    print(f"DATASET STATS  : Loaded {len(train_ds):,} train dialogues, {len(test_ds):,} test dialogues")
 
     # Load raw test items for logical evaluation
     test_items = []
     with open(test_jsonl, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f):
             test_items.append(json.loads(line))
-            if len(test_items) >= max_test_samples:
+            if max_test_samples is not None and len(test_items) >= max_test_samples:
                 break
 
     all_modes = {
@@ -119,7 +120,7 @@ def run_conversational_benchmark(
             batches = []
             for b_idx, batch in enumerate(loader):
                 batches.append(batch)
-                if b_idx + 1 >= max_steps_per_epoch:
+                if max_steps_per_epoch is not None and b_idx + 1 >= max_steps_per_epoch:
                     break
             epoch_batches.append(batches)
 
@@ -265,11 +266,14 @@ def run_conversational_benchmark(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pure Decoder-Only Conversational NTP Benchmark")
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--max_steps_per_epoch", type=int, default=30)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--max_train_samples", type=int, default=500)
-    parser.add_argument("--max_test_samples", type=int, default=50)
-    parser.add_argument("--write_threshold", type=float, default=0.85)
+    parser.add_argument("--max_steps_per_epoch", type=int, default=None,
+                        help="Max steps per epoch (default: None, trains on all batches)")
+    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--max_train_samples", type=int, default=None,
+                        help="Max train dialogues to load (default: None, loads entire train file)")
+    parser.add_argument("--max_test_samples", type=int, default=200,
+                        help="Max test dialogues for evaluation (default: 200)")
+    parser.add_argument("--write_threshold", type=float, default=0.6)
     parser.add_argument("--mode", type=str, default="all", choices=["all", "bank", "none", "nn"],
                         help="Model mode to train/evaluate: 'bank' (Memory Bank only), 'none', 'nn', or 'all'")
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44],

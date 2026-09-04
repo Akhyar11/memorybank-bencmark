@@ -114,13 +114,67 @@ class TestWrite:
         assert torch.equal(bank.mem_state, state_before), "State mutated during blocked write"
         assert int(torch.sum(bank.mem_state == STATE_ACTIVE)) == 0
 
-    def test_write_gating_is_eos_zero(self, small_bank):
+    def test_write_gating_is_eos_zero_high_prob_writes(self, small_bank):
+        """
+        NEW SEMANTICS: is_eos=0 with write_prob=HIGH → WRITE must occur.
+        is_eos is no longer a prerequisite for writing.
+        Old test expected no-write; this is now incorrect per updated semantics.
+        """
         bank, config = small_bank
         torch.manual_seed(7)
         h = torch.randn(1, config.hidden_size)
+
+        # write_threshold=0.9 in small_bank fixture; use write_prob=1.0 (above threshold)
+        # is_eos=0 must NOT block the write
         target_idx = bank.write(h, torch.zeros(1), torch.ones(1))
-        assert target_idx[0].item() == -1
-        assert int(torch.sum(bank.mem_state == STATE_ACTIVE)) == 0
+        assert target_idx[0].item() != -1, (
+            "is_eos=False with write_prob=HIGH should WRITE (is_eos no longer gates)"
+        )
+        assert int(torch.sum(bank.mem_state == STATE_ACTIVE)) == 1
+
+    # -----------------------------------------------------------------------
+    # New write-gate tests: all 4 cases from spec
+    # -----------------------------------------------------------------------
+
+    def test_write_gate_case_A_non_eos_high_prob_writes(self, small_bank):
+        """Case A: is_eos=False, write_prob >= threshold → WRITE."""
+        bank, config = small_bank
+        torch.manual_seed(30)
+        h = torch.randn(1, config.hidden_size)
+        # write_threshold=0.9 in fixture; wp=1.0 ≥ threshold
+        idx = bank.write(h, torch.zeros(1), torch.ones(1))
+        assert idx[0].item() != -1, "Case A: must WRITE when write_prob >= threshold"
+        assert int(torch.sum(bank.mem_state == STATE_ACTIVE)) >= 1
+
+    def test_write_gate_case_B_eos_low_prob_no_write(self, small_bank):
+        """Case B: is_eos=True, write_prob < threshold → NO WRITE."""
+        bank, config = small_bank
+        torch.manual_seed(31)
+        h = torch.randn(1, config.hidden_size)
+        state_before = bank.mem_state.clone()
+        # write_threshold=0.9 in fixture; wp=-1.0 < threshold → blocked
+        idx = bank.write(h, torch.ones(1), torch.full((1,), -1.0))
+        assert idx[0].item() == -1, "Case B: must NOT WRITE when write_prob < threshold"
+        assert torch.equal(bank.mem_state, state_before), "State must not change"
+
+    def test_write_gate_case_C_non_eos_low_prob_no_write(self, small_bank):
+        """Case C: is_eos=False, write_prob < threshold → NO WRITE."""
+        bank, config = small_bank
+        torch.manual_seed(32)
+        h = torch.randn(1, config.hidden_size)
+        state_before = bank.mem_state.clone()
+        idx = bank.write(h, torch.zeros(1), torch.full((1,), -1.0))
+        assert idx[0].item() == -1, "Case C: must NOT WRITE when write_prob < threshold"
+        assert torch.equal(bank.mem_state, state_before), "State must not change"
+
+    def test_write_gate_case_D_eos_high_prob_writes(self, small_bank):
+        """Case D: is_eos=True, write_prob >= threshold → WRITE."""
+        bank, config = small_bank
+        torch.manual_seed(33)
+        h = torch.randn(1, config.hidden_size)
+        idx = bank.write(h, torch.ones(1), torch.ones(1))
+        assert idx[0].item() != -1, "Case D: must WRITE when write_prob >= threshold"
+        assert int(torch.sum(bank.mem_state == STATE_ACTIVE)) >= 1
 
     def test_multiple_writes_fill_capacity(self, small_bank):
         bank, config = small_bank

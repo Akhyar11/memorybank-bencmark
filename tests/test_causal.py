@@ -154,3 +154,65 @@ class TestGradientSemantics:
         assert bank.mem_importance.grad_fn is None, "mem_importance buffer should not have autograd history"
         assert bank.mem_confidence.grad_fn is None, "mem_confidence buffer should not have autograd history"
         assert bank.mem_state.grad_fn is None, "mem_state buffer should not have autograd history"
+
+
+class TestCausalWriteGate:
+    """
+    Causal validation of the write-gate change:
+    - write_prob is the sole causal variable for write/no-write
+    - is_eos is causally inert after the change
+    """
+
+    @pytest.fixture
+    def causal_bank(self):
+        config = TinyMemoryConfig(
+            memory_capacity=16, memory_dim=8, hidden_size=8,
+            memory_top_k=4, mem_decay_rate=0.0,
+            memory_write_threshold=0.5,
+        )
+        torch.manual_seed(99)
+        bank = TinyMemoryBank(config=config)
+        bank.load_memory_state(bank.empty_memory_state())
+        return bank, config
+
+    def test_write_prob_is_causal_variable(self, causal_bank):
+        """
+        Changing ONLY write_prob across threshold must flip write/no-write.
+        """
+        bank, config = causal_bank
+        tau = config.memory_write_threshold
+        torch.manual_seed(10)
+        h = torch.randn(1, config.hidden_size)
+
+        # Below threshold → no write
+        bank.load_memory_state(bank.empty_memory_state())
+        idx_low = bank.write(h.clone(), torch.zeros(1), torch.full((1,), tau - 0.001))
+
+        # Above threshold → write
+        bank.load_memory_state(bank.empty_memory_state())
+        idx_high = bank.write(h.clone(), torch.zeros(1), torch.full((1,), tau + 0.001))
+
+        assert idx_low[0].item() == -1, f"write_prob < threshold must not write"
+        assert idx_high[0].item() != -1, f"write_prob > threshold must write"
+
+    def test_is_eos_is_causally_inert(self, causal_bank):
+        """
+        Changing ONLY is_eos must NOT flip write/no-write decision.
+        Both should produce the same outcome for identical write_prob.
+        """
+        bank, config = causal_bank
+        torch.manual_seed(11)
+        h = torch.randn(1, config.hidden_size)
+        wp_above = torch.full((1,), config.memory_write_threshold + 0.1)
+
+        bank.load_memory_state(bank.empty_memory_state())
+        idx_eos_off = bank.write(h.clone(), torch.zeros(1), wp_above.clone())
+
+        bank.load_memory_state(bank.empty_memory_state())
+        idx_eos_on = bank.write(h.clone(), torch.ones(1), wp_above.clone())
+
+        # Both must write (is_eos change must not flip to no-write)
+        assert idx_eos_off[0].item() != -1, "is_eos=0 + high prob must write"
+        assert idx_eos_on[0].item() != -1, "is_eos=1 + high prob must write"
+        assert idx_eos_off[0].item() == idx_eos_on[0].item(), \
+            "Causal inertness: is_eos must not change target slot"

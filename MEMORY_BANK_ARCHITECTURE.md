@@ -161,10 +161,28 @@ Untuk setiap slot yang berhasil dibaca: $I_j \mathrel{+}= \eta_a$ (clamped ke $[
 Menyimpan representasi fakta baru ke slot memori.
 
 **Gate Check**:
+
+> **WRITE SEMANTICS UPDATE (v2)**
+>
+> **Old behavior** (before this change):
+> ```python
+> do_write = (is_eos > 0.5) AND (write_prob >= τ_write)
+> ```
+> `is_eos` was a mandatory prerequisite — writing could only occur at EOS token boundaries.
+>
+> **New behavior** (current, after source-of-truth audit):
+> ```python
+> do_write = (write_prob >= τ_write)
+> ```
+> `is_eos` is **no longer a write prerequisite**. It is retained as an API parameter for backward-compatibility but has no effect on the write decision.
+>
+> **Rationale**: Source-of-truth audit of the Flax implementation confirmed that `is_eos` was a caller-level signal, not a locked architectural component. The Memory Bank itself never detected EOS — the caller decided when to invoke `write()`. Removing `is_eos` from the gate restores correct semantics where `write_prob` is the sole write-decision variable.
+>
+> `is_eos` is described as a modification of the write invocation/gating semantics, subject to source-of-truth architecture verification. The Memory Bank architecture (projections, state schema, retrieval, replacement) is **unchanged**.
+
 ```
-do_write = (is_eos > 0.5) AND (write_prob >= τ_write)
+do_write = (write_prob >= τ_write)
 ```
-Jika gate tertutup → tidak ada mutasi buffer, return target index = `-1`.
 
 **Proyeksi Masukan**:
 $$k_{\text{new}} = W_k \cdot h, \quad v_{\text{new}} = W_v \cdot h, \quad i_{\text{new}} = \sigma(W_i \cdot h)$$

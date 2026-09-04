@@ -260,10 +260,14 @@ class TinyMemoryBank(nn.Module):
                 v_n = v_new_d[b]
                 i_n = i_new_d[b]
                 c_n = c_new_d[b]
-                is_e = is_eos[b]
+                is_e = is_eos[b]   # retained for backward-compat; no longer gates write
                 w_p = write_prob[b]
 
-                do_write = (is_e > 0.5) and (w_p >= cfg.memory_write_threshold)
+                # WRITE GATE: only write_prob controls write decision (is_eos removed as prerequisite)
+                # Source-of-truth audit: is_eos is a caller-level signal, not a locked architecture component.
+                # Old behavior: do_write = (is_e > 0.5) and (w_p >= cfg.memory_write_threshold)
+                # New behavior: do_write = (w_p >= cfg.memory_write_threshold)
+                do_write = (w_p >= cfg.memory_write_threshold)
                 
                 k_n_norm = k_n / (torch.norm(k_n) + 1e-8)
                 k_norm = self.mem_keys / (torch.norm(self.mem_keys, dim=-1, keepdim=True) + 1e-8)

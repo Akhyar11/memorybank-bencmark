@@ -1,32 +1,38 @@
 """
-generate_100m_tokens_dataset.py – Ultra-Diverse, Hyper-Generative 100M Token Conversational Dataset Generator.
+generate_100m_tokens_dataset.py – Infinite-Diversity Multi-Turn Conversational Memory Dataset Generator.
 
-Generates 100,000,000 tokens of multi-turn (4-16 turns) Indonesian dialogues:
+Generates 100,000,000 tokens of rich, organic, multi-turn (4-16 turns) Indonesian dialogues:
 - Train split: 95,000,000 tokens (~120,000 conversations)
 - Val split:    2,500,000 tokens (~3,100 conversations)
 - Test split:   2,500,000 tokens (~3,100 conversations)
 
-Key Architecture & Diversity Mechanisms:
-1. Dynamic Combinatorial Discourse Synthesizer:
-   Constructs sentences dynamically via Clause Permutation (Opener + Persona Anchor + Topic Predicate + Question/Prompt),
-   yielding over 10^24 unique sentence structures and eliminating static template repetition.
-2. 8 Distinct Dialogue Flow Topologies:
-   - Consultative Technical & Code Debugging (includes realistic code snippets & bullet points)
-   - Everyday Anecdotal Storytelling & Banter
-   - Culinary, Recipe Formulation & Allergen Safety
-   - Fitness, Sports Periodization & Nutritional Goals
-   - Creative Writing, Music, Crafting & Media
-   - Career Navigation, Promotion & Workplace Strategy
-   - Deep Science, Cosmology & Stoic Philosophy
-   - Multi-Topic Drift, Fact Correction & Long-Range Memory Tracking
-3. Massive Entity & Domain Pools:
-   250+ Names, 80+ Cities, 80+ Professions, 50+ Frameworks/Langs, 60+ Foods, 40+ Drinks,
-   50+ Hobbies, 40+ Travel Spots, 30+ Pets, 30+ Side Businesses, 30+ Fitness Regimens.
-4. 120+ Curated Intellectual Distractors + Procedural Variations.
-5. 100% Natural, Context-Aware Indonesian Recall Phrasings:
-   Eliminates all robotic slot keys and produces fluid, varied conversational responses.
-6. High-Throughput Streaming Engine:
-   Direct streaming to jsonl with batch tokenization via HuggingFace tokenizers.
+Core Diversity Engine:
+1. 15 Distinct Dialogue Archetypes:
+   - Technical Architecture & Code Consulting (with real code snippets)
+   - Bug Debugging & Traceback Diagnostics (with stack traces & error messages)
+   - Indonesian Culinary Arts, Recipes & Allergen Safety
+   - Travel Itinerary Planning & Regional Exploration
+   - Fitness Periodization, Strength Training & Nutrition
+   - Creative Writing, Sci-Fi Worldbuilding & Story Polish
+   - Career Navigation, Promotion, 1-on-1s & Salary Negotiation
+   - Deep Astronomy, Quantum Science & Physics
+   - Stoic Philosophy, Mindset & Life Dilemmas
+   - Everyday Banter, Commuting, Rainy Days & Cozy Cafes
+   - Pet Care, Behavior & Funny Animal Anecdotes
+   - Personal Finance, Emergency Funds & Wealth Building
+   - Gaming Meta, Esports & Indie Game Discussions
+   - Book & Cinema Story Analysis
+   - Dynamic Memory Update & Fact Correction
+2. Combinatorial Clause Synthesizer (Stochastic Grammar):
+   Every turn is dynamically constructed from independent syntactic modules
+   (Discourse Opener + Contextual Stance + Topic Clause + Pragmatic Inquiry),
+   generating billions of non-repeating, natural Indonesian sentences.
+3. Multi-Format Assistant Responses:
+   Includes bulleted lists, numbered step-by-step guides, code blocks (Python, SQL, Go, JS, Bash),
+   pros/cons comparisons, and warm conversational paragraphs.
+4. Natural Episodic Memory Planting & Recall:
+   Facts are dropped organically across turns (intro, constraint, incidental detail, or correction),
+   and tested via direct, contextual, and cross-attribute questions with 100% natural Indonesian phrasing.
 """
 import os
 import sys
@@ -39,11 +45,11 @@ from tokenizers import Tokenizer
 
 
 # ===========================================================================
-# 1. MASSIVE ENTITY & DOMAIN POOLS
+# 1. EXPANDED ENTITIES & KNOWLEDGE BASES
 # ===========================================================================
 
 NAMES = [
-    # Javanese, Sundanese, Batak, Minang, Malay, Eastern Indonesian & Modern
+    # Male & Female names from all Indonesian regions (Java, Sunda, Batak, Minang, Bali, Eastern, Modern)
     "Dimas", "Rian", "Aditya", "Rizky", "Budi", "Bayu", "Fajar", "Gilang", "Hendra", "Ilham",
     "Joko", "Kevin", "Lukman", "Maulana", "Naufal", "Oki", "Pandu", "Reza", "Satria", "Taufik",
     "Agus", "Bambang", "Chandra", "Danang", "Eko", "Farhan", "Galih", "Hari", "Irfan", "Jefri",
@@ -63,12 +69,14 @@ NAMES = [
     "Hafsa", "Inara", "Jasmin", "Keisha", "Lavanya", "Marsya", "Najwa", "Odelia", "Prita", "Qonita",
     "Rania", "Salma", "Talitha", "Ufaira", "Vania", "Widya", "Xenia", "Yasmin", "Zaskia", "Aurelia",
     "Bonaventura", "Christo", "Dion", "Efraim", "Felix", "Geraldo", "Hutomo", "Ignatius", "Julian", "Krisna",
-    "Lambertus", "Marcel", "Nathan", "Octavianus", "Patrick", "Reynold", "Stefanus", "Timothy", "Valerian", "Willy"
+    "Lambertus", "Marcel", "Nathan", "Octavianus", "Patrick", "Reynold", "Stefanus", "Timothy", "Valerian", "Willy",
+    "Tegar", "Sandi", "Zidan", "Daffa", "Rafi", "Kezia", "Sherly", "Tasya", "Nabila", "Syifa",
+    "Alif", "Reyhan", "Hanif", "Dzaki", "Farras", "Arkan", "Haikal", "Kenzo", "Azka", "Atta"
 ]
 
 CITIES = [
     # Java
-    "Jakarta", "Surabaya", "Bandung", "Semarang", "Yogyakarta", "Malang", "Solo", "Bogor", "Bekasi",
+    "Jakarta Selatan", "Jakarta Pusat", "Jakarta Barat", "Surabaya", "Bandung", "Semarang", "Yogyakarta", "Malang", "Solo", "Bogor", "Bekasi",
     "Tangerang", "Depok", "Cimahi", "Cirebon", "Sukabumi", "Tasikmalaya", "Pekalongan", "Tegal",
     "Magelang", "Purwokerto", "Kediri", "Blitar", "Madiun", "Jember", "Banyuwangi", "Salatiga",
     "Kudus", "Mojokerto", "Pasuruan", "Probolinggo", "Tuban", "Lamongan", "Cilacap", "Garut",
@@ -105,7 +113,7 @@ NON_TECH_ROLES = [
     "Manajer Operasional Hotel", "Instruktur Kebugaran Pribadi", "Analis Kebijakan Publik", "Penyiar Radio & Podcaster"
 ]
 
-LANGUAGES = [
+PROGRAMMING_LANGS = [
     "Python", "TypeScript", "JavaScript", "Golang", "Rust", "Java", "Kotlin",
     "Swift", "C++", "PHP", "Dart", "C#", "SQL", "Scala", "Ruby", "Elixir"
 ]
@@ -227,21 +235,25 @@ PHILOSOPHY_TOPICS = [
 
 
 # ===========================================================================
-# 2. CODE SNIPPETS & TECHNICAL MICRO-SCENARIOS
+# 2. CODE SNIPPETS & DIAGNOSTIC TRACEBACK SCENARIOS
 # ===========================================================================
 
-TECH_CODE_SNIPPETS = [
+DIAGNOSTIC_SCENARIOS = [
+    (
+        "Halo asisten! Aplikasiku melempar error berikut di terminal:\n```text\nKeyError: 'user_id'\n  File 'app/services/auth.py', line 45, in authenticate\n    uid = payload['user_id']\n```\nKenapa ini bisa terjadi dan apa perbaikannya?",
+        "Error `KeyError: 'user_id'` terjadi karena kunci `'user_id'` tidak ditemukan di dalam dictionary `payload` (misalnya jika token JWT kadaluarsa atau payload belum didecode sempurna).\n\nSolusi terbaik:\n1. **Gunakan method `.get()`** dengan default value atau validasi eksplisit:\n```python\nuid = payload.get('user_id')\nif not uid:\n    raise AuthenticationError('Token tidak memiliki user_id valid')\n```\n2. **Validasi Schema**: Manfaatkan Pydantic atau dataclass untuk memvalidasi payload sebelum diproses."
+    ),
+    (
+        "Tolong bantu, query PostgreSQL ini lambat banget saat tabel mencapai 2 juta baris:\n```sql\nSELECT * FROM orders WHERE customer_id = 9182 ORDER BY created_at DESC LIMIT 20;\n```\nBagaimana cara mengoptimalkannya?",
+        "Masalahnya ada pada sorting dan scanning tabel besar tanpa index gabungan. Solusinya buat **Composite Index**:\n```sql\nCREATE INDEX idx_orders_customer_created ON orders (customer_id, created_at DESC);\n```\nDengan index ini, database langsung melakukan *Index Scan* terarah tanpa perlu melakukan *Sort Memory Scan* berbiaya tinggi pada jutaan baris."
+    ),
+    (
+        "Di React aku dapat warning ini di console browser:\n```text\nWarning: Each child in a list should have a unique 'key' prop.\n```\nApakah ini berbahaya dan bagaimana memperbaikinya?",
+        "Warning ini muncul saat melakukan render array elemen menggunakan `.map()` tanpa prop `key` unik pada root elemen terluar.\n\nContoh perbaikan:\n```tsx\n// Gunakan ID unik dari data, hindari index jika urutan list bisa berubah\n{items.map((item) => (\n  <div key={item.id} className='p-3 border-b'>\n    <p>{item.name}</p>\n  </div>\n))}\n```\nProp `key` sangat krusial agar algoritma Reconciliation React tahu persis elemen mana yang ditambah, diubah, atau dihapus secara efisien."
+    ),
     (
         "Bagaimana cara memecah tugas komputasi asinkron di Python tanpa memblokir event loop?",
         "Gunakan `asyncio.to_thread()` untuk mendelegasikan fungsi I/O sinkron atau fungsi blocking ke thread worker terpisah. Contohnya:\n```python\nimport asyncio\nimport time\n\ndef blocking_io():\n    time.sleep(2)\n    return 'Selesai proses berat'\n\nasync def main():\n    hasil = await asyncio.to_thread(blocking_io)\n    print(hasil)\n```\nDengan cara ini, event loop utama tetap responsif menangani traffic request lainnya."
-    ),
-    (
-        "Ada tips membuat custom hook di React untuk debounce input pencarian?",
-        "Tentu, kamu bisa memanfaatkan `useEffect` dan `setTimeout` sederhana:\n```typescript\nimport { useState, useEffect } from 'react';\n\nexport function useDebounce<T>(value: T, delayMs: number): T {\n  const [debouncedValue, setDebouncedValue] = useState<T>(value);\n  useEffect(() => {\n    const timer = setTimeout(() => setDebouncedValue(value), delayMs);\n    return () => clearTimeout(timer);\n  }, [value, delayMs]);\n  return debouncedValue;\n}\n```\nHook ini mencegah trigger API berulang kali pada setiap ketikan pengguna."
-    ),
-    (
-        "Bagaimana sintaks SQL yang aman untuk melakukan Upsert (Insert on Conflict)?",
-        "Pada PostgreSQL modern, gunakan klausul `ON CONFLICT`:\n```sql\nINSERT INTO user_profiles (user_id, display_name, updated_at)\nVALUES (42, 'Dimas Perkasa', NOW())\nON CONFLICT (user_id)\nDO UPDATE SET\n  display_name = EXCLUDED.display_name,\n  updated_at = NOW();\n```\nIni menjamin operasi idempotent tanpa memicu error duplicate key."
     ),
     (
         "Bagaimana cara menulis Dockerfile multi-stage build yang ringkas untuk aplikasi Go?",
@@ -366,46 +378,7 @@ EXPANDED_DISTRACTORS = [
 
 
 # ===========================================================================
-# 4. DYNAMIC SENTENCE SYNTHESIZER (CLAUSE PERMUTATION ENGINE)
-# ===========================================================================
-
-OPENING_DISCOURSE_MARKERS = [
-    "Halo!", "Hai!", "Halo rekan AI!", "Hai chatbot!", "Selamat pagi!",
-    "Selamat siang!", "Selamat sore!", "Salam kenal!", "Hai halo!",
-    "Permisi!", "Halo kawan!", "Pagi!", "Halo apa kabar?", "Hai salam hangat!",
-    "Halo asisten!", "Hai selamat beraktivitas!", "Halo rekan cerdas!"
-]
-
-PERSONA_CONNECTORS = [
-    # Natural self-introductions in Indonesian
-    "Kenalkan, namaku {name}. Aku tinggal di {city} dan bekerja sebagai {job}.",
-    "Namaku {name}. Sehari-hari aku berdomisili di {city} serta berkarir sebagai {job}.",
-    "Aku {name} dari kota {city}. Profesi utamaku saat ini adalah {job}.",
-    "Salam dari {city}! Panggil aku {name}, kesibukanku sehari-hari adalah {job}.",
-    "Dengan {name} di sini. Aku menetap di {city} dan aktif berprofesi sebagai {job}.",
-    "Sebagai seorang {job} yang tinggal di {city}, perkenalkan aku {name}.",
-    "Hai, aku {name}! Saat ini aku berdomisili di kawasan {city} dan bekerja menjadi {job}."
-]
-
-CASUAL_PERSONA_DROPS = [
-    # Used when persona is mentioned in Turn 2 or Turn 4 casually
-    "Oh iya sekadar info, kenalkan namaku {name}. Aku warga {city} dan pekerjaanku sehari-hari itu {job}.",
-    "Btw salam kenal ya! Aku {name}, tinggal di {city}. Profesi utamaku adalah {job}.",
-    "Ngomong-ngomong kenalan dulu, aku {name} dari {city}. Sehari-hari aku berkutat sebagai {job}.",
-    "Senang ngobrol denganmu! Namaku {name}, saat ini berdomisili di {city} dan berkarir sebagai {job}."
-]
-
-ASSISTANT_WARM_GREETINGS = [
-    "Halo {name}! Senang sekali menyapamu. Salam hangat untuk seorang {job} di {city}! Ada topik seru apa yang ingin kita diskusikan hari ini?",
-    "Hai {name}! Senang bisa terhubung. Luar biasa, berkarya sebagai {job} di kota {city}. Ada yang bisa kubantu atau ingin kita bedah bersama?",
-    "Salam kenal, {name}! Senang bisa ngobrol santai denganmu. Menarik sekali melihat dinamika peranmu sebagai {job} di {city}. Mari kita mulai!",
-    "Halo {name} dari {city}! Selamat datang. Pasti harimu sebagai seorang {job} sangat produktif. Topik apa yang sedang menarik perhatianmu?",
-    "Hai {name}! Menyenangkan sekali bisa berdiskusi denganmu di {city}. Sebagai {job}, pasti banyak ide menarik yang bisa kita eksplorasi bersama."
-]
-
-
-# ===========================================================================
-# 5. NATURAL RECALL PHRASING ENGINE (100% IDIOMATIC INDONESIAN)
+# 4. NATURAL RECALL PHRASING ENGINE (100% IDIOMATIC INDONESIAN)
 # ===========================================================================
 
 RECALL_QUESTIONS_POOL: Dict[str, List[str]] = {
@@ -615,14 +588,14 @@ def format_natural_recall_turn(recall_key: str, ans: str) -> Tuple[str, str]:
 
 
 # ===========================================================================
-# 6. 8 DIVERSE DIALOGUE FLOW TOPOLOGIES
+# 5. PERSONA BUILDER
 # ===========================================================================
 
 def build_random_persona(uid: str) -> Dict[str, Any]:
     name = random.choice(NAMES)
     city = random.choice(CITIES)
     alt_city = random.choice([c for c in CITIES if c != city])
-    job = random.choice(TECH_ROLES if random.random() < 0.55 else NON_TECH_ROLES)
+    job = random.choice(TECH_ROLES if random.random() < 0.52 else NON_TECH_ROLES)
     alt_job = random.choice([j for j in TECH_ROLES + NON_TECH_ROLES if j != job])
     pet_type, pet_name = random.choice(PETS)
 
@@ -633,7 +606,7 @@ def build_random_persona(uid: str) -> Dict[str, Any]:
         "alt_city": alt_city,
         "job": job,
         "alt_job": alt_job,
-        "lang": random.choice(LANGUAGES),
+        "lang": random.choice(PROGRAMMING_LANGS),
         "tool": random.choice(FRAMEWORKS_AND_TOOLS),
         "hobby": random.choice(HOBBIES),
         "game": random.choice(GAMES),
@@ -650,38 +623,63 @@ def build_random_persona(uid: str) -> Dict[str, Any]:
     }
 
 
-def flow_consultative_technical(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
-    """Consultative debugging & architecture; includes code snippets and structured lists."""
-    turns, facts = [], []
-    
-    # Check if we use a code snippet scenario
-    if random.random() < 0.6:
-        q_code, a_code = random.choice(TECH_CODE_SNIPPETS)
-        turns.append({"role": "user", "content": q_code})
-        turns.append({"role": "assistant", "content": a_code})
-    else:
-        q_init = f"Halo asisten! Di kantorku kami lagi migrasi service ke stack {p['lang']} dengan {p['tool']}. Ada saran arsitektur modularnya?"
-        a_init = (
-            f"Migrasi ke {p['lang']} dan {p['tool']} adalah langkah tepat untuk skalabilitas! Berikut arsitektur rekomendasi:\n"
-            f"1. **Domain Layer**: Pisahkan entity dan aturan bisnis murni tanpa dependensi eksternal.\n"
-            f"2. **Adapter Layer**: Gunakan interface untuk controller REST dan handler database.\n"
-            f"3. **Observability**: Pasang metrics dan structured logging sejak hari pertama."
-        )
-        turns.append({"role": "user", "content": q_init})
-        turns.append({"role": "assistant", "content": a_init})
+# ===========================================================================
+# 6. PROCEDURAL DISCOURSE CLAUSE GENERATOR (INFINITE COMBINATIONS)
+# ===========================================================================
 
-    # Persona drop in Turn 2
-    conn = random.choice(CASUAL_PERSONA_DROPS).format(name=p["name"], city=p["city"], job=p["job"])
-    turns.append({"role": "user", "content": f"{conn} Di proyek ini kami memang fokus penuh ke {p['lang']}."})
-    turns.append({"role": "assistant", "content": f"Salam kenal hangat, {p['name']}! Senang berdiskusi dengan rekan {p['job']} dari {p['city']}. Stack {p['lang']} memang sangat handal bila dipadukan dengan design pattern yang teruji."})
+GREETING_OPENERS = [
+    "Halo!", "Hai asisten!", "Selamat pagi rekan AI!", "Selamat siang asisten!",
+    "Selamat sore!", "Halo rekan cerdas!", "Permisi mau konsultasi dong!", "Hai apa kabar?",
+    "Pagi!", "Halo chatbot!", "Salam hangat!", "Hai halo rekan!", "Permisi rekan AI!"
+]
+
+INTRO_CLAUSES = [
+    "Kenalkan, namaku {name}. Aku warga {city} yang bekerja sebagai {job}.",
+    "Aku {name}, saat ini tinggal di {city} dan berprofesi sebagai {job}.",
+    "Salam dari {city}! Panggil aku {name}, sehari-hari aku berkarir sebagai {job}.",
+    "Namaku {name}. Sehari-hari aku menetap di kota {city} dengan profesi {job}.",
+    "Sebagai seorang {job} yang berdomisili di {city}, perkenalkan aku {name}.",
+    "Kenalin aku {name}. Kesibukan utamaku saat ini adalah {job} di kawasan {city}."
+]
+
+MID_CONV_PERSONA_DROPS = [
+    "Oh iya sekalian kenalan, namaku {name}. Sehari-hari aku berkutat sebagai {job} di kota {city}.",
+    "Btw salam kenal ya! Aku {name}, tinggal di {city}. Profesi utamaku itu seorang {job}.",
+    "Ngomong-ngomong biar lebih akrab, namaku {name} dari {city}. Sehari-hari aku aktif bekerja sebagai {job}.",
+    "Senang berdiskusi denganmu! Kenalkan aku {name}, warga {city} yang berkarir di bidang {job}."
+]
+
+ASSISTANT_OPENING_REPLIES = [
+    "Halo {name}! Senang sekali bisa menyapamu di {city}. Sebagai seorang {job}, pasti aktivitasmu sangat produktif. Ada topik menarik apa yang ingin kita ulas hari ini?",
+    "Hai {name}! Senang bisa berkenalan. Salam hangat untuk seorang {job} dari {city}! Mari kita mulai diskusinya, apa yang bisa kubantu?",
+    "Salam kenal {name}! Senang terhubung denganmu. Menarik sekali melihat peranmu sebagai {job} di kota {city}. Silakan ceritakan apa yang ingin kamu diskusikan!",
+    "Halo {name} dari {city}! Selamat datang. Profesi sebagai {job} tentu menuntut fokus yang tajam. Ada hal spesifik yang ingin kita bedah bersama?"
+]
+
+
+# ===========================================================================
+# 7. 15 DIVERSE DIALOGUE ARCHETYPE BUILDERS
+# ===========================================================================
+
+def build_debugging_diagnostic_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """User starts with a real code error / traceback, drops persona in Turn 2, followed by recall."""
+    turns, facts = [], []
+    q_diag, a_diag = random.choice(DIAGNOSTIC_SCENARIOS)
+    turns.append({"role": "user", "content": q_diag})
+    turns.append({"role": "assistant", "content": a_diag})
+
+    # Persona in Turn 2
+    p_drop = random.choice(MID_CONV_PERSONA_DROPS).format(name=p["name"], city=p["city"], job=p["job"])
+    turns.append({"role": "user", "content": f"Penjelasanmu sangat solutif dan jelas! {p_drop} Stack andalanku memang {p['lang']}."})
+    turns.append({"role": "assistant", "content": f"Sama-sama {p['name']}! Senang solusinya bermanfaat. Bahasa {p['lang']} memang sangat fleksibel bila penanganan exception dan error handling-nya terstruktur."})
     facts.append({"turn": 2, "key": "name", "value": p["name"]})
     facts.append({"turn": 2, "key": "city", "value": p["city"]})
     facts.append({"turn": 2, "key": "job", "value": p["job"]})
     facts.append({"turn": 2, "key": "lang", "value": p["lang"]})
 
-    # Fact 2 (lifestyle/drink or hobby)
-    turns.append({"role": "user", "content": f"Kalau pas suntuk memecahkan bug arsitektur, aku biasanya rehat sejenak menikmati {p['drink']}."})
-    turns.append({"role": "assistant", "content": f"Pilihan tepat, {p['name']}. Menikmati {p['drink']} memberi jeda penting bagi otak agar kembali segar menemukan solusi kreatif."})
+    # Turn 4: Drink
+    turns.append({"role": "user", "content": f"Sehabis pusing berjam-jam cari bug, enaknya langsung istirahat sambil minum {p['drink']} biar rileks."})
+    turns.append({"role": "assistant", "content": f"Pilihan istirahat yang sempurna, {p['name']}. Menikmati segelas {p['drink']} ampuh menyegarkan kembali fokus setelah debugging panjang."})
     facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
 
     # Distractor turns
@@ -694,11 +692,6 @@ def flow_consultative_technical(p: Dict[str, Any], turns_count: int) -> Dict[str
         turns.append({"role": "user", "content": d2[0]})
         turns.append({"role": "assistant", "content": d2[1]})
 
-    if turns_count >= 14:
-        d3 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] not in (d1[0], d2[0])])
-        turns.append({"role": "user", "content": d3[0]})
-        turns.append({"role": "assistant", "content": d3[1]})
-
     recall_key = random.choice(["job", "city", "lang", "drink"])
     ans = p[recall_key]
     q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
@@ -707,7 +700,7 @@ def flow_consultative_technical(p: Dict[str, Any], turns_count: int) -> Dict[str
     turns.append({"role": "assistant", "content": a_rec})
 
     return {
-        "topic": "technical_and_engineering",
+        "topic": "debugging_and_diagnostics",
         "turns": turns,
         "facts": facts,
         "target_recall": {
@@ -720,99 +713,36 @@ def flow_consultative_technical(p: Dict[str, Any], turns_count: int) -> Dict[str
     }
 
 
-def flow_casual_storytelling(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
-    """Anecdotal everyday life, commute, pets, weather, and relaxing banter."""
+def build_culinary_recipe_safety_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Culinary planning with explicit allergy constraint and regional seasonings."""
     turns, facts = [], []
-
-    anecdotes = [
-        (f"Wah tadi sore pas jam pulang kantor di kota {p['city']}, hujan deras bikin jalanan macet panjang.",
-         f"Musim hujan memang sering menantang mobilitas di {p['city']}. Untung sekarang sudah sampai di tempat yang hangat dan nyaman. Saatnya rehat!"),
-        (f"Hari ini suasana di {p['city']} lagi lumayan adem dan mendung syahdu, enak banget buat ngobrol santai.",
-         f"Cuaca mendung sejuk selalu sukses menciptakan mood yang tenang. Sangat pas untuk rileks setelah menuntaskan berbagai agenda penting."),
-        (f"Akhirnya jam kerja hari ini beres juga, badan lumayan pegal tapi pikiran puas karena target tercapai di {p['city']}.",
-         f"Kerja keras yang berbuah manis! Melepaskan penat setelah seharian produktif adalah hakmu. Jangan lupa istirahat yang berkualitas.")
-    ]
-    u_0, a_0 = random.choice(anecdotes)
-    turns.append({"role": "user", "content": u_0})
-    turns.append({"role": "assistant", "content": a_0})
-    facts.append({"turn": 0, "key": "city", "value": p["city"]})
-
-    name = p["name"]
-    # Turn 2: Pet intro and personal name
-    pet_lines = [
-        f"Untung sesampainya di rumah langsung disambut tingkah lucu {p['pet_type']} peliharaanku yang namanya {p['pet_name']}. Btw kenalkan, aku {name}.",
-        f"Capek langsung hilang pas ketemu {p['pet_name']}, yaitu {p['pet_type']} kesayanganku di rumah. Oh iya kenalan, namaku {name}.",
-        f"Mood booster terbaikku ya si {p['pet_name']}, seekor {p['pet_type']} yang selalu manja. Salam kenal, panggil saja aku {name}."
-    ]
-    turns.append({"role": "user", "content": random.choice(pet_lines)})
-    turns.append({"role": "assistant", "content": f"Halo {name}! Memiliki {p['pet_type']} bernama {p['pet_name']} benar-benar anugerah penawar stres yang luar biasa setelah seharian beraktivitas."})
-    facts.append({"turn": 2, "key": "name", "value": name})
-    facts.append({"turn": 2, "key": "pet_type", "value": p["pet_type"]})
-    facts.append({"turn": 2, "key": "pet_name", "value": p["pet_name"]})
-
-    # Turn 4: Job mention
-    turns.append({"role": "user", "content": f"Sehari-hari selain mengurus rumah dan peliharaan, profesi utamaku itu seorang {p['job']}."})
-    turns.append({"role": "assistant", "content": f"Peran sebagai {p['job']} menuntut ketelitian dan energi mental yang tinggi. Menjaga kehangatan rumah bersama {p['pet_name']} adalah keseimbangan hidup yang sangat ideal."})
-    facts.append({"turn": 4, "key": "job", "value": p["job"]})
-
-    # Distractor turns
-    d1 = random.choice(EXPANDED_DISTRACTORS)
-    turns.append({"role": "user", "content": d1[0]})
-    turns.append({"role": "assistant", "content": d1[1]})
-
-    if turns_count >= 12:
-        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
-        turns.append({"role": "user", "content": d2[0]})
-        turns.append({"role": "assistant", "content": d2[1]})
-
-    recall_key = random.choice(["city", "pet_name", "job"])
-    ans = p[recall_key]
-    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
-    rec_idx = len(turns)
-    turns.append({"role": "user", "content": q_rec})
-    turns.append({"role": "assistant", "content": a_rec})
-
-    return {
-        "topic": "casual_and_storytelling",
-        "turns": turns,
-        "facts": facts,
-        "target_recall": {
-            "query_turn": rec_idx,
-            "target_key": recall_key,
-            "ground_truth": ans,
-            "question": q_rec,
-            "answer": a_rec
-        }
-    }
-
-
-def flow_culinary_and_diet(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
-    """Indonesian recipes, culinary safety, and allergy/dietary planning."""
-    turns, facts = [], []
-    
-    # Direct intro
-    g = random.choice(OPENING_DISCOURSE_MARKERS)
-    u_0 = f"{g} {random.choice(PERSONA_CONNECTORS).format(name=p['name'], city=p['city'], job=p['job'])}"
-    a_0 = random.choice(ASSISTANT_WARM_GREETINGS).format(name=p['name'], city=p['city'], job=p['job'])
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
     turns.append({"role": "user", "content": u_0})
     turns.append({"role": "assistant", "content": a_0})
     facts.append({"turn": 0, "key": "city", "value": p["city"]})
     facts.append({"turn": 0, "key": "job", "value": p["job"]})
 
-    # Turn 2: Culinary interest and allergy constraint
-    food_inquiries = [
-        f"Akhir pekan ini aku berencana memasak hidangan favoritku, yaitu {p['food']}. Cuma kamu wajib catat ya, aku punya {p['allergy']}.",
-        f"Bicara soal selera kuliner, menu kesukaanku itu {p['food']}. Namun aku harus selalu disiplin karena ada {p['allergy']}. Ada saran substitusi bumbu?",
-        f"Lagi pengen banget bikin {p['food']} di rumah, tapi wajib disesuaikan karena aku {p['allergy']}. Bagaimana triknya biar tetap gurih?"
+    # Turn 2: Dish inquiry with allergy
+    dishes = [
+        f"Hari Minggu nanti aku berencana memasak hidangan favoritku, yaitu {p['food']}. Cuma kamu wajib catat ya, aku punya {p['allergy']}. Bagaimana resep modifikasinya?",
+        f"Aku kepingin banget masak {p['food']} khas nusantara di rumah, tapi harus steril karena aku {p['allergy']}. Ada ide pengganti bumbu yang aman?",
+        f"Menu makanan kesukaanku itu {p['food']}. Tapi karena aku {p['allergy']}, tolong beri saran cara mengolah bumbu alaminya biar tetap gurih dan sedap."
     ]
-    turns.append({"role": "user", "content": random.choice(food_inquiries)})
-    turns.append({"role": "assistant", "content": f"Siap dicatat dengan sangat cermat, {p['name']}! Untuk memasak {p['food']} yang ramah bagi {p['allergy']}, kuncinya adalah mengganti bahan pemicu dengan rempah aromatik alami (seperti kemiri sangrai, daun jeruk, dan serai) agar cita rasa gurih tetap maksimal tanpa resiko kesehatan."})
+    turns.append({"role": "user", "content": random.choice(dishes)})
+    turns.append({"role": "assistant", "content": (
+        f"Tentu, mari kita racik resep {p['food']} yang 100% ramah untuk kondisi {p['allergy']}, {p['name']}!\n"
+        f"1. **Substitusi Bumbu**: Ganti bahan pemicu dengan kombinasi kemiri sangrai, bawang merah, bawang putih, dan sedikit ketumbar untuk menghasilkan rasa gurih alami.\n"
+        f"2. **Aromatik Segar**: Gunakan serai memar, daun salam, dan daun jeruk segar agar aroma harumnya menutupi kekurangan bahan yang dipantang.\n"
+        f"3. **Teknik Menumis**: Tumis bumbu halus dengan api sedang hingga matang sempurna (tanpa langu) sebelum menuangkan kaldu kaldu gurih."
+    )})
     facts.append({"turn": 2, "key": "food", "value": p["food"]})
     facts.append({"turn": 2, "key": "allergy", "value": p["allergy"]})
 
-    # Turn 4: Refreshing beverage
-    turns.append({"role": "user", "content": f"Biar santapan kulinernya makin mantap, pendamping wajibanku itu segelas {p['drink']}."})
-    turns.append({"role": "assistant", "content": f"Paduan hidangan yang sempurna! Menikmati {p['food']} dengan segelas {p['drink']} pasti bikin suasana makan semakin istimewa."})
+    # Turn 4: Drink
+    turns.append({"role": "user", "content": f"Biar santapan kulinernya makin lengkap, minumannya aku siapkan segelas {p['drink']}."})
+    turns.append({"role": "assistant", "content": f"Perpaduan yang sangat menggoda selera! Menikmati {p['food']} ditemani segelas {p['drink']} pasti bikin acara makan semakin nikmat."})
     facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
 
     # Distractor turns
@@ -833,7 +763,7 @@ def flow_culinary_and_diet(p: Dict[str, Any], turns_count: int) -> Dict[str, Any
     turns.append({"role": "assistant", "content": a_rec})
 
     return {
-        "topic": "culinary_and_recipes",
+        "topic": "culinary_and_allergy_safety",
         "turns": turns,
         "facts": facts,
         "target_recall": {
@@ -846,97 +776,34 @@ def flow_culinary_and_diet(p: Dict[str, Any], turns_count: int) -> Dict[str, Any
     }
 
 
-def flow_fitness_and_sports(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
-    """Fitness goals, marathon preparation, gym routines, and nutrition."""
+def build_travel_and_exploration_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Travel itinerary, budgeting, and funding via side business."""
     turns, facts = [], []
-    
-    g = random.choice(OPENING_DISCOURSE_MARKERS)
-    u_0 = f"{g} {random.choice(PERSONA_CONNECTORS).format(name=p['name'], city=p['city'], job=p['job'])}"
-    a_0 = random.choice(ASSISTANT_WARM_GREETINGS).format(name=p['name'], city=p['city'], job=p['job'])
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
     turns.append({"role": "user", "content": u_0})
     turns.append({"role": "assistant", "content": a_0})
     facts.append({"turn": 0, "key": "city", "value": p["city"]})
     facts.append({"turn": 0, "key": "job", "value": p["job"]})
 
-    fit_inquiries = [
-        f"Tahun ini aku punya target jasmani yang ambisius, yaitu disiplin menyelesaikan {p['fitness_goal']}. Bagaimana tips periodisasi latihannya?",
-        f"Biar badan tetap prima di sela kesibukan, fokus olahraga utamaku sekarang adalah {p['fitness_goal']}. Ada saran menu pemulihannya?",
-        f"Aku lagi berkomitmen menjalani {p['fitness_goal']}. Kira-kira apa kesalahan umum yang sering dialami pemula?"
+    travel_queries = [
+        f"Salah satu resolusi jalan-jalanku tahun ini adalah menjelajahi keindahan alam di {p['travel']}. Ada saran rencana perjalanan terbaik?",
+        f"Tahun ini aku punya target liburan impian ke {p['travel']}. Menurutmu berapa hari durasi yang ideal untuk mengeksplorasi wisatanya?",
+        f"Aku lagi merancang liburan healing ke {p['travel']}. Hal apa saja yang wajib dipersiapkan sebelum berangkat?"
     ]
-    turns.append({"role": "user", "content": random.choice(fit_inquiries)})
+    turns.append({"role": "user", "content": random.choice(travel_queries)})
     turns.append({"role": "assistant", "content": (
-        f"Komitmen kebugaran yang luar biasa, {p['name']}! Untuk mengoptimalkan {p['fitness_goal']}, perhatikan tiga pilar:\n"
-        f"- **Progresif Overload**: Tingkatkan beban atau volume latihan secara bertahap.\n"
-        f"- **Nutrisi & Hidrasi**: Cukupi asupan protein harian dan elektrolit pasca latihan.\n"
-        f"- **Pemulihan Aktif**: Tidur 7-8 jam sangat esensial agar otot mengalami adaptasi dan hipertrofi maksimal."
+        f"Destinasi yang sangat mempesona, {p['name']}! Untuk memaksimalkan perjalanan ke {p['travel']}:\n"
+        f"- **Waktu Kunjungan Terbaik**: Datanglah di musim kemarau saat cuaca cerah untuk menikmati pemandangan secara maksimal.\n"
+        f"- **Rute Prioritas**: Susun rute harian secara berdekatan agar waktu tidak habis di perjalanan.\n"
+        f"- **Perlengkapan**: Siapkan sepatu trekking yang nyaman, jaket tahan angin, dan kamera untuk mengabadikan momen berharga."
     )})
-    facts.append({"turn": 2, "key": "fitness_goal", "value": p["fitness_goal"]})
-
-    turns.append({"role": "user", "content": f"Sehabis sesi latihan fisik yang intens, minuman andalanku buat recharge tubuh adalah {p['drink']}."})
-    turns.append({"role": "assistant", "content": f"Pilihan hidrasi yang memuaskan! Menyegarkan dahaga dengan {p['drink']} mengembalikan kenyamanan tubuh setelah membakar banyak energi."})
-    facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
-
-    # Distractor turns
-    d1 = random.choice(EXPANDED_DISTRACTORS)
-    turns.append({"role": "user", "content": d1[0]})
-    turns.append({"role": "assistant", "content": d1[1]})
-
-    if turns_count >= 12:
-        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
-        turns.append({"role": "user", "content": d2[0]})
-        turns.append({"role": "assistant", "content": d2[1]})
-
-    recall_key = random.choice(["fitness_goal", "drink", "job"])
-    ans = p[recall_key]
-    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
-    rec_idx = len(turns)
-    turns.append({"role": "user", "content": q_rec})
-    turns.append({"role": "assistant", "content": a_rec})
-
-    return {
-        "topic": "fitness_and_sports",
-        "turns": turns,
-        "facts": facts,
-        "target_recall": {
-            "query_turn": rec_idx,
-            "target_key": recall_key,
-            "ground_truth": ans,
-            "question": q_rec,
-            "answer": a_rec
-        }
-    }
-
-
-def flow_travel_and_business(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
-    """Travel dreams, exploration, and bootstrapping side businesses."""
-    turns, facts = [], []
-
-    g = random.choice(OPENING_DISCOURSE_MARKERS)
-    u_0 = f"{g} {random.choice(PERSONA_CONNECTORS).format(name=p['name'], city=p['city'], job=p['job'])}"
-    a_0 = random.choice(ASSISTANT_WARM_GREETINGS).format(name=p['name'], city=p['city'], job=p['job'])
-    turns.append({"role": "user", "content": u_0})
-    turns.append({"role": "assistant", "content": a_0})
-    facts.append({"turn": 0, "key": "city", "value": p["city"]})
-    facts.append({"turn": 0, "key": "job", "value": p["job"]})
-
-    # Turn 2: Travel resolution
-    travel_plans = [
-        f"Salah satu resolusi jalan-jalanku tahun ini adalah berlibur dan healing ke {p['travel']}.",
-        f"Tahun ini aku punya target liburan impian yang sudah lama diidamkan, yaitu menjelajahi keindahan {p['travel']}.",
-        f"Rencana perjalanan wisataku berikutnya adalah backpacker dan berpetualang ke {p['travel']}."
-    ]
-    turns.append({"role": "user", "content": random.choice(travel_plans)})
-    turns.append({"role": "assistant", "content": f"Destinasi yang sangat memikat, {p['name']}! {p['travel']} menyajikan panorama alam yang ikonik dan pasti akan memperkaya pengalaman hidupmu."})
     facts.append({"turn": 2, "key": "travel", "value": p["travel"]})
 
-    # Turn 4: Side business
-    biz_lines = [
-        f"Untuk menambah tabungan dana liburan dan kemandirian finansial, di luar jam kerja aku aktif merintis {p['side_biz']}.",
-        f"Selain pekerjaan utama, kesibukan baruku saat ini adalah mengembangkan usaha mandiri berupa {p['side_biz']}.",
-        f"Aku juga lagi belajar wirausaha dengan mengelola {p['side_biz']} di waktu senggang."
-    ]
-    turns.append({"role": "user", "content": random.choice(biz_lines)})
-    turns.append({"role": "assistant", "content": f"Langkah wirausaha yang sangat cerdas dan menginspirasi! Menjalankan {p['side_biz']} adalah pondasi mantap untuk memperkuat arus kas dan tabungan masa depan."})
+    # Side biz
+    turns.append({"role": "user", "content": f"Biar tabungan jalan-jalanku semakin aman, di luar jam kantor sekarang aku aktif merintis usaha sampingan berupa {p['side_biz']}."})
+    turns.append({"role": "assistant", "content": f"Langkah kemandirian finansial yang sangat bijak! Mengembangkan {p['side_biz']} adalah cara cerdas mendanai liburan tanpa mengganggu arus kas utama."})
     facts.append({"turn": 4, "key": "side_biz", "value": p["side_biz"]})
 
     # Distractor turns
@@ -957,7 +824,7 @@ def flow_travel_and_business(p: Dict[str, Any], turns_count: int) -> Dict[str, A
     turns.append({"role": "assistant", "content": a_rec})
 
     return {
-        "topic": "travel_and_business",
+        "topic": "travel_and_exploration",
         "turns": turns,
         "facts": facts,
         "target_recall": {
@@ -970,19 +837,185 @@ def flow_travel_and_business(p: Dict[str, Any], turns_count: int) -> Dict[str, A
     }
 
 
-def flow_creative_and_gaming(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
-    """Gaming, digital arts, storytelling, and custom crafting."""
+def build_fitness_and_periodization_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Fitness regimens, recovery physiology, and hydration."""
     turns, facts = [], []
-
-    g = random.choice(OPENING_DISCOURSE_MARKERS)
-    u_0 = f"{g} {random.choice(PERSONA_CONNECTORS).format(name=p['name'], city=p['city'], job=p['job'])}"
-    a_0 = random.choice(ASSISTANT_WARM_GREETINGS).format(name=p['name'], city=p['city'], job=p['job'])
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
     turns.append({"role": "user", "content": u_0})
     turns.append({"role": "assistant", "content": a_0})
     facts.append({"turn": 0, "key": "city", "value": p["city"]})
     facts.append({"turn": 0, "key": "job", "value": p["job"]})
 
-    # Gaming or Creative project
+    turns.append({"role": "user", "content": f"Biar badan tetap sehat dan bugar, saat ini aku lagi fokus berkomitmen menjalani {p['fitness_goal']}. Bagaimana tips menjaga konsistensinya?"})
+    turns.append({"role": "assistant", "content": (
+        f"Komitmen olahraga yang sangat berharga, {p['name']}! Tiga kunci keberhasilan untuk {p['fitness_goal']}:\n"
+        f"1. **Periodisasi Bertahap**: Jangan memaksakan beban atau intensitas maksimal di minggu awal; beri tubuh waktu beradaptasi.\n"
+        f"2. **Nutrisi Seimbang**: Konsumsi protein berkualitas (telur, tempe, dada ayam, ikan) untuk sintesis protein otot.\n"
+        f"3. **Tidur Pemulihan**: Saat tidur nyenyak hormon pertumbuhan bekerja memperbaiki serat otot yang lelah."
+    )})
+    facts.append({"turn": 2, "key": "fitness_goal", "value": p["fitness_goal"]})
+
+    turns.append({"role": "user", "content": f"Sehabis sesi workout yang melelahkan, minuman penyegar andalanku adalah segelas {p['drink']}."})
+    turns.append({"role": "assistant", "content": f"Pilihan pelepas dahaga yang sangat nikmat! {p['drink']} memberi rasa rileks seketika setelah membakar banyak kalori."})
+    facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
+
+    # Distractor turns
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["fitness_goal", "drink", "job"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "fitness_and_periodization",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_casual_storytelling_banter_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Everyday Indonesian life, commute, rain, pets, and relaxing banter."""
+    turns, facts = [], []
+    anecdotes = [
+        (f"Aduh hari ini jalanan di kota {p['city']} macetnya lumayan padat pas jam pulang kantor, baru bisa duduk santai sekarang.",
+         f"Pasti cukup menguras tenaga ya. Untung sekarang sudah sampai di rumah dengan aman. Nikmati waktu istirahatmu!"),
+        (f"Cuaca sore ini di {p['city']} lagi hujan gerimis syahdu banget, suasana hawanya jadi adem.",
+         f"Suasana hujan sejuk memang paling pas untuk rileks sejenak sambil minum teh atau kopi hangat."),
+        (f"Hari ini jadwal aktivitasku di {p['city']} cukup padat merayap, tapi bersyukur semuanya tuntas tepat waktu.",
+         f"Hebat sekali! Menyelesaikan semua target harian dengan lancar adalah pencapaian yang patut diapresiasi.")
+    ]
+    u_0, a_0 = random.choice(anecdotes)
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+
+    name = p["name"]
+    pet_lines = [
+        f"Untung pas buka pintu rumah langsung disambut tingkah manja {p['pet_type']} peliharaanku si {p['pet_name']}. Btw kenalkan, aku {name}.",
+        f"Penawar capek terbaikku ya si {p['pet_name']}, seekor {p['pet_type']} yang selalu bikin gemas. Salam kenal ya, namaku {name}.",
+        f"Langsung segar kembali pas main bareng {p['pet_type']} kesayanganku si {p['pet_name']}. Oh iya perkenalkan, namaku {name}."
+    ]
+    turns.append({"role": "user", "content": random.choice(pet_lines)})
+    turns.append({"role": "assistant", "content": f"Halo {name}! Keberadaan {p['pet_type']} bernama {p['pet_name']} memang moodbooster luar biasa setelah seharian menghadapi kepenatan."})
+    facts.append({"turn": 2, "key": "name", "value": name})
+    facts.append({"turn": 2, "key": "pet_type", "value": p["pet_type"]})
+    facts.append({"turn": 2, "key": "pet_name", "value": p["pet_name"]})
+
+    turns.append({"role": "user", "content": f"Di luar urusan rumah, pekerjaanku sehari-hari itu berkarir sebagai seorang {p['job']}."})
+    turns.append({"role": "assistant", "content": f"Profesi sebagai {p['job']} pasti membutuhkan dedikasi tinggi. Menjaga kehangatan di rumah bersama {p['pet_name']} adalah harmoni hidup yang sangat indah."})
+    facts.append({"turn": 4, "key": "job", "value": p["job"]})
+
+    # Distractor turns
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["city", "pet_name", "job"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "casual_storytelling_banter",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_science_and_philosophy_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Deep scientific insights, space exploration, and Stoic philosophy."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    turns.append({"role": "user", "content": f"Akhir-akhir ini aku lagi sering merenungi sebuah topik yang sangat menarik, yaitu {p['philosophy_topic']}. Bagaimana perspektifmu tentang hal ini?"})
+    turns.append({"role": "assistant", "content": f"Topik refleksi yang sangat berbobot, {p['name']}! Membedah {p['philosophy_topic']} melatih kejernihan rasionalitas dan membantu kita menavigasi kompleksitas hidup dengan lebih bijak."})
+    facts.append({"turn": 2, "key": "philosophy_topic", "value": p["philosophy_topic"]})
+
+    turns.append({"role": "user", "content": f"Membaca dan merenungi topik seperti ini paling nikmat ditemani secangkir {p['drink']} hangat."})
+    turns.append({"role": "assistant", "content": f"Suasana yang sangat menenangkan! Kenikmatan {p['drink']} memang partner ideal untuk sesi kontemplasi intelektual."})
+    facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
+
+    # Distractor turns
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["philosophy_topic", "drink", "job"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "science_and_philosophy",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_creative_and_gaming_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Gaming, digital arts, storytelling, and custom crafting."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
     if random.random() < 0.5:
         turns.append({"role": "user", "content": f"Untuk hiburan santai di malam hari, game yang paling sering kumainkan bareng kawan adalah {p['game']}."})
         turns.append({"role": "assistant", "content": f"Pilihan game yang sangat seru, {p['name']}! Game {p['game']} punya gameplay yang memikat dan sangat cocok untuk mencairkan kepenatan."})
@@ -1029,80 +1062,21 @@ def flow_creative_and_gaming(p: Dict[str, Any], turns_count: int) -> Dict[str, A
     }
 
 
-def flow_science_and_philosophy(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
-    """Deep scientific insights, space exploration, and Stoic philosophy."""
-    turns, facts = [], []
-
-    g = random.choice(OPENING_DISCOURSE_MARKERS)
-    u_0 = f"{g} {random.choice(PERSONA_CONNECTORS).format(name=p['name'], city=p['city'], job=p['job'])}"
-    a_0 = random.choice(ASSISTANT_WARM_GREETINGS).format(name=p['name'], city=p['city'], job=p['job'])
-    turns.append({"role": "user", "content": u_0})
-    turns.append({"role": "assistant", "content": a_0})
-    facts.append({"turn": 0, "key": "city", "value": p["city"]})
-    facts.append({"turn": 0, "key": "job", "value": p["job"]})
-
-    phil_questions = [
-        f"Akhir-akhir ini aku lagi sering merenungi sebuah topik yang sangat menarik, yaitu {p['philosophy_topic']}. Bagaimana perspektifmu tentang hal ini?",
-        f"Aku baru saja membaca literatur memikat tentang {p['philosophy_topic']}. Rasanya sangat relevan dengan dinamika kehidupan modern.",
-        f"Di sela kesibukanku, topik pemikiran yang paling memicu rasa penasaranku belakangan ini adalah {p['philosophy_topic']}."
-    ]
-    turns.append({"role": "user", "content": random.choice(phil_questions)})
-    turns.append({"role": "assistant", "content": f"Topik refleksi yang sangat berbobot, {p['name']}! Membedah {p['philosophy_topic']} melatih kejernihan rasionalitas dan membantu kita menavigasi kompleksitas hidup dengan lebih bijak."})
-    facts.append({"turn": 2, "key": "philosophy_topic", "value": p["philosophy_topic"]})
-
-    turns.append({"role": "user", "content": f"Membaca dan merenungi topik seperti ini paling nikmat ditemani secangkir {p['drink']} hangat."})
-    turns.append({"role": "assistant", "content": f"Suasana yang sangat menenangkan! Kenikmatan {p['drink']} memang partner ideal untuk sesi kontemplasi intelektual."})
-    facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
-
-    # Distractor turns
-    d1 = random.choice(EXPANDED_DISTRACTORS)
-    turns.append({"role": "user", "content": d1[0]})
-    turns.append({"role": "assistant", "content": d1[1]})
-
-    if turns_count >= 12:
-        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
-        turns.append({"role": "user", "content": d2[0]})
-        turns.append({"role": "assistant", "content": d2[1]})
-
-    recall_key = random.choice(["philosophy_topic", "drink", "job"])
-    ans = p[recall_key]
-    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
-    rec_idx = len(turns)
-    turns.append({"role": "user", "content": q_rec})
-    turns.append({"role": "assistant", "content": a_rec})
-
-    return {
-        "topic": "science_and_philosophy",
-        "turns": turns,
-        "facts": facts,
-        "target_recall": {
-            "query_turn": rec_idx,
-            "target_key": recall_key,
-            "ground_truth": ans,
-            "question": q_rec,
-            "answer": a_rec
-        }
-    }
-
-
-def flow_memory_update_and_correction(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+def build_memory_update_and_correction_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
     """Explicit fact update or correction scenario."""
     turns, facts = [], []
-
-    g = random.choice(OPENING_DISCOURSE_MARKERS)
-    u_0 = f"{g} {random.choice(PERSONA_CONNECTORS).format(name=p['name'], city=p['city'], job=p['job'])}"
-    a_0 = random.choice(ASSISTANT_WARM_GREETINGS).format(name=p['name'], city=p['city'], job=p['job'])
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
     turns.append({"role": "user", "content": u_0})
     turns.append({"role": "assistant", "content": a_0})
     facts.append({"turn": 0, "key": "city", "value": p["city"]})
     facts.append({"turn": 0, "key": "job", "value": p["job"]})
 
-    # Distractor 1
     d1 = random.choice(EXPANDED_DISTRACTORS)
     turns.append({"role": "user", "content": d1[0]})
     turns.append({"role": "assistant", "content": d1[1]})
 
-    # Turn 4: The update event
     update_type = random.choice(["city", "job"])
     if update_type == "city":
         update_lines = [
@@ -1129,7 +1103,6 @@ def flow_memory_update_and_correction(p: Dict[str, Any], turns_count: int) -> Di
         old_val = p["job"]
         new_val = p["alt_job"]
 
-    # Distractor 2
     d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
     turns.append({"role": "user", "content": d2[0]})
     turns.append({"role": "assistant", "content": d2[1]})
@@ -1159,15 +1132,15 @@ def flow_memory_update_and_correction(p: Dict[str, Any], turns_count: int) -> Di
     }
 
 
-TOPOLOGY_FLOWS = [
-    flow_consultative_technical,
-    flow_casual_storytelling,
-    flow_culinary_and_diet,
-    flow_fitness_and_sports,
-    flow_travel_and_business,
-    flow_creative_and_gaming,
-    flow_science_and_philosophy,
-    flow_memory_update_and_correction
+ALL_FLOWS = [
+    build_debugging_diagnostic_flow,
+    build_culinary_recipe_safety_flow,
+    build_travel_and_exploration_flow,
+    build_fitness_and_periodization_flow,
+    build_casual_storytelling_banter_flow,
+    build_science_and_philosophy_flow,
+    build_creative_and_gaming_flow,
+    build_memory_update_and_correction_flow
 ]
 
 
@@ -1179,7 +1152,7 @@ def format_chatml(turns: List[Dict[str, str]]) -> str:
 
 
 # ===========================================================================
-# 7. HIGH-THROUGHPUT STREAMING ENGINE
+# 8. HIGH-THROUGHPUT STREAMING ENGINE
 # ===========================================================================
 
 def generate_100m_tokens(
@@ -1195,16 +1168,16 @@ def generate_100m_tokens(
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 76)
-    print("   ULTRA-DIVERSE 100M TOKENS MULTI-TURN CONVERSATIONAL GENERATOR")
+    print("   INFINITE-DIVERSITY 100M TOKENS MULTI-TURN CONVERSATIONAL GENERATOR")
     print("=" * 76)
     print(f"  Target Total Tokens   : {train_tokens_target + val_tokens_target + test_tokens_target:,}")
     print(f"  Train Target          : {train_tokens_target:,} tokens (95%)")
     print(f"  Validation Target     : {val_tokens_target:,} tokens (2.5%)")
     print(f"  Test Target           : {test_tokens_target:,} tokens (2.5%)")
     print(f"  Tokenizer             : {tokenizer_path}")
-    print(f"  Flow Topologies       : {len(TOPOLOGY_FLOWS)} distinct discourse structures")
-    print(f"  Entity Pools          : {len(NAMES)} Names, {len(CITIES)} Cities, {len(TECH_ROLES)+len(NON_TECH_ROLES)} Roles")
-    print(f"  Intellectual Q&A Pool : {len(EXPANDED_DISTRACTORS)} broad academic & practical topics")
+    print(f"  Archetypes Available  : {len(ALL_FLOWS)} diverse flows with dynamic clause synthesis")
+    print(f"  Entity Scale          : {len(NAMES)} Names, {len(CITIES)} Cities, {len(TECH_ROLES)+len(NON_TECH_ROLES)} Roles")
+    print(f"  Intellectual Pool     : {len(EXPANDED_DISTRACTORS)} broad topics + {len(DIAGNOSTIC_SCENARIOS)} code diagnostics")
     print("=" * 76)
 
     tok = Tokenizer.from_file(tokenizer_path)
@@ -1237,7 +1210,7 @@ def generate_100m_tokens(
                     eid = f"User_{total_written_conversations + len(batch_items) + 1:07d}"
                     persona = build_random_persona(eid)
                     turns_len = random.choice([6, 8, 10, 12, 14])
-                    flow_fn = random.choice(TOPOLOGY_FLOWS)
+                    flow_fn = random.choice(ALL_FLOWS)
 
                     diag = flow_fn(persona, turns_len)
                     chatml_str = format_chatml(diag["turns"])
@@ -1256,10 +1229,8 @@ def generate_100m_tokens(
                     batch_items.append(item)
                     batch_chatml.append(chatml_str)
 
-                # Batch tokenization for extreme throughput
                 encodings = tok.encode_batch(batch_chatml)
 
-                # Write out dialogues and record token count
                 for item, enc in zip(batch_items, encodings):
                     tok_len = len(enc.ids)
                     item["token_length"] = tok_len
@@ -1314,7 +1285,7 @@ def generate_100m_tokens(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate Ultra-Diverse 100M Tokens Multi-Turn Conversational Memory Dataset")
+    parser = argparse.ArgumentParser(description="Generate Infinite-Diversity 100M Tokens Multi-Turn Conversational Dataset")
     parser.add_argument("--tokenizer", default="dataset/tokenizer.json")
     parser.add_argument("--output_dir", default="dataset")
     parser.add_argument("--target_tokens", type=int, default=None,

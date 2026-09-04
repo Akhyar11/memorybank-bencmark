@@ -142,7 +142,7 @@ def run_conversational_benchmark(
                 pad_id=train_ds.pad_id, bos_id=train_ds.bos_id, eos_id=train_ds.eos_id
             ).to(device)
 
-            if seed == seeds[0] and mode == "none":
+            if seed == seeds[0] and list(modes.values())[0] == mode:
                 print(f"      Model Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
             ckpt_path = os.path.join(checkpoint_dir, f"seed{seed}_{name.lower().replace(' ', '_')}.pt")
@@ -274,10 +274,29 @@ if __name__ == "__main__":
                         help="Model mode to train/evaluate: 'bank' (Memory Bank only), 'none', 'nn', or 'all'")
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44],
                         help="Random seeds to run (e.g. --seeds 42 or --seeds 42 43 44)")
+    parser.add_argument("--model_size", type=str, default="tiny", choices=["tiny", "5m"],
+                        help="Preset model size: 'tiny' (~155K params) or '5m' (~5M params, 1:20 Chinchilla optimal for 100M tokens)")
+    parser.add_argument("--embed_dim", type=int, default=None)
+    parser.add_argument("--num_layers", type=int, default=None)
+    parser.add_argument("--num_heads", type=int, default=None)
+    parser.add_argument("--ff_dim", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--train_jsonl", type=str, default="dataset/conversations_100M_train.jsonl")
     parser.add_argument("--test_jsonl", type=str, default="dataset/conversations_100M_test.jsonl")
     parser.add_argument("--checkpoint_dir", type=str, default=None)
     args = parser.parse_args()
+
+    # Preset configurations
+    if args.model_size == "5m":
+        embed_dim = args.embed_dim or 256
+        num_layers = args.num_layers or 4
+        num_heads = args.num_heads or 8
+        ff_dim = args.ff_dim or 1024
+    else:  # tiny
+        embed_dim = args.embed_dim or 32
+        num_layers = args.num_layers or 1
+        num_heads = args.num_heads or 2
+        ff_dim = args.ff_dim or 216
 
     run_conversational_benchmark(
         train_jsonl=args.train_jsonl,
@@ -288,6 +307,11 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         max_train_samples=args.max_train_samples,
         max_test_samples=args.max_test_samples,
+        embed_dim=embed_dim,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        ff_dim=ff_dim,
+        learning_rate=args.lr,
         write_threshold=args.write_threshold,
         mode_filter=args.mode,
         checkpoint_dir=args.checkpoint_dir

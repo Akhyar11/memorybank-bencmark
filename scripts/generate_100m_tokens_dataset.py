@@ -159,70 +159,165 @@ def build_random_persona(uid: str) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Dynamic Combinatorial Phrasing Engine
+# ---------------------------------------------------------------------------
+
+GREETINGS = [
+    "Halo!", "Hai!", "Halo asisten!", "Hai chatbot!", "Selamat pagi!",
+    "Selamat siang!", "Selamat sore!", "Salam kenal!", "Hai halo!",
+    "Permisi!", "Halo rekan AI!", "Pagi!", "Halo apa kabar?", "Hai salam kenal!"
+]
+
+INTRO_PATTERNS = [
+    "namaku {name}", "aku {name}", "nama saya {name}", "panggil saja aku {name}",
+    "saya {name}", "kenalin namaku {name}", "dengan {name} di sini", "aku bernama {name}"
+]
+
+DOMICILE_PATTERNS = [
+    "tinggal di kota {city}", "menetap di {city}", "berdomisili di {city}",
+    "asal kotaku dari {city}", "saat ini berdomisili di {city}", "hidup dan beraktivitas di {city}",
+    "asli warga {city}", "sedang berdomisili di kawasan {city}"
+]
+
+JOB_PATTERNS = [
+    "bekerja sebagai {job}", "profesi utamaku adalah {job}", "sehari-hari sibuk sebagai {job}",
+    "berkarir sebagai seorang {job}", "aktivitas pekerjaanku saat ini adalah {job}",
+    "berprofesi menjadi {job}", "fokus karirku sekarang di posisi {job}"
+]
+
+ASSISTANT_GREETING_PATTERNS = [
+    "Halo {name}! Senang sekali berkenalan denganmu. Salam hangat untuk seorang {job} di {city}! Ada topik seru apa yang ingin kita diskusikan?",
+    "Hai {name}! Senang bisa ngobrol denganmu hari ini. Luar biasa, berkarya sebagai {job} di {city}. Ada yang bisa kubantu atau ingin kita bahas?",
+    "Salam kenal, {name}! Senang menyapamu di {city}. Menarik sekali bidang pekerjaanmu sebagai {job}. Mari kita mulai diskusinya!",
+    "Halo {name}! Wah, senang bisa terhubung dengan seorang {job} dari {city}. Apa kabar hari ini? Ada topik menarik yang mau kamu ceritakan?",
+    "Hai {name} dari {city}! Senang menyambutmu. Sebagai seorang {job}, pasti harimu sangat dinamis. Apa yang ingin kita eksplorasi sekarang?",
+    "Salam hangat {name}! Menyenangkan sekali bisa berdiskusi denganmu. Semoga harimu di {city} menyenangkan. Ada hal spesifik yang ingin kamu bicarakan?"
+]
+
+def make_dynamic_intro(p: Dict[str, Any]) -> Tuple[str, str]:
+    name = p["name"]
+    g = random.choice(GREETINGS)
+    intro = random.choice(INTRO_PATTERNS).format(name=name)
+    dom = random.choice(DOMICILE_PATTERNS).format(city=p["city"])
+    job = random.choice(JOB_PATTERNS).format(job=p["job"])
+
+    templates = [
+        f"{g} {intro[:1].upper() + intro[1:]}, saat ini {dom} dan {job}.",
+        f"{g} Salam dari {p['city']}! {intro[:1].upper() + intro[1:]}, sehari-hari aku {job}.",
+        f"{g} Kenalkan, {intro}. Aku {dom}, dan profesiku {job}.",
+        f"{g} Sebagai seorang {p['job']} yang {dom}, {intro}.",
+        f"{g} {intro[:1].upper() + intro[1:]}. Aku {dom} serta aktif {job}."
+    ]
+    u_content = random.choice(templates)
+    a_content = random.choice(ASSISTANT_GREETING_PATTERNS).format(name=name, city=p["city"], job=p["job"])
+    return u_content, a_content
+
+
+MASSIVE_DISTRACTORS = [
+    ("Bagaimana cara terbaik mengelola waktu saat menangani beberapa proyek sekaligus?",
+     "Gunakan teknik Time-Blocking dan Matriks Eisenhower. Prioritaskan tugas mendesak yang berdampak besar dan minimalkan multitasking yang memecah fokus."),
+    ("Menurutmu apa kriteria dokumentasi teknis yang baik untuk tim kerja?",
+     "Dokumentasi yang baik harus ringkas, menyajikan contoh nyata (code snippet atau diagram alur) yang jelas, dan selalu diperbarui bersamaan dengan rilis fitur baru."),
+    ("Apakah sertifikasi profesional sangat berpengaruh untuk jenjang karir jangka panjang?",
+     "Sertifikasi membuktikan pemahaman standar industri dan dedikasi belajar, namun rekam jejak portofolio proyek riil tetap menjadi pembuktian kompetensi terkuat."),
+    ("Kira-kira berapa durasi olahraga ringan yang ideal untuk pemula setiap minggunya?",
+     "Berdasarkan pedoman kesehatan, 150 menit per minggu untuk intensitas sedang (seperti jalan cepat 30 menit sehari selama 5 hari) sudah sangat ideal bagi pemula."),
+    ("Ada tips supaya keuangan usaha kecil tidak bercampur dengan uang pribadi?",
+     "Pisahkan rekening bank sejak hari pertama, buat pembukuan arus kas harian yang disiplin, dan tentukan gaji tetap untuk dirimu sendiri."),
+    ("Bagaimana cara menjaga fokus saat bekerja jarak jauh (remote work) dari rumah?",
+     "Tetapkan ruang kerja khusus yang bebas gangguan, buat jadwal jam kerja yang teratur, dan kenakan pakaian rapi untuk mengondisikan mindset produktif."),
+    ("Apa faktor utama yang menentukan keberhasilan sebuah tim startup pemula?",
+     "Kekompakan tim inti dalam mengeksekusi ide, kecepatan merespons feedback pengguna (iterasi produk), dan pengelolaan arus kas (runway) yang sangat disiplin."),
+    ("Menurut riset psikologi, apa cara paling efektif untuk membangun kebiasaan baru?",
+     "Gunakan metode 'Atomic Habits': mulai dari langkah sangat kecil (mikro), kaitkan dengan rutinitas yang sudah ada (habit stacking), dan beri penghargaan kecil setiap berhasil melakukannya."),
+    ("Bagaimana cara mengurangi ketegangan mata bagi orang yang bekerja seharian di depan monitor?",
+     "Terapkan aturan 20-20-20: setiap 20 menit menatap layar, alihkan pandangan ke objek berjarak minimal 20 kaki (6 meter) selama minimal 20 detik."),
+    ("Apa perbedaan utama antara investasi reksa dana pendapatan tetap dan reksa dana saham?",
+     "Reksa dana pendapatan tetap mengalokasikan dana ke obligasi/surat utang dengan risiko sedang dan imbal hasil stabil, sedangkan reksa dana saham memiliki volatilitas tinggi namun potensi imbal hasil jangka panjang lebih besar."),
+    ("Bagaimana tips memilih laptop kerja yang awet untuk penggunaan 4-5 tahun ke depan?",
+     "Prioritaskan prosesor generasi terbaru dengan minimal 6-8 core, RAM minimal 16GB (lebih baik yang bisa di-upgrade), SSD NVMe cepat, serta kualitas bodi dan sistem pendingin yang solid."),
+    ("Menurutmu mengapa istirahat tidur yang cukup sangat krusial bagi daya ingat?",
+     "Saat fase tidur gelombang lambat (deep sleep) dan REM, otak melakukan konsolidasi memori, memindahkan informasi baru dari hipokampus ke korteks serebral untuk penyimpanan permanen."),
+    ("Apa saran terbaik untuk mengatasi writer's block atau kebuntuan ide kreatif?",
+     "Ubah lingkungan sekitarmu dengan berjalan-jalan ke luar ruangan, lakukan 'freewriting' tanpa mengedit selama 10 menit, atau baca literatur di luar domain bidang yang biasa kamu tekuni."),
+    ("Bagaimana cara meningkatkan kemampuan berbicara di depan umum (public speaking) secara bertahap?",
+     "Mulai dengan merekam suara atau video saat latihan sendiri, pelajari ritme jeda bicara daripada menggunakan jeda 'umm'/'ahh', dan kuasai pembukaan serta penutup presentasi."),
+    ("Apakah membaca buku fisik masih memiliki keunggulan dibanding e-book modern?",
+     "Buku fisik memberikan pengalaman sensorik sentuhan kertas dan orientasi spasial halaman yang membantu pemahaman mendalam serta mengurangi paparan cahaya biru (blue light).")
+]
+
+
 def make_tech_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
     turns, facts = [], []
-
-    # Turn 0-1
-    greetings = [
-        f"Halo! Kenalkan, aku {p['name']}. Saat ini aku bekerja sebagai {p['job']} dan menetap di {p['city']}.",
-        f"Hai! Salam kenal, namaku {p['name']}. Aku tinggal di {p['city']} dan sehari-hari sibuk sebagai {p['job']}.",
-        f"Halo asisten! Aku {p['name']} dari {p['city']}. Profesi utamaku saat ini adalah {p['job']}."
-    ]
-    turns.append({"role": "user", "content": random.choice(greetings)})
-    turns.append({"role": "assistant", "content": f"Halo {p['name']}! Senang berkenalan denganmu. Luar biasa, seorang {p['job']} di {p['city']}. Ada topik atau hal menarik yang ingin kita bahas hari ini?"})
+    u_0, a_0 = make_dynamic_intro(p)
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
     facts.append({"turn": 0, "key": "job", "value": p["job"]})
     facts.append({"turn": 0, "key": "city", "value": p["city"]})
 
-    # Turn 2-3
-    tech_prompts = [
+    tech_variants = [
         f"Di tempat kerjaku sekarang kami banyak menggunakan {p['lang']} dan framework {p['tool']}. Menurutmu apa keunggulan utama stack ini?",
-        f"Aku lagi eksplorasi arsitektur baru menggunakan {p['lang']} dipadukan dengan {p['tool']}. Apakah kombinasi ini scalable?",
-        f"Proyek terbaruku dibangun dengan {p['lang']} dan {p['tool']}. Ada saran best practice untuk optimasi performanya?"
+        f"Aku lagi eksplorasi arsitektur baru menggunakan bahasa {p['lang']} dipadukan dengan {p['tool']}. Apakah kombinasi ini scalable?",
+        f"Proyek terbaruku dibangun dengan {p['lang']} dan {p['tool']}. Ada saran best practice untuk optimasi performanya?",
+        f"Sehari-hari aku sering riset implementasi {p['tool']} berbasis {p['lang']}. Ekosistemnya terasa sangat produktif untuk tim."
     ]
-    turns.append({"role": "user", "content": random.choice(tech_prompts)})
-    turns.append({"role": "assistant", "content": f"Kombinasi {p['lang']} dengan {p['tool']} sangat populer karena efisiensi eksekusi dan ekosistem library yang matang, {p['name']}. Kuncinya ada pada pengelolaan state dan caching yang tepat."})
+    turns.append({"role": "user", "content": random.choice(tech_variants)})
+    turns.append({"role": "assistant", "content": f"Kombinasi {p['lang']} dengan {p['tool']} sangat populer karena efisiensi eksekusi dan ekosistem library yang matang, {p['name']}. Kuncinya ada pada modularitas arsitektur dan caching yang tepat."})
     facts.append({"turn": 2, "key": "lang", "value": p["lang"]})
     facts.append({"turn": 2, "key": "tool", "value": p["tool"]})
 
-    # Turn 4-5
-    lifestyle_prompts = [
-        f"Kalau lagi jenuh sama urusan pekerjaan, pelarianku biasanya minum {p['drink']} sambil {p['hobby']}.",
-        f"Biar nggak burnout kerja terus, aku rutin meluangkan waktu buat {p['hobby']} dan menikmati {p['drink']}.",
-        f"Untuk menjaga keseimbangan hidup, rutinitas favoritku setelah jam kantor adalah {p['hobby']} ditemani segelas {p['drink']}."
+    lifestyle_variants = [
+        f"Kalau lagi jenuh sama urusan teknis, pelarianku biasanya minum {p['drink']} sambil {p['hobby']}.",
+        f"Biar nggak burnout kerja terus, rutinitas favoritku adalah meluangkan waktu buat {p['hobby']} dan menikmati {p['drink']}.",
+        f"Untuk menjaga keseimbangan hidup setelah jam kerja, aku paling suka santai {p['hobby']} ditemani segelas {p['drink']}."
     ]
-    turns.append({"role": "user", "content": random.choice(lifestyle_prompts)})
-    turns.append({"role": "assistant", "content": f"Itu keseimbangan yang sehat sekali, {p['name']}. Menikmati {p['drink']} sambil {p['hobby']} terbukti ampuh menyegarkan pikiran kembali."})
+    turns.append({"role": "user", "content": random.choice(lifestyle_variants)})
+    turns.append({"role": "assistant", "content": f"Itu keseimbangan hidup yang sangat sehat, {p['name']}. Menikmati {p['drink']} sambil {p['hobby']} terbukti ampuh menyegarkan pikiran kembali."})
     facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
     facts.append({"turn": 4, "key": "hobby", "value": p["hobby"]})
 
-    # Turn 6-7: Distractor
-    distractors = [
-        ("Bagaimana cara terbaik mengelola waktu saat menangani beberapa proyek sekaligus?",
-         "Gunakan teknik Time-Blocking dan Matriks Eisenhower. Prioritaskan tugas mendesak yang berdampak besar dan minimalkan multitasking."),
-        ("Menurutmu apa kriteria dokumentasi teknis yang baik untuk tim?",
-         "Dokumentasi yang baik harus ringkas, memiliki contoh penggunaan (code snippet) yang jelas, dan selalu diperbarui bersamaan dengan rilis fitur baru."),
-        ("Apakah sertifikasi profesional sangat berpengaruh untuk jenjang karir?",
-         "Sertifikasi membuktikan pemahaman standar industri dan dedikasi belajar, namun portofolio proyek riil tetap menjadi pembuktian terkuat.")
-    ]
-    q_dis, a_dis = random.choice(distractors)
+    # Distractor turn
+    q_dis, a_dis = random.choice(MASSIVE_DISTRACTORS)
     turns.append({"role": "user", "content": q_dis})
     turns.append({"role": "assistant", "content": a_dis})
 
-    # Turn 8-9: Extra distractor if turns_count == 12
     if turns_count >= 12:
-        turns.append({"role": "user", "content": "Setuju banget. Kadang orang terlalu fokus mengejar sertifikat sampai lupa membangun proyek nyata."})
-        turns.append({"role": "assistant", "content": "Betul sekali, kombinasi antara fondasi teori yang tersertifikasi dan jam terbang proyek langsung adalah yang paling dicari."})
+        q_dis2, a_dis2 = random.choice([d for d in MASSIVE_DISTRACTORS if d[0] != q_dis])
+        turns.append({"role": "user", "content": q_dis2})
+        turns.append({"role": "assistant", "content": a_dis2})
 
-    # Turn: Memory Recall
     recall_key = random.choice(["job", "city", "lang", "drink", "hobby"])
-    q_map = {
-        "job": (f"Ngomong-ngomong, kamu masih ingat apa profesi pekerjaanku?", f"Kamu bekerja sebagai {p['job']}.", p['job']),
-        "city": (f"Bisa sebutkan di kota mana aku tinggal tadi?", f"Kamu tinggal di kota {p['city']}.", p['city']),
-        "lang": (f"Bahasa pemrograman apa yang tadi kuceritakan sering kupakai?", f"Bahasa pemrograman yang sering kamu pakai adalah {p['lang']}.", p['lang']),
-        "drink": (f"Minuman kesukaanku pas istirahat tadi apa ya?", f"Minuman kesukaanmu adalah {p['drink']}.", p['drink']),
-        "hobby": (f"Aktivitas hobi yang biasa kulakukan setelah kerja apa tadi?", f"Aktivitas hobimu adalah {p['hobby']}.", p['hobby']),
+    recall_questions = {
+        "job": [
+            f"Ngomong-ngomong, kamu masih ingat apa profesi pekerjaanku?",
+            f"Bisa sebutkan profesi pekerjaan yang kuceritakan di awal tadi?",
+            f"Tolong cek memori ingatanmu, apa pekerjaanku sehari-hari?"
+        ],
+        "city": [
+            f"Bisa sebutkan di kota mana aku tinggal tadi?",
+            f"Kamu masih ingat kota tempat tinggalku sekarang di mana?",
+            f"Tadi di perkenalan, di kota mana aku berdomisili?"
+        ],
+        "lang": [
+            f"Bahasa pemrograman apa yang tadi kuceritakan sering kupakai?",
+            f"Kamu masih ingat bahasa pemrograman utama proyekku apa?",
+            f"Tadi aku bilang menggunakan bahasa pemrograman apa untuk proyekku?"
+        ],
+        "drink": [
+            f"Minuman kesukaanku pas istirahat santai tadi apa ya?",
+            f"Bisa sebutkan minuman favorit yang biasa kunikmati?",
+            f"Kamu ingat jenis minuman yang sering kutemani pas santai?"
+        ],
+        "hobby": [
+            f"Aktivitas hobi yang biasa kulakukan setelah kerja apa tadi?",
+            f"Hobi yang sering kulakukan untuk melepas lelah tadi apa?",
+            f"Bisa sebutkan kembali kegiatan hobiku yang tadi kuceritakan?"
+        ],
     }
-    q_rec, a_rec, ans = q_map[recall_key]
+    q_rec = random.choice(recall_questions[recall_key])
+    ans = p[recall_key]
+    a_rec = f"Berdasarkan percakapan kita tadi, {recall_key} yang kamu sebutkan adalah {ans}."
     rec_idx = len(turns)
     turns.append({"role": "user", "content": q_rec})
     turns.append({"role": "assistant", "content": a_rec})
@@ -241,43 +336,69 @@ def make_tech_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
     }
 
 
-def make_lifestyle_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+def make_lifestyle_health_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
     turns, facts = [], []
-
-    # Turn 0-1
-    turns.append({"role": "user", "content": f"Halo! Aku {p['name']}, warga kota {p['city']}. Aku lagi mau menata gaya hidup dan pola makan baruku nih."})
-    turns.append({"role": "assistant", "content": f"Halo {p['name']} dari {p['city']}! Langkah yang sangat positif. Menata gaya hidup sehat adalah investasi terbaik untuk masa depan."})
+    u_0, a_0 = make_dynamic_intro(p)
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
     facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
 
-    # Turn 2-3
-    turns.append({"role": "user", "content": f"Makanan kesukaanku itu {p['food']}, tapi penting dicatat kalau aku punya kondisi {p['allergy']}."})
-    turns.append({"role": "assistant", "content": f"Tercatat jelas, {p['name']}! {p['food']} memang sangat lezat, dan kita wajib selalu waspada dengan kondisi {p['allergy']} saat memilih menu harian."})
+    food_variants = [
+        f"Saat makan siang biasanya aku paling suka menyantap {p['food']}, tapi penting dicatat kalau aku punya kondisi {p['allergy']}.",
+        f"Bicara soal kuliner harian, makanan favoritku adalah {p['food']}. Namun aku harus selalu disiplin karena ada {p['allergy']}.",
+        f"Menu makanan yang paling membangkitkan seleraku itu {p['food']}, cuma aku wajib menghindari pemicu karena {p['allergy']}."
+    ]
+    turns.append({"role": "user", "content": random.choice(food_variants)})
+    turns.append({"role": "assistant", "content": f"Tercatat dengan sangat baik, {p['name']}! {p['food']} memang hidangan yang nikmat, dan kita tentu wajib selalu memperhatikan kondisi {p['allergy']} agar kesehatanmu tetap prima."})
     facts.append({"turn": 2, "key": "food", "value": p["food"]})
     facts.append({"turn": 2, "key": "allergy", "value": p["allergy"]})
 
-    # Turn 4-5
-    turns.append({"role": "user", "content": f"Di rumah aku juga tinggal bareng peliharaanku, seekor {p['pet_type']} yang kuberi nama {p['pet_name']}."})
-    turns.append({"role": "assistant", "content": f"Wah menggemaskan sekali! Keberadaan {p['pet_type']} bernama {p['pet_name']} pasti selalu menambah keceriaan dan mengurangi stres di rumah."})
+    pet_variants = [
+        f"Di tempat tinggalku aku juga memelihara hewan kesayangan, yaitu seekor {p['pet_type']} yang kuberi nama {p['pet_name']}.",
+        f"Teman setiaku saat bersantai di rumah adalah peliharaanku, seekor {p['pet_type']} lucu bernama {p['pet_name']}.",
+        f"Suasana rumah selalu ramai berkat kehadiran {p['pet_type']} kesayanganku yang namanya {p['pet_name']}."
+    ]
+    turns.append({"role": "user", "content": random.choice(pet_variants)})
+    turns.append({"role": "assistant", "content": f"Pasti menyenangkan sekali ya! Memiliki {p['pet_type']} bernama {p['pet_name']} tentu membawa energi positif dan hiburan hangat di rumah."})
     facts.append({"turn": 4, "key": "pet_type", "value": p["pet_type"]})
     facts.append({"turn": 4, "key": "pet_name", "value": p["pet_name"]})
 
-    # Turn 6-7: Distractor
-    turns.append({"role": "user", "content": "Kira-kira berapa durasi olahraga ringan yang ideal untuk pemula setiap minggunya?"})
-    turns.append({"role": "assistant", "content": "Berdasarkan pedoman kesehatan, 150 menit per minggu untuk intensitas sedang (seperti jalan cepat 30 menit sehari selama 5 hari) sudah sangat ideal bagi pemula."})
+    q_dis, a_dis = random.choice(MASSIVE_DISTRACTORS)
+    turns.append({"role": "user", "content": q_dis})
+    turns.append({"role": "assistant", "content": a_dis})
 
     if turns_count >= 12:
-        turns.append({"role": "user", "content": "Berarti nggak harus langsung olahraga berat setiap hari ya, yang penting konsisten."})
-        turns.append({"role": "assistant", "content": "Tepat sekali, konsistensi jauh lebih penting daripada intensitas tinggi yang hanya bertahan seminggu lalu berhenti."})
+        q_dis2, a_dis2 = random.choice([d for d in MASSIVE_DISTRACTORS if d[0] != q_dis])
+        turns.append({"role": "user", "content": q_dis2})
+        turns.append({"role": "assistant", "content": a_dis2})
 
-    # Recall Turn
     recall_key = random.choice(["allergy", "pet_name", "food", "city"])
-    q_map = {
-        "allergy": ("Sebelum kita bahas resep, kamu ingat pantangan makan atau kondisiku apa?", f"Kamu memiliki kondisi {p['allergy']}.", p['allergy']),
-        "pet_name": ("Siapa nama hewan peliharaan kesayanganku di rumah?", f"Nama hewan peliharaanmu adalah {p['pet_name']}.", p['pet_name']),
-        "food": ("Makanan favorit yang kusebutkan tadi apa ya?", f"Makanan favoritmu adalah {p['food']}.", p['food']),
-        "city": ("Aku tadi bilang berdomisili di mana?", f"Kamu berdomisili di kota {p['city']}.", p['city']),
+    recall_questions = {
+        "allergy": [
+            "Sebelum memilih rekomendasi menu, kamu ingat kondisi kesehatan atau pantangan makananku apa?",
+            "Tadi aku menceritakan pantangan makan/kondisi fisikku, kamu masih ingat apa itu?",
+            "Bisa sebutkan alergi atau pantangan diet yang kumiliki?"
+        ],
+        "pet_name": [
+            "Siapa nama hewan peliharaan kesayanganku di rumah tadi?",
+            "Kamu masih ingat nama peliharaanku yang kusebutkan?",
+            "Tolong sebutkan nama dari hewan peliharaanku yang tinggal bersamaku."
+        ],
+        "food": [
+            "Makanan favorit yang paling kusukai tadi apa ya?",
+            "Kamu ingat jenis makanan kesukaanku yang kuceritakan tadi?",
+            "Tadi aku bilang paling suka menyantap makanan apa?"
+        ],
+        "city": [
+            "Di kota mana tadi aku bilang bertempat tinggal?",
+            "Kamu masih ingat kota tempat domisiliku saat ini?",
+            "Tadi di awal percakapan, aku berdomisili di mana?"
+        ]
     }
-    q_rec, a_rec, ans = q_map[recall_key]
+    q_rec = random.choice(recall_questions[recall_key])
+    ans = p[recall_key]
+    a_rec = f"Tentu saja ingat, {recall_key} yang kamu ceritakan adalah {ans}."
     rec_idx = len(turns)
     turns.append({"role": "user", "content": q_rec})
     turns.append({"role": "assistant", "content": a_rec})
@@ -296,46 +417,63 @@ def make_lifestyle_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, An
     }
 
 
-def make_travel_business_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+def make_travel_adventure_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
     turns, facts = [], []
+    u_0, a_0 = make_dynamic_intro(p)
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
 
-    # Turn 0-1
-    turns.append({"role": "user", "content": f"Halo! Namaku {p['name']}. Aku punya impian besar tahun ini mau jalan-jalan ke {p['travel']}."})
-    turns.append({"role": "assistant", "content": f"Halo {p['name']}! Pilihan destinasi yang spektakuler. {p['travel']} selalu menawarkan pengalaman wisata yang tak terlupakan."})
-    facts.append({"turn": 0, "key": "travel", "value": p["travel"]})
+    travel_variants = [
+        f"Tahun ini aku punya target liburan impian yang sudah lama kurencanakan, yaitu mengunjungi {p['travel']}.",
+        f"Rencana perjalanan wisataku berikutnya adalah menjelajahi keindahan alam di {p['travel']}.",
+        f"Salah satu resolusi jalan-jalanku tahun ini adalah berlibur dan healing ke {p['travel']}."
+    ]
+    turns.append({"role": "user", "content": random.choice(travel_variants)})
+    turns.append({"role": "assistant", "content": f"Destinasi yang sangat memukau, {p['name']}! {p['travel']} punya pemandangan yang ikonik dan pasti memberikan pengalaman tak terlupakan."})
+    facts.append({"turn": 2, "key": "travel", "value": p["travel"]})
 
-    # Turn 2-3
-    turns.append({"role": "user", "content": f"Untuk menambah tabungan liburan, aku sekarang lagi aktif merintis {p['side_biz']}."})
-    turns.append({"role": "assistant", "content": f"Keren banget jiwa kewirausahaanmu, {p['name']}. Mengembangkan {p['side_biz']} pasti memberikan hasil manis untuk mewujudkan impian wisatamu."})
-    facts.append({"turn": 2, "key": "side_biz", "value": p["side_biz"]})
+    biz_variants = [
+        f"Untuk mendanai rencana liburan dan menambah tabungan, sekarang aku aktif merintis usaha sampingan berupa {p['side_biz']}.",
+        f"Selain pekerjaan utama, kesibukan baruku saat ini adalah mengembangkan {p['side_biz']}.",
+        f"Aku juga lagi belajar berwirausaha mandiri dengan menjalankan {p['side_biz']} di waktu luang."
+    ]
+    turns.append({"role": "user", "content": random.choice(biz_variants)})
+    turns.append({"role": "assistant", "content": f"Langkah wirausaha yang sangat inspiratif! Mengembangkan {p['side_biz']} adalah cara cerdas untuk membangun kemandirian finansial."})
+    facts.append({"turn": 4, "key": "side_biz", "value": p["side_biz"]})
 
-    # Turn 4-5
-    turns.append({"role": "user", "content": f"Kalau malam hari pas butuh hiburan santai, aku biasanya main game {p['game']}."})
-    turns.append({"role": "assistant", "content": f"Bermain {p['game']} memang seru dan jadi sarana efektif untuk melepas penat setelah seharian fokus bekerja."})
-    facts.append({"turn": 4, "key": "game", "value": p["game"]})
-
-    # Turn 6-7: Distractor
-    turns.append({"role": "user", "content": "Ada tips supaya keuangan usaha kecil tidak bercampur dengan uang pribadi?"})
-    turns.append({"role": "assistant", "content": "Pisahkan rekening bank sejak hari pertama, buat pembukuan arus kas harian yang disiplin, dan tentukan gaji tetap untuk dirimu sendiri."})
+    q_dis, a_dis = random.choice(MASSIVE_DISTRACTORS)
+    turns.append({"role": "user", "content": q_dis})
+    turns.append({"role": "assistant", "content": a_dis})
 
     if turns_count >= 12:
-        turns.append({"role": "user", "content": "Pemisahan rekening itu simpel tapi sering diabaikan orang ya."})
-        turns.append({"role": "assistant", "content": "Betul, pemisahan rekening menjaga visibilitas profitabilitas bisnis agar kita tahu pasti apakah usaha sedang untung atau rugi."})
+        q_dis2, a_dis2 = random.choice([d for d in MASSIVE_DISTRACTORS if d[0] != q_dis])
+        turns.append({"role": "user", "content": q_dis2})
+        turns.append({"role": "assistant", "content": a_dis2})
 
-    # Recall Turn
-    recall_key = random.choice(["travel", "side_biz", "game"])
-    q_map = {
-        "travel": ("Tadi rencanaku mau pergi wisata ke mana ya?", f"Kamu berencana pergi wisata ke {p['travel']}.", p['travel']),
-        "side_biz": ("Usaha sampingan apa yang sedang kurintis tadi?", f"Kamu sedang merintis usaha {p['side_biz']}.", p['side_biz']),
-        "game": ("Game apa yang biasa kumainkan buat hiburan malam hari?", f"Game yang biasa kamu mainkan adalah {p['game']}.", p['game']),
+    recall_key = random.choice(["travel", "side_biz"])
+    recall_questions = {
+        "travel": [
+            "Tadi destinasi wisata impian yang kurencanakan ke mana ya?",
+            "Kamu masih ingat tempat liburan yang ingin kukunjungi tahun ini?",
+            "Tadi aku menceritakan rencana jalan-jalan ke mana?"
+        ],
+        "side_biz": [
+            "Usaha sampingan apa yang sedang kurintis tadi?",
+            "Bisnis sampingan apa yang tadi kuceritakan sedang kujalani?",
+            "Bisa sebutkan usaha mandiri yang sedang kukembangkan di luar jam kerja?"
+        ]
     }
-    q_rec, a_rec, ans = q_map[recall_key]
+    q_rec = random.choice(recall_questions[recall_key])
+    ans = p[recall_key]
+    a_rec = f"Tentu saja, {recall_key} yang kamu maksud adalah {ans}."
     rec_idx = len(turns)
     turns.append({"role": "user", "content": q_rec})
     turns.append({"role": "assistant", "content": a_rec})
 
     return {
-        "topic": "travel_and_business",
+        "topic": "travel_and_adventure",
         "turns": turns,
         "facts": facts,
         "target_recall": {
@@ -348,36 +486,137 @@ def make_travel_business_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[s
     }
 
 
-def make_update_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+def make_gaming_creative_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
     turns, facts = [], []
-
-    # Turn 0-1: Initial Fact (Old City)
-    turns.append({"role": "user", "content": f"Hai, aku {p['name']}. Saat ini domisiliku masih di {p['city']} dan profesiku adalah {p['job']}."})
-    turns.append({"role": "assistant", "content": f"Halo {p['name']}! Senang berkenalan denganmu. Salam hangat untukmu sebagai {p['job']} di {p['city']}."})
+    u_0, a_0 = make_dynamic_intro(p)
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
     facts.append({"turn": 0, "key": "city", "value": p["city"]})
     facts.append({"turn": 0, "key": "job", "value": p["job"]})
 
-    # Turn 2-3: Distractor
-    turns.append({"role": "user", "content": "Musim hujan di sini sering bikin jadwal kegiatan luar ruangan terhambat."})
-    turns.append({"role": "assistant", "content": "Musim penghujan memang menuntut kita lebih fleksibel. Selalu siapkan payung dan pantau prakiraan cuaca sebelum bepergian."})
+    game_variants = [
+        f"Pas lagi pengen hiburan santai di malam hari, game favorit yang rutin kumainkan adalah {p['game']}.",
+        f"Untuk melepas kepenatan rutinitas, biasanya aku login main game {p['game']} bareng teman-teman.",
+        f"Hobi gaming-ku saat ini lagi banyak kuhabiskan di game {p['game']}, gameplay-nya nagih banget."
+    ]
+    turns.append({"role": "user", "content": random.choice(game_variants)})
+    turns.append({"role": "assistant", "content": f"Pilihan hiburan yang seru, {p['name']}! Game {p['game']} memang punya mekanik gameplay yang menantang dan asyik dimainkan bersama kawan."})
+    facts.append({"turn": 2, "key": "game", "value": p["game"]})
 
-    # Turn 4-5: MEMORY UPDATE (City changes to alt_city)
-    turns.append({"role": "user", "content": f"Kabar terbarunya, bulan depan aku resmi pindah tempat tinggal ke {p['alt_city']} karena urusan keluarga."})
-    turns.append({"role": "assistant", "content": f"Selamat atas rencana kepindahannya ke {p['alt_city']}, {p['name']}! Semoga suasana baru nanti membawa banyak berkah dan kenyamanan."})
-    facts.append({"turn": 4, "key": "city_updated", "value": p["alt_city"]})
+    hobby_variants = [
+        f"Selain bermain game, aktivitas lain yang paling kunikmati untuk relaksasi adalah {p['hobby']}.",
+        f"Di akhir pekan, waktu luangku biasanya kuisi dengan kegiatan {p['hobby']}.",
+        f"Eksplorasi hobiku di luar layar monitor adalah {p['hobby']}, rasanya sangat memuaskan."
+    ]
+    turns.append({"role": "user", "content": random.choice(hobby_variants)})
+    turns.append({"role": "assistant", "content": f"Aktivitas yang sangat menyenangkan! Menyeimbangkan waktu antara gaming dan {p['hobby']} membuat hari-harimu semakin berwarna."})
+    facts.append({"turn": 4, "key": "hobby", "value": p["hobby"]})
 
-    # Turn 6-7: Distractor
-    turns.append({"role": "user", "content": "Kira-kira apa hal terpenting yang harus dicek sebelum menandatangani kontrak sewa hunian?"})
-    turns.append({"role": "assistant", "content": "Periksa kondisi instalasi air dan listrik, kebersihan lingkungan, keamanan sekitar, serta klausul biaya perbaikan jika terjadi kerusakan struktural."})
+    q_dis, a_dis = random.choice(MASSIVE_DISTRACTORS)
+    turns.append({"role": "user", "content": q_dis})
+    turns.append({"role": "assistant", "content": a_dis})
 
     if turns_count >= 12:
-        turns.append({"role": "user", "content": "Poin instalasi air memang krusial banget, jangan sampai pas ditinggali baru ketahuan macet."})
-        turns.append({"role": "assistant", "content": "Tepat sekali, mencoba langsung kran air dan sakelar lampu saat survei fisik sangat dianjurkan."})
+        q_dis2, a_dis2 = random.choice([d for d in MASSIVE_DISTRACTORS if d[0] != q_dis])
+        turns.append({"role": "user", "content": q_dis2})
+        turns.append({"role": "assistant", "content": a_dis2})
 
-    # Recall Turn: MUST RETURN UPDATED CITY
-    q_rec = "Bisa ingatkan aku, kota tujuan pindahanku yang baru ke mana?"
-    a_rec = f"Kota tujuan kepindahanmu yang baru adalah {p['alt_city']}."
-    ans = p['alt_city']
+    recall_key = random.choice(["game", "hobby"])
+    recall_questions = {
+        "game": [
+            "Game apa yang tadi kubilang sering kumainkan di waktu santai?",
+            "Kamu masih ingat judul game favoritku apa?",
+            "Tadi aku menceritakan suka main game apa?"
+        ],
+        "hobby": [
+            "Kegiatan hobi yang kulakukan di akhir pekan tadi apa ya?",
+            "Bisa sebutkan hobi santai yang tadi kuceritakan?",
+            "Kamu catat nggak aktivitas hobiku di luar waktu kerja?"
+        ]
+    }
+    q_rec = random.choice(recall_questions[recall_key])
+    ans = p[recall_key]
+    a_rec = f"Tentu, {recall_key} yang kamu ceritakan tadi adalah {ans}."
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "gaming_and_creative",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def make_update_correction_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    turns, facts = [], []
+    u_0, a_0 = make_dynamic_intro(p)
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    q_dis1, a_dis1 = random.choice(MASSIVE_DISTRACTORS)
+    turns.append({"role": "user", "content": q_dis1})
+    turns.append({"role": "assistant", "content": a_dis1})
+
+    update_type = random.choice(["city", "job"])
+    if update_type == "city":
+        update_variants = [
+            f"Kabar terbarunya, bulan depan aku resmi pindah tempat tinggal ke {p['alt_city']} karena urusan keluarga.",
+            f"Oh iya, sekadar info update, minggu depan aku akan merelokasi tempat tinggalku ke kota {p['alt_city']}.",
+            f"Ada perkembangan baru nih, aku baru saja menyelesaikan urusan kepindahan rumah ke {p['alt_city']}."
+        ]
+        u_up = random.choice(update_variants)
+        a_up = f"Selamat atas rencana kepindahan barumu ke {p['alt_city']}, {p['name']}! Semoga suasana dan lingkungan baru di sana membawa berkah dan kelancaran."
+        facts.append({"turn": 4, "key": "city_updated", "value": p["alt_city"]})
+        target_key = "city_updated"
+        old_val = p["city"]
+        new_val = p["alt_city"]
+        q_rec_list = [
+            "Bisa ingatkan aku, kota tujuan pindahanku yang terbaru ke mana?",
+            "Berdasarkan info update tadi, di kota mana tempat tinggalku yang baru?",
+            "Kota baru yang menjadi tujuan kepindahanku tadi apa ya?"
+        ]
+    else:
+        update_variants = [
+            f"Kabar gembiranya, aku baru saja resmi dipromosikan dan berganti peran menjadi {p['alt_job']}.",
+            f"Ada kabar baik soal karirku, mulai bulan depan aku beralih profesi menjadi {p['alt_job']}.",
+            f"Update penting tentang pekerjaanku: per hari ini aku mulai mengemban tanggung jawab baru sebagai {p['alt_job']}."
+        ]
+        u_up = random.choice(update_variants)
+        a_up = f"Wah selamat banyak atas pencapaian karir barumu sebagai {p['alt_job']}, {p['name']}! Ini langkah besar yang membanggakan."
+        facts.append({"turn": 4, "key": "job_updated", "value": p["alt_job"]})
+        target_key = "job_updated"
+        old_val = p["job"]
+        new_val = p["alt_job"]
+        q_rec_list = [
+            "Bisa sebutkan profesi atau peran pekerjaanku yang terbaru?",
+            "Setelah update karir tadi, apa jabatan/pekerjaan baruku sekarang?",
+            "Kamu masih ingat profesi baruku setelah berganti peran tadi?"
+        ]
+
+    turns.append({"role": "user", "content": u_up})
+    turns.append({"role": "assistant", "content": a_up})
+
+    q_dis2, a_dis2 = random.choice([d for d in MASSIVE_DISTRACTORS if d[0] != q_dis1])
+    turns.append({"role": "user", "content": q_dis2})
+    turns.append({"role": "assistant", "content": a_dis2})
+
+    if turns_count >= 12:
+        q_dis3, a_dis3 = random.choice([d for d in MASSIVE_DISTRACTORS if d[0] not in (q_dis1, q_dis2)])
+        turns.append({"role": "user", "content": q_dis3})
+        turns.append({"role": "assistant", "content": a_dis3})
+
+    q_rec = random.choice(q_rec_list)
+    a_rec = f"Berdasarkan pembaruan terbaru darimu, {target_key.replace('_updated', '')} barumu adalah {new_val}."
     rec_idx = len(turns)
     turns.append({"role": "user", "content": q_rec})
     turns.append({"role": "assistant", "content": a_rec})
@@ -388,16 +627,23 @@ def make_update_dialogue(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
         "facts": facts,
         "target_recall": {
             "query_turn": rec_idx,
-            "target_key": "city_updated",
-            "ground_truth": ans,
-            "old_value": p["city"],
+            "target_key": target_key,
+            "ground_truth": new_val,
+            "old_value": old_val,
             "question": q_rec,
             "answer": a_rec
         }
     }
 
 
-BUILDERS = [make_tech_dialogue, make_lifestyle_dialogue, make_travel_business_dialogue, make_update_dialogue]
+BUILDERS = [
+    make_tech_dialogue,
+    make_lifestyle_health_dialogue,
+    make_travel_adventure_dialogue,
+    make_gaming_creative_dialogue,
+    make_update_correction_dialogue
+]
+
 
 
 def format_chatml(turns: List[Dict[str, str]]) -> str:

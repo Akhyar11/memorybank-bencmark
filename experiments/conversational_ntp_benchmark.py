@@ -106,23 +106,6 @@ def run_conversational_benchmark(
     for seed in seeds:
         print(f"\n[Seed {seed}] Preparing Deterministic Conversational Data Pipeline...")
 
-        # Precompute exact deterministic batch sequences
-        epoch_batches = []
-        for ep in range(num_epochs):
-            g = torch.Generator()
-            g.manual_seed(seed * 10000 + ep)
-            sampler = RandomSampler(train_ds, generator=g)
-            loader = DataLoader(
-                train_ds, batch_size=batch_size, sampler=sampler,
-                collate_fn=lambda b: conversation_collate_fn(b, pad_id=train_ds.pad_id)
-            )
-            # Cap at max_steps_per_epoch
-            batches = []
-            for b_idx, batch in enumerate(loader):
-                batches.append(batch)
-                if max_steps_per_epoch is not None and b_idx + 1 >= max_steps_per_epoch:
-                    break
-            epoch_batches.append(batches)
 
         for name, mode in modes.items():
             print(f"\n  --- Training & Evaluating {name} (Seed {seed}) ---")
@@ -156,17 +139,29 @@ def run_conversational_benchmark(
             model.train()
             for ep in range(num_epochs):
                 ep_loss = 0.0
-                ep_batches = epoch_batches[ep]
-                n_batches = len(ep_batches)
+                g = torch.Generator()
+                g.manual_seed(seed * 10000 + ep)
+                sampler = RandomSampler(train_ds, generator=g)
+                loader = DataLoader(
+                    train_ds, batch_size=batch_size, sampler=sampler,
+                    collate_fn=lambda b: conversation_collate_fn(b, pad_id=train_ds.pad_id),
+                    pin_memory=(device.type == 'cuda')
+                )
+                total_steps = min(len(loader), max_steps_per_epoch) if max_steps_per_epoch else len(loader)
 
                 pbar = tqdm(
-                    ep_batches,
+                    loader,
+                    total=total_steps,
                     desc=f"    Epoch {ep+1:2d}/{num_epochs:2d}",
                     leave=True,
                     unit="batch",
                     dynamic_ncols=True
                 )
+                steps_done = 0
                 for step_idx, batch in enumerate(pbar):
+                    if max_steps_per_epoch is not None and step_idx >= max_steps_per_epoch:
+                        break
+                    steps_done += 1
                     input_ids = batch['input_ids'].to(device)
                     target_ids = batch['target_ids'].to(device)
                     b_size = input_ids.size(0)
@@ -199,13 +194,13 @@ def run_conversational_benchmark(
                     ep_loss += loss.item()
                     total_train_tokens += int(batch['loss_mask'].sum().item())
 
-                    avg_so_far = ep_loss / (step_idx + 1)
+                    avg_so_far = ep_loss / steps_done
                     pbar.set_postfix({
                         "loss": f"{loss.item():.4f}",
                         "avg": f"{avg_so_far:.4f}"
                     })
 
-                final_loss = ep_loss / max(n_batches, 1)
+                final_loss = ep_loss / max(steps_done, 1)
 
             # Save checkpoint with explicit versioning
             torch.save({

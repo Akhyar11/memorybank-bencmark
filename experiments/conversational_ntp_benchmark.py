@@ -1,0 +1,273 @@
+"""
+experiments/conversational_ntp_benchmark.py – Pure Decoder-Only Conversational NTP Benchmark.
+
+Evaluates:
+- No Memory (pure causal decoder baseline)
+- NN Memory (independent Key-Value nearest neighbor baseline)
+- Memory Bank (locked episodic Memory Bank)
+
+Trained with causal Next-Token Prediction (NTP) on ChatML multi-turn conversational dataset.
+Multi-seed support (42, 43, 44) with mean ± std reporting across:
+- EM, Token F1
+- Recall@1, Recall@5, MRR
+- Write rate, Duplicate rate, Replacement rate, Occupancy
+- Old value suppression rate
+- Causal memory intervention rate
+"""
+import os
+import sys
+import time
+import json
+import collections
+import argparse
+from typing import List, Dict, Any, Optional, Tuple
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, RandomSampler
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from models.tiny_memory_bank import TinyMemoryConfig
+from models.decoder_only_memory_model import DecoderOnlyMemoryLM
+from dataset.conversation_dataset import ConversationDataset, conversation_collate_fn, get_or_create_tokenizer
+from evaluation.conversational_evaluator import ConversationalEvaluator
+
+
+def run_conversational_benchmark(
+    train_jsonl: str = "dataset/conversations_100M_train.jsonl",
+    val_jsonl: str = "dataset/conversations_100M_val.jsonl",
+    test_jsonl: str = "dataset/conversations_100M_test.jsonl",
+    tokenizer_path: str = "dataset/tokenizer.json",
+    seeds: Tuple[int, ...] = (42, 43, 44),
+    num_epochs: int = 5,
+    max_steps_per_epoch: int = 40,
+    batch_size: int = 8,
+    max_train_samples: int = 1000,
+    max_test_samples: int = 100,
+    embed_dim: int = 32,
+    num_layers: int = 1,
+    num_heads: int = 2,
+    ff_dim: int = 216,
+    learning_rate: float = 1e-3,
+    checkpoint_dir: Optional[str] = None,
+    write_threshold: float = 0.5
+) -> Dict[str, Any]:
+    print("==================================================================")
+    print("       PURE DECODER-ONLY CONVERSATIONAL NTP BENCHMARK             ")
+    print("==================================================================")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"DEVICE         : {device}")
+    print(f"TRAIN DATASET  : {train_jsonl}")
+    print(f"TEST DATASET   : {test_jsonl}")
+    print(f"SEEDS          : {list(seeds)}")
+    print(f"BUDGET         : {num_epochs} epochs x {max_steps_per_epoch} steps/epoch (Batch: {batch_size})")
+    print("==================================================================")
+
+    if checkpoint_dir is None:
+        checkpoint_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'checkpoints_decoder_only')
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    tok = get_or_create_tokenizer(tokenizer_path)
+    vocab_size = tok.get_vocab_size()
+
+    train_ds = ConversationDataset(train_jsonl, tokenizer_path=tokenizer_path, max_samples=max_train_samples)
+    test_ds = ConversationDataset(test_jsonl, tokenizer_path=tokenizer_path, max_samples=max_test_samples)
+
+    # Load raw test items for logical evaluation
+    test_items = []
+    with open(test_jsonl, 'r', encoding='utf-8') as f:
+        for i, line in enumerate(f):
+            test_items.append(json.loads(line))
+            if len(test_items) >= max_test_samples:
+                break
+
+    modes = {
+        "No Memory": "none",
+        "NN Memory": "nn",
+        "Memory Bank": "bank"
+    }
+
+    results = {name: collections.defaultdict(list) for name in modes.keys()}
+
+    for seed in seeds:
+        print(f"\n[Seed {seed}] Preparing Deterministic Conversational Data Pipeline...")
+
+        # Precompute exact deterministic batch sequences
+        epoch_batches = []
+        for ep in range(num_epochs):
+            g = torch.Generator()
+            g.manual_seed(seed * 10000 + ep)
+            sampler = RandomSampler(train_ds, generator=g)
+            loader = DataLoader(
+                train_ds, batch_size=batch_size, sampler=sampler,
+                collate_fn=lambda b: conversation_collate_fn(b, pad_id=train_ds.pad_id)
+            )
+            # Cap at max_steps_per_epoch
+            batches = []
+            for b_idx, batch in enumerate(loader):
+                batches.append(batch)
+                if b_idx + 1 >= max_steps_per_epoch:
+                    break
+            epoch_batches.append(batches)
+
+        for name, mode in modes.items():
+            print(f"\n  --- Training & Evaluating {name} (Seed {seed}) ---")
+
+            # Deterministic initialization for all 3 baselines
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
+            cfg = TinyMemoryConfig(
+                memory_capacity=128, memory_dim=embed_dim, hidden_size=embed_dim,
+                memory_write_threshold=write_threshold, mem_alpha=2.0, mem_reinforcement_rate=0.01
+            )
+            model = DecoderOnlyMemoryLM(
+                config=cfg, vocab_size=vocab_size,
+                embed_dim=embed_dim, num_layers=num_layers,
+                num_heads=num_heads, ff_dim=ff_dim,
+                pad_id=train_ds.pad_id, bos_id=train_ds.bos_id, eos_id=train_ds.eos_id
+            ).to(device)
+
+            if seed == seeds[0] and mode == "none":
+                print(f"      Model Parameters: {sum(p.numel() for p in model.parameters()):,}")
+
+            ckpt_path = os.path.join(checkpoint_dir, f"seed{seed}_{name.lower().replace(' ', '_')}.pt")
+            optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+            total_train_tokens = 0
+            final_loss = 0.0
+
+            # Training Loop (NTP with Causal LM Loss)
+            model.train()
+            for ep in range(num_epochs):
+                ep_loss = 0.0
+                ep_batches = epoch_batches[ep]
+                n_batches = len(ep_batches)
+                t0 = time.time()
+
+                for batch in ep_batches:
+                    input_ids = batch['input_ids'].to(device)
+                    target_ids = batch['target_ids'].to(device)
+                    attention_mask = batch['attention_mask'].to(device)
+
+                    optimizer.zero_grad()
+                    out = model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        target_ids=target_ids,
+                        memory_mode=mode
+                    )
+                    loss = out['loss']
+
+                    # Auxiliary write supervision on turn boundaries:
+                    if mode == "bank":
+                        turn_indices_list = batch['turn_end_indices']
+                        facts_list = batch['facts']
+                        h = out['hidden_states']
+                        
+                        write_preds = []
+                        write_targets = []
+                        for b_i, (t_ends, facts) in enumerate(zip(turn_indices_list, facts_list)):
+                            fact_turns = {f['turn'] for f in facts}
+                            for t_num, t_pos in enumerate(t_ends):
+                                if t_pos < h.size(1):
+                                    wp_logit = model.write_head(h[b_i, t_pos])
+                                    tgt = 1.0 if t_num in fact_turns else 0.0
+                                    write_preds.append(wp_logit)
+                                    write_targets.append(torch.tensor([tgt], device=device))
+                        
+                        if write_preds:
+                            preds_t = torch.cat(write_preds)
+                            targets_t = torch.cat(write_targets)
+                            w_loss = F.binary_cross_entropy_with_logits(preds_t, targets_t)
+                            loss = loss + 0.1 * w_loss
+
+                    loss.backward()
+                    optimizer.step()
+
+                    ep_loss += loss.item()
+                    total_train_tokens += int(batch['loss_mask'].sum().item())
+
+                avg_loss = ep_loss / max(n_batches, 1)
+                final_loss = avg_loss
+                elapsed = time.time() - t0
+                ms_per_step = (elapsed / max(n_batches, 1)) * 1000
+                if (ep + 1) == 1 or (ep + 1) % max(1, num_epochs // 5) == 0 or (ep + 1) == num_epochs:
+                    print(f"    Epoch {ep+1:3d}/{num_epochs:3d} Loss: {avg_loss:.4f} | Time: {elapsed:.2f}s | {ms_per_step:.2f} ms/step")
+
+            # Save checkpoint with explicit versioning
+            torch.save({
+                'architecture': 'decoder_only_memory_bank',
+                'version': '2.0',
+                'baseline': name,
+                'seed': seed,
+                'model': model.state_dict(),
+                'final_loss': final_loss,
+                'total_train_tokens': total_train_tokens
+            }, ckpt_path)
+
+            # Evaluation on test conversations
+            evaluator = ConversationalEvaluator(model, tok, device=device)
+            eval_res = evaluator.evaluate_dataset(test_items, memory_mode=mode, write_threshold=write_threshold)
+
+            results[name]['loss'].append(final_loss)
+            results[name]['em'].append(eval_res['em'])
+            results[name]['f1'].append(eval_res['f1'])
+            results[name]['r1'].append(eval_res['r1'])
+            results[name]['r5'].append(eval_res['r5'])
+            results[name]['mrr'].append(eval_res['mrr'])
+            results[name]['write_rate'].append(eval_res['write_rate'])
+            results[name]['occupancy'].append(eval_res['occupancy'])
+            results[name]['suppression'].append(eval_res['suppression_rate'])
+            results[name]['causal'].append(eval_res['causal_intervention_rate'])
+
+            print(f"      [Eval {name} S{seed}] EM: {eval_res['em']:.2f}% | F1: {eval_res['f1']:.2f}% | "
+                  f"R@1: {eval_res['r1']:.2f}% | R@5: {eval_res['r5']:.2f}% | MRR: {eval_res['mrr']:.4f}")
+
+    # Summary Report
+    print("\n" + "=" * 72)
+    print("        FINAL PURE DECODER-ONLY BENCHMARK RESULTS (3 SEEDS)      ")
+    print("=" * 72)
+
+    for name in modes.keys():
+        r = results[name]
+        print(f"\n{name} (Averaged over {len(seeds)} seeds):")
+        print(f"  Final Train Loss : {np.mean(r['loss']):.4f} ± {np.std(r['loss']):.4f}")
+        print(f"  Exact Match      : {np.mean(r['em']):.2f}% ± {np.std(r['em']):.2f}%")
+        print(f"  Token F1         : {np.mean(r['f1']):.2f}% ± {np.std(r['f1']):.2f}%")
+        if name != "No Memory":
+            print(f"  Recall@1         : {np.mean(r['r1']):.2f}% ± {np.std(r['r1']):.2f}%")
+            print(f"  Recall@5         : {np.mean(r['r5']):.2f}% ± {np.std(r['r5']):.2f}%")
+            print(f"  MRR              : {np.mean(r['mrr']):.4f} ± {np.std(r['mrr']):.4f}")
+        if name == "Memory Bank":
+            print(f"  Write Rate       : {np.mean(r['write_rate']):.2f}% ± {np.std(r['write_rate']):.2f}%")
+            print(f"  Memory Occupancy : {np.mean(r['occupancy']):.2f}% ± {np.std(r['occupancy']):.2f}%")
+            print(f"  Old Suppression  : {np.mean(r['suppression']):.2f}% ± {np.std(r['suppression']):.2f}%")
+            print(f"  Causal Action    : {np.mean(r['causal']):.2f}% ± {np.std(r['causal']):.2f}%")
+
+    print("\n" + "=" * 72)
+    return results
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Pure Decoder-Only Conversational NTP Benchmark")
+    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--max_steps_per_epoch", type=int, default=30)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--max_train_samples", type=int, default=500)
+    parser.add_argument("--max_test_samples", type=int, default=50)
+    parser.add_argument("--write_threshold", type=float, default=0.85)
+    args = parser.parse_args()
+
+    run_conversational_benchmark(
+        num_epochs=args.epochs,
+        max_steps_per_epoch=args.max_steps_per_epoch,
+        batch_size=args.batch_size,
+        max_train_samples=args.max_train_samples,
+        max_test_samples=args.max_test_samples,
+        write_threshold=args.write_threshold
+    )

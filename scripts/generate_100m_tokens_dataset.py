@@ -543,7 +543,8 @@ def generate_100m_tokens(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate 100M Tokens Multi-Turn Conversational Memory Dataset")
     parser.add_argument("--tokenizer", default="dataset/tokenizer.json")
-    parser.add_argument("--output_dir", default="dataset")
+    parser.add_argument("--target_tokens", type=int, default=None,
+                        help="Total target tokens across all splits (automatically splits 90% train, 5% val, 5% test)")
     parser.add_argument("--train_tokens", type=int, default=95_000_000)
     parser.add_argument("--val_tokens", type=int, default=2_500_000)
     parser.add_argument("--test_tokens", type=int, default=2_500_000)
@@ -551,12 +552,21 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    train_tokens = args.train_tokens
+    val_tokens = args.val_tokens
+    test_tokens = args.test_tokens
+
+    if args.target_tokens is not None:
+        train_tokens = int(args.target_tokens * 0.90)
+        val_tokens = int(args.target_tokens * 0.05)
+        test_tokens = int(args.target_tokens * 0.05)
+
     generate_100m_tokens(
         tokenizer_path=args.tokenizer,
         output_dir=args.output_dir,
-        train_tokens_target=args.train_tokens,
-        val_tokens_target=args.val_tokens,
-        test_tokens_target=args.test_tokens,
+        train_tokens_target=train_tokens,
+        val_tokens_target=val_tokens,
+        test_tokens_target=test_tokens,
         batch_size=args.batch_size,
         seed=args.seed
     )

@@ -1609,6 +1609,488 @@ def build_psychology_and_mindset_flow(p: Dict[str, Any], turns_count: int) -> Di
     }
 
 
+def build_ai_and_machine_learning_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Deep learning, Transformer attention, embedding vectors, and model training concepts."""
+    turns, facts = [], []
+    ai_topics = [
+        (
+            "Bagaimana mekanisme Self-Attention pada model Transformer memungkinkan pemahaman konteks jarak jauh?",
+            "Self-Attention menghitung matriks relevansi antara setiap token dengan seluruh token lainnya menggunakan vektor Query (Q), Key (K), dan Value (V):\n$$\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$$\nDengan operasi perkalian dot product ini, jarak posisi antar kata tidak lagi menjadi hambatan (kompleksitas path O(1)), memungkinkan model menangkap ketergantungan semantik jarak jauh secara instan dibanding arsitektur RNN sequential."
+        ),
+        (
+            "Mengapa fungsi Cosine Similarity lebih sering digunakan untuk pencarian semantik vektor dibanding Euclidean Distance?",
+            "Cosine Similarity mengukur **sudut kemiringan arah** antar dua vektor, bukan panjang absolut (magnitude)-nya:\n$$\\cos(\\theta) = \\frac{u \\cdot v}{\\|u\\| \\|v\\|}$$\nDalam representasi teks (embedding), panjang vektor sering kali dipengaruhi oleh panjang kalimat atau frekuensi kata, sedangkan makna semantik murni ditentukan oleh orientasi arah vektor dalam ruang laten."
+        )
+    ]
+    q_ai, a_ai = random.choice(ai_topics)
+    turns.append({"role": "user", "content": q_ai})
+    turns.append({"role": "assistant", "content": a_ai})
+
+    name = p["name"]
+    turns.append({"role": "user", "content": f"Penjelasannya sangat mendalam dan presisi! Kenalkan namaku {name}, seorang {p['job']} yang berdomisili di kota {p['city']}."})
+    turns.append({"role": "assistant", "content": f"Salam kenal hangat {name}! Senang sekali berdiskusi dengan seorang {p['job']} dari {p['city']}. Konsep representasi vektor ini memang fondasi fundamental di era kecerdasan buatan modern."})
+    facts.append({"turn": 2, "key": "name", "value": name})
+    facts.append({"turn": 2, "key": "city", "value": p["city"]})
+    facts.append({"turn": 2, "key": "job", "value": p["job"]})
+
+    turns.append({"role": "user", "content": f"Di proyek machine learning-ku, bahasa pemrograman yang paling sering kuandalkan adalah {p['lang']}."})
+    turns.append({"role": "assistant", "content": f"Pilihan ekosistem yang sangat ideal, {name}. Bahasa {p['lang']} memiliki dukungan pustaka komputasi numerik dan akselerasi hardware yang sangat matang."})
+    facts.append({"turn": 4, "key": "lang", "value": p["lang"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["job", "city", "lang"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "ai_and_machine_learning",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_personal_finance_and_investing_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Personal wealth building, asset allocation, and emergency reserve funds."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    fin_topics = [
+        (
+            "Berapa idealnya besaran dana darurat yang harus disiapkan untuk seorang profesional lajang dibanding yang sudah berkeluarga?",
+            "Besaran dana darurat dihitung berdasarkan pengeluaran rutin bulanan:\n- **Lajang**: Minimal 3 hingga 6 bulan pengeluaran rutin.\n- **Menikah tanpa anak**: 6 hingga 9 bulan pengeluaran rutin.\n- **Menikah dengan anak / Freelancer**: 9 hingga 12 bulan pengeluaran rutin.\n\nSimpan dana darurat di instrumen likuid bebas risiko pasar seperti deposito jangka pendek atau reksa dana pasar uang (RDPU)."
+        ),
+        (
+            "Apa perbedaan metode pelunasan utang 'Debt Snowball' vs 'Debt Avalanche'?",
+            "- **Debt Snowball**: Melunasi utang dari nominal saldo terkecil terlebih dahulu, memberi kemenangan psikologis cepat yang membangun momentum disiplin.\n- **Debt Avalanche**: Melunasi utang dari bunga persentase tertinggi terlebih dahulu, secara matematis meminimalkan total beban bunga yang harus dibayarkan."
+        )
+    ]
+    q_f, a_f = random.choice(fin_topics)
+    turns.append({"role": "user", "content": q_f})
+    turns.append({"role": "assistant", "content": a_f})
+
+    turns.append({"role": "user", "content": f"Selain pekerjaan utama, arus kas tambahanku juga ditopang oleh usaha sampingan berupa {p['side_biz']}."})
+    turns.append({"role": "assistant", "content": f"Diversifikasi pendapatan yang sangat sehat, {p['name']}! Memiliki pemasukan dari {p['side_biz']} mempercepat tercapainya tujuan dana darurat dan kemandirian finansial."})
+    facts.append({"turn": 4, "key": "side_biz", "value": p["side_biz"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["side_biz", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "personal_finance_and_investing",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_cinema_and_filmmaking_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Cinematic storytelling, screenwriting structure, and visual grammar."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    film_topics = [
+        (
+            "Apa fungsi dramatik dari 'Inciting Incident' dalam struktur tiga babak (Three-Act Structure) skenario film?",
+            "**Inciting Incident** (Kejadian Pemicu) terjadi di pertengahan Babak Pertama (sekitar menit ke-10 hingga 15), yang merusak keseimbangan dunia normal tokoh utama dan memaksanya keluar dari zona nyaman untuk memulai petualangan cerita."
+        ),
+        (
+            "Bagaimana teknik pencahayaan 'Three-Point Lighting' membentuk kedalaman visual pada sinematografi?",
+            "Teknik ini memadukan tiga sumber cahaya:\n1. **Key Light**: Sumber cahaya primer terkuat yang menerangi subjek utama.\n2. **Fill Light**: Cahaya sekunder yang lebih lembut untuk mengisi dan melembutkan bayangan gelap.\n3. **Back Light (Rim Light)**: Cahaya dari belakang subjek untuk memisahkan garis siluet tubuh dari latar belakang, menciptakan kedalaman 3 dimensi."
+        )
+    ]
+    q_c, a_c = random.choice(film_topics)
+    turns.append({"role": "user", "content": q_c})
+    turns.append({"role": "assistant", "content": a_c})
+
+    turns.append({"role": "user", "content": f"Apresiasi terhadap karya film ini juga memicu proyek kreatifku sendiri, yaitu {p['creative_project']}."})
+    turns.append({"role": "assistant", "content": f"Eksplorasi yang sangat kaya estetika, {p['name']}! Menerapkan prinsip naratif visual ke dalam {p['creative_project']} akan membuat karya senimu semakin memikat penikmatnya."})
+    facts.append({"turn": 4, "key": "creative_project", "value": p["creative_project"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["creative_project", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "cinema_and_filmmaking",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_music_theory_and_instruments_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Acoustic guitars, harmony, chord progressions, and audio acoustics."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    music_topics = [
+        (
+            "Mengapa progresi akor I - V - vi - IV (seperti C - G - Am - F) sangat populer dan adiktif dalam lagu pop dunia?",
+            "Progresi ini menciptakan **siklus resolusi emosional sempurna**:\n- **I (Tonic)**: Fondasi rasa aman dan stabil.\n- **V (Dominant)**: Menciptakan ketegangan ekspektasi.\n- **vi (Minor Submediant)**: Menghadirkan sentuhan melankolis reflektif.\n- **IV (Subdominant)**: Transisi hangat yang membawa pendengar bersiap kembali ke nada dasar (resolusi tonic)."
+        ),
+        (
+            "Apa itu 'Circle of Fifths' (Lingkaran Nada Kelima) dan bagaimana musisi memanfaatkannya?",
+            "Circle of Fifths memetakan 12 nada tangga nada kromatik berjarak interval 5 nada sempurna. Musisi menggunakannya untuk:\n1. Mengetahui jumlah tanda kres (#) atau mol (b) pada suatu tangga nada secara instan.\n2. Menemukan modulasi akor yang harmonis dan perpindahan nada dasar yang mulus.\n3. Menyusun progresi akor jazz dan harmoni vokal bertingkat."
+        )
+    ]
+    q_m, a_m = random.choice(music_topics)
+    turns.append({"role": "user", "content": q_m})
+    turns.append({"role": "assistant", "content": a_m})
+
+    turns.append({"role": "user", "content": f"Bermain musik dan nada memang aktivitas pelepas lelah favoritku, selain aktif {p['hobby']}."})
+    turns.append({"role": "assistant", "content": f"Keseimbangan rekreasi yang sangat menyehatkan jiwa, {p['name']}! Memadukan harmoni nada dengan kegiatan {p['hobby']} membuat waktu istirahatmu sangat berkualitas."})
+    facts.append({"turn": 4, "key": "hobby", "value": p["hobby"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["hobby", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "music_and_harmony",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_gardening_and_agriculture_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Urban hydroponics, plant nutrition, and biological pest prevention."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    garden_topics = [
+        (
+            "Apa kelebihan sistem hidroponik NFT (Nutrient Film Technique) dibanding sistem wick sumbu untuk sayuran daun?",
+            "Sistem NFT mengalirkan larutan nutrisi tipis (film) secara terus-menerus menggunakan pompa kecil:\n- **Oksigenasi Maksimal**: Sebagian akar terendam nutrisi, sebagian akar terekspos udara bebas sehingga respirasi akar sangat optimal.\n- **Pertumbuhan Cepat**: Penyerapan nutrisi berjalan aktif, sayuran seperti selada atau pakcoy dapat dipanen 20-30% lebih cepat dibanding sistem statis."
+        ),
+        (
+            "Bagaimana cara membuat insektisida nabati alami dari minyak mimba (neem oil) untuk membasmi kutu putih (mealybugs)?",
+            "Campurkan 1 liter air hangat dengan 5 ml pure cold-pressed neem oil dan 2-3 tetes sabun cuci piring lembut (sebagai emulsifier pengikat minyak). Kocok merata lalu semprotkan ke bawah permukaan daun pada sore hari saat tidak terpapar terik matahari."
+        )
+    ]
+    q_g, a_g = random.choice(garden_topics)
+    turns.append({"role": "user", "content": q_g})
+    turns.append({"role": "assistant", "content": a_g})
+
+    turns.append({"role": "user", "content": f"Kalau lagi bersantai merawat kebun kecil di rumah, minumannya paling pas segelas {p['drink']} dingin."})
+    turns.append({"role": "assistant", "content": f"Momen healing yang sangat menyegarkan! Menikmati suasana hijau ditemani {p['drink']} adalah penawar kepenatan yang sempurna."})
+    facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["drink", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "gardening_and_agriculture",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_automotive_and_mechanics_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Automotive mechanics, engine oils, and vehicle maintenance diagnostics."""
+    turns, facts = [], []
+    auto_topics = [
+        (
+            "Apa arti kode viskositas oli mesin SAE 10W-40 dan kapan sebaiknya oli diganti?",
+            "- **Angka '10W' (Winter)**: Mengukur kekentalan oli pada suhu dingin ekstrem saat mesin pertama kali dihidupkan.\n- **Angka '40'**: Mengukur ketahanan viskositas lapisan oli saat mesin mencapai temperatur kerja panas (100°C).\n- **Interval Ganti**: Pada motor matic/bebek dianjurkan tiap 2.000-3.000 km, sedangkan pada mobil modern tiap 5.000-10.000 km atau maksimal 6 bulan."
+        ),
+        (
+            "Kenapa rem cakram kendaraan bisa berbunyi mendecit tajam saat diinjak?",
+            "Penyebab utamanya:\n1. Kampas rem (brake pads) sudah menipis hingga plat indikator logam bergesekan dengan piringan cakram.\n2. Ada debu residu pengereman atau partikel pasir yang terselip di celah kampas.\n3. Piringan cakram bergelombang tidak rata atau mengalami glazing (hangus licin akibat panas pengereman berlebih)."
+        )
+    ]
+    q_a, a_a = random.choice(auto_topics)
+    turns.append({"role": "user", "content": q_a})
+    turns.append({"role": "assistant", "content": a_a})
+
+    p_drop = random.choice(MID_CONV_PERSONA_DROPS).format(name=p["name"], city=p["city"], job=p["job"])
+    turns.append({"role": "user", "content": f"Penjelasan mekanisnya sangat detail! {p_drop}"})
+    turns.append({"role": "assistant", "content": f"Senang bisa berbagi info praktis, {p['name']}! Sebagai seorang {p['job']} di {p['city']}, memahami kondisi kendaraan menjamin perjalanan harianmu selalu aman dan lancar."})
+    facts.append({"turn": 2, "key": "name", "value": p["name"]})
+    facts.append({"turn": 2, "key": "city", "value": p["city"]})
+    facts.append({"turn": 2, "key": "job", "value": p["job"]})
+
+    turns.append({"role": "user", "content": f"Biar badan tetap rileks sehabis berurusan dengan mesin dan oli, santap siang kesukaanku itu {p['food']}."})
+    turns.append({"role": "assistant", "content": f"Pilihan makanan yang sangat mengenyangkan! Menikmati {p['food']} pasti mengembalikan energimu dengan cepat."})
+    facts.append({"turn": 4, "key": "food", "value": p["food"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["food", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "automotive_and_mechanics",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_cybersecurity_and_privacy_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Information security, encryption hashing, zero-trust architecture, and 2FA."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} {random.choice(INTRO_CLAUSES).format(name=p['name'], city=p['city'], job=p['job'])}"
+    a_0 = random.choice(ASSISTANT_OPENING_REPLIES).format(name=p['name'], city=p['city'], job=p['job'])
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    sec_topics = [
+        (
+            "Mengapa fungsi hashing seperti SHA-256 tidak boleh digunakan langsung untuk menyimpan password pengguna tanpa salt dan key stretching?",
+            "Karena SHA-256 dirancang sangat cepat untuk integritas data, sehingga rentan diserang menggunakan **Rainbow Tables** dan serangan brute-force hardware GPU (miliaran hash/detik).\n\nGunakan algoritma *Slow Hashing* adaptif yang tahan ASIC/GPU:\n- **Bcrypt**: Menggunakan cost factor komputasi yang bisa dinaikkan berkala.\n- **Argon2id**: Standar pemenang kompetisi hashing modern yang membatasi memori dan resisten serangan side-channel."
+        ),
+        (
+            "Bagaimana prinsip kerja autentikasi Two-Factor Authentication (2FA) berbasis TOTP (Google Authenticator)?",
+            "TOTP (Time-based One-Time Password) menggunakan **kunci rahasia bersama (Shared Secret)** yang dibagikan sekali saat scan QR code, digabung dengan **waktu Unix saat ini dibagi per 30 detik** melalui algoritma HMAC-SHA1. Keduanya menghasilkan 6 digit kode unik yang sama persis di ponsel dan server tanpa perlu koneksi internet atau SMS."
+        )
+    ]
+    q_s, a_s = random.choice(sec_topics)
+    turns.append({"role": "user", "content": q_s})
+    turns.append({"role": "assistant", "content": a_s})
+
+    turns.append({"role": "user", "content": f"Untuk urusan koding sistem keamanan dan backend, stack andalanku adalah {p['lang']}."})
+    turns.append({"role": "assistant", "content": f"Pilihan stack yang sangat solid, {p['name']}. Ekosistem {p['lang']} menyediakan pustaka kriptografi standar industri yang mempermudah implementasi secure coding."})
+    facts.append({"turn": 4, "key": "lang", "value": p["lang"]})
+
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    recall_key = random.choice(["lang", "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "cybersecurity_and_privacy",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
+def build_multi_fact_compound_recall_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Drops 3-4 facts across multiple turns and challenges compound multi-slot memory retrieval."""
+    turns, facts = [], []
+    g = random.choice(GREETING_OPENERS)
+    u_0 = f"{g} Kenalkan, namaku {p['name']}. Aku menetap di kota {p['city']} dan sehari-hari bekerja sebagai {p['job']}."
+    a_0 = f"Salam kenal hangat {p['name']}! Senang sekali bisa terhubung dengan seorang {p['job']} dari kota {p['city']}. Apa kabar hari ini?"
+    turns.append({"role": "user", "content": u_0})
+    turns.append({"role": "assistant", "content": a_0})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+    facts.append({"turn": 0, "key": "job", "value": p["job"]})
+
+    # Turn 2: Pet drop
+    turns.append({"role": "user", "content": f"Di rumah aku memelihara seekor {p['pet_type']} yang kuberi nama {p['pet_name']}."})
+    turns.append({"role": "assistant", "content": f"Pasti lucu sekali! Memiliki {p['pet_type']} bernama {p['pet_name']} selalu menghadirkan keceriaan di rumah."})
+    facts.append({"turn": 2, "key": "pet_type", "value": p["pet_type"]})
+    facts.append({"turn": 2, "key": "pet_name", "value": p["pet_name"]})
+
+    # Turn 4: Drink and hobby drop
+    turns.append({"role": "user", "content": f"Kalau lagi senggang di akhir pekan, aktivitasku biasanya {p['hobby']} sambil menikmati segelas {p['drink']}."})
+    turns.append({"role": "assistant", "content": f"Kombinasi waktu santai yang sangat menyenangkan! Menikmati {p['drink']} sembari {p['hobby']} adalah cara tepat mengisi ulang energi."})
+    facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
+    facts.append({"turn": 4, "key": "hobby", "value": p["hobby"]})
+
+    # Distractor 1
+    d1 = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d1[0]})
+    turns.append({"role": "assistant", "content": d1[1]})
+
+    if turns_count >= 12:
+        d2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d1[0]])
+        turns.append({"role": "user", "content": d2[0]})
+        turns.append({"role": "assistant", "content": d2[1]})
+
+    # Compound memory query: testing 2 facts at once!
+    pair = random.choice([("city", "pet_name"), ("job", "drink"), ("pet_name", "hobby"), ("city", "job")])
+    k1, k2 = pair
+    v1, v2 = p[k1], p[k2]
+    
+    compound_questions = {
+        ("city", "pet_name"): f"Kamu masih ingat kota tempat tinggalku dan siapa nama hewan peliharaanku?",
+        ("job", "drink"): f"Coba sebutkan profesi pekerjaanku dan jenis minuman favorit santaimu yang kuceritakan tadi?",
+        ("pet_name", "hobby"): f"Bisa sebutkan nama hewan peliharaanku serta hobi yang sering kulakukan di akhir pekan?",
+        ("city", "job"): f"Bisa ingatkan kembali kota tempat tinggalku dan apa profesi pekerjaanku sehari-hari?"
+    }
+    compound_answers = {
+        ("city", "pet_name"): f"Tentu ingat! Kamu bertempat tinggal di kota {v1}, dan hewan peliharaan kesayanganmu bernama {v2}.",
+        ("job", "drink"): f"Tentu saja! Kamu berkarir sebagai seorang {v1}, dan minuman santai favoritmu adalah {v2}.",
+        ("pet_name", "hobby"): f"Tentu! Nama peliharaanmu adalah {v1}, dan aktivitas hobi favoritmu adalah {v2}.",
+        ("city", "job"): f"Tentu saja! Kamu berdomisili di {v1}, dan profesi pekerjaanmu adalah sebagai {v2}."
+    }
+
+    q_rec = compound_questions[pair]
+    a_rec = compound_answers[pair]
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": "multi_fact_compound_recall",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": f"{k1}+{k2}",
+            "ground_truth": f"{v1} & {v2}",
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
 ALL_FLOWS = [
     build_debugging_diagnostic_flow,
     build_culinary_recipe_safety_flow,
@@ -1625,7 +2107,15 @@ ALL_FLOWS = [
     build_office_communication_flow,
     build_indonesian_history_and_culture_flow,
     build_home_diy_and_maintenance_flow,
-    build_psychology_and_mindset_flow
+    build_psychology_and_mindset_flow,
+    build_ai_and_machine_learning_flow,
+    build_personal_finance_and_investing_flow,
+    build_cinema_and_filmmaking_flow,
+    build_music_theory_and_instruments_flow,
+    build_gardening_and_agriculture_flow,
+    build_automotive_and_mechanics_flow,
+    build_cybersecurity_and_privacy_flow,
+    build_multi_fact_compound_recall_flow
 ]
 
 

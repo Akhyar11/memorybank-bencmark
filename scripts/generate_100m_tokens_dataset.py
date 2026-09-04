@@ -543,8 +543,9 @@ def generate_100m_tokens(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate 100M Tokens Multi-Turn Conversational Memory Dataset")
     parser.add_argument("--tokenizer", default="dataset/tokenizer.json")
+    parser.add_argument("--output_dir", default="dataset")
     parser.add_argument("--target_tokens", type=int, default=None,
-                        help="Total target tokens across all splits (automatically splits 90% train, 5% val, 5% test)")
+                        help="Total target tokens across all splits (automatically splits 90%% train, 5%% val, 5%% test)")
     parser.add_argument("--train_tokens", type=int, default=95_000_000)
     parser.add_argument("--val_tokens", type=int, default=2_500_000)
     parser.add_argument("--test_tokens", type=int, default=2_500_000)

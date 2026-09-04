@@ -2091,6 +2091,217 @@ def build_multi_fact_compound_recall_flow(p: Dict[str, Any], turns_count: int) -
     }
 
 
+def generate_dynamic_math_qa() -> Tuple[str, str]:
+    """Generates unbounded, randomized mathematical reasoning questions and step-by-step proofs."""
+    problem_type = random.choice(["discount", "roi", "speed_distance", "split_bill", "work_rate"])
+    if problem_type == "discount":
+        price = random.randint(50, 950) * 1000
+        d1 = random.choice([10, 15, 20, 25, 30, 40, 50])
+        d2 = random.choice([5, 10, 15, 20])
+        p1 = price * (100 - d1) // 100
+        final_price = p1 * (100 - d2) // 100
+        q = f"Sebuah barang memiliki harga label Rp {price:,}. Toko memberikan promo diskon {d1}%, lalu terdapat diskon tambahan khusus member sebesar {d2}%. Berapa total harga akhir yang harus dibayarkan?".replace(",", ".")
+        a = (f"Mari kita hitung secara bertahap:\n"
+             f"1. **Diskon Pertama ({d1}%)**: Rp {price:,} × {d1}% = Rp {price*d1//100:,}. Harga menjadi Rp {p1:,}.\n"
+             f"2. **Diskon Tambahan ({d2}%)**: Dihitung dari harga baru: Rp {p1:,} × {d2}% = Rp {p1*d2//100:,}.\n"
+             f"3. **Harga Akhir**: Rp {p1:,} - Rp {p1*d2//100:,} = **Rp {final_price:,}**.").replace(",", ".")
+        return q, a
+    elif problem_type == "roi":
+        modal = random.randint(5, 50) * 1_000_000
+        roi_pct = random.randint(12, 65)
+        profit = modal * roi_pct // 100
+        akhir = modal + profit
+        q = f"Jika seseorang menanamkan modal awal sebesar Rp {modal:,} dalam proyek usaha, dan setelah 1 tahun nilai investasinya menjadi Rp {akhir:,}, berapa persentase ROI (Return on Investment)-nya?".replace(",", ".")
+        a = (f"Rumus ROI adalah: `((Nilai Akhir - Modal Awal) / Modal Awal) × 100%`.\n"
+             f"1. Keuntungan bersih: Rp {akhir:,} - Rp {modal:,} = Rp {profit:,}.\n"
+             f"2. Rasio keuntungan: Rp {profit:,} / Rp {modal:,} = {roi_pct/100:.2f}.\n"
+             f"3. Persentase ROI: **{roi_pct}%** per tahun.").replace(",", ".")
+        return q, a
+    elif problem_type == "speed_distance":
+        speed = random.choice([50, 60, 70, 80, 90])
+        hours = random.choice([2, 3, 4, 5])
+        dist = speed * hours
+        city_a = random.choice(["Bandung", "Semarang", "Surabaya", "Malang", "Solo", "Yogyakarta"])
+        city_b = random.choice(["Jakarta", "Cirebon", "Madiun", "Banyuwangi", "Tegal", "Kediri"])
+        q = f"Sebuah mobil melaju dengan kecepatan rata-rata konstan {speed} km/jam dari {city_a} menuju {city_b} dan membutuhkan waktu perjalanan {hours} jam tanpa henti. Berapa total jarak tempuh kedua kota tersebut?"
+        a = f"Total jarak tempuh dihitung dengan rumus `Jarak = Kecepatan × Waktu`:\n$$\\text{{Jarak}} = {speed} \\text{{ km/jam}} \\times {hours} \\text{{ jam}} = **{dist} \\text{{ km}}**$$\nJadi jarak tempuh antara {city_a} dan {city_b} adalah {dist} km."
+        return q, a
+    elif problem_type == "split_bill":
+        n_people = random.randint(3, 7)
+        total_makan = random.randint(15, 80) * 10_000
+        pajak = total_makan * 10 // 100
+        service = total_makan * 5 // 100
+        grand_total = total_makan + pajak + service
+        per_person = grand_total // n_people
+        q = f"Total tagihan makan di restoran adalah Rp {total_makan:,} sebelum pajak (PB1 10%) dan service charge 5%. Jika biaya akhir dibagi rata (split bill) untuk {n_people} orang, berapa rupiah yang harus dibayar masing-masing orang?".replace(",", ".")
+        a = (f"Perhitungan pembagian tagihan:\n"
+             f"1. **Pajak Restoran (10%)**: Rp {pajak:,}.\n"
+             f"2. **Service Charge (5%)**: Rp {service:,}.\n"
+             f"3. **Grand Total**: Rp {total_makan:,} + Rp {pajak:,} + Rp {service:,} = Rp {grand_total:,}.\n"
+             f"4. **Per Orang ({n_people} orang)**: Rp {grand_total:,} ÷ {n_people} = **Rp {per_person:,}** per orang.").replace(",", ".")
+        return q, a
+    else:
+        p1 = random.choice([4, 6, 8])
+        p2 = random.choice([12, 16, 24])
+        total_time = (p1 * p2) / (p1 + p2)
+        q = f"Pekerja A dapat menyelesaikan suatu proyek dalam {p1} hari, sedangkan Pekerja B dapat menyelesaikannya dalam {p2} hari. Jika keduanya bekerja bersama secara serentak, berapa hari proyek tersebut akan selesai?"
+        a = f"Gunakan rumus laju kerja bersama: `1/T = 1/A + 1/B`.\n1. Laju A = 1/{p1} proyek/hari, Laju B = 1/{p2} proyek/hari.\n2. Laju bersama = 1/{p1} + 1/{p2} = {p1+p2}/({p1*p2}).\n3. Waktu penyelesaian (T) = ({p1} × {p2}) / ({p1} + {p2}) = **{total_time:.1f} hari**."
+        return q, a
+
+
+def generate_dynamic_code_qa() -> Tuple[str, str]:
+    """Generates unbounded coding challenges and solutions with dynamic parameters."""
+    tech = random.choice(["python_algo", "sql_query", "bash_pipeline", "typescript_func", "docker_opt"])
+    if tech == "python_algo":
+        arr = [random.randint(1, 50) for _ in range(6)]
+        target = random.choice(arr)
+        q = f"Bagaimana implementasi algoritma Binary Search di Python untuk mencari elemen nilai {target} pada list terurut `{sorted(arr)}`?"
+        a = (f"Berikut implementasi Binary Search standar O(log N) di Python:\n"
+             f"```python\ndef binary_search(arr, target):\n"
+             f"    low, high = 0, len(arr) - 1\n"
+             f"    while low <= high:\n"
+             f"        mid = (low + high) // 2\n"
+             f"        if arr[mid] == target:\n"
+             f"            return mid\n"
+             f"        elif arr[mid] < target:\n"
+             f"            low = mid + 1\n"
+             f"        else:\n"
+             f"            high = mid - 1\n"
+             f"    return -1\n\n"
+             f"data = {sorted(arr)}\n"
+             f"idx = binary_search(data, {target})\n"
+             f"print(f'Elemen ditemukan pada index: {{idx}}')\n```\n"
+             f"Kompleksitas waktunya adalah O(log N) dan memori O(1) karena membagi rentang pencarian menjadi separuh pada setiap iterasi.")
+        return q, a
+    elif tech == "sql_query":
+        table = random.choice(["transactions", "user_logs", "order_items", "sensor_telemetry"])
+        col_group = random.choice(["user_id", "category_id", "store_branch", "device_type"])
+        col_agg = random.choice(["amount", "duration_seconds", "quantity", "battery_level"])
+        threshold = random.randint(3, 15)
+        q = f"Bagaimana query SQL untuk mencari `{col_group}` yang memiliki total `{col_agg}` lebih dari {threshold * 1000} pada tabel `{table}`?"
+        a = (f"Gunakan klausul `GROUP BY` dipadukan dengan filter `HAVING` untuk agregasi:\n"
+             f"```sql\nSELECT\n  {col_group},\n  SUM({col_agg}) AS total_metric,\n  COUNT(*) AS total_records\n"
+             f"FROM {table}\n"
+             f"GROUP BY {col_group}\n"
+             f"HAVING SUM({col_agg}) > {threshold * 1000}\n"
+             f"ORDER BY total_metric DESC;\n```\n"
+             f"`WHERE` menyaring baris sebelum dikelompokkan, sedangkan `HAVING` menyaring hasil kelompok setelah diagregasikan.")
+        return q, a
+    elif tech == "bash_pipeline":
+        logfile = random.choice(["/var/log/nginx/access.log", "production_app.log", "server_requests.log"])
+        http_code = random.choice(["500", "404", "502", "403"])
+        q = f"Bagaimana one-liner command Linux Bash untuk menghitung 10 IP address teratas yang paling sering memicu error HTTP {http_code} pada file log `{logfile}`?"
+        a = (f"Gunakan kombinasi pipeline standar Unix berikut:\n"
+             f"```bash\ngrep ' {http_code} ' {logfile} | awk '{{print $1}}' | sort | uniq -c | sort -nr | head -n 10\n```\n"
+             f"Alur eksekusi:\n"
+             f"1. `grep`: Memfilter baris yang memuat status code {http_code}.\n"
+             f"2. `awk`: Mengekstrak kolom pertama (IP address).\n"
+             f"3. `sort | uniq -c`: Menghitung frekuensi kemunculan tiap IP unik.\n"
+             f"4. `sort -nr | head -n 10`: Mengurutkan dari jumlah terbanyak dan mengambil 10 besar.")
+        return q, a
+    elif tech == "typescript_func":
+        tname = random.choice(["UserProfile", "OrderSummary", "PaymentPayload", "DeviceTelemetry"])
+        q = f"Bagaimana cara membuat generic utility type di TypeScript untuk menjadikan semua field pada `{tname}` bersifat readonly dan optional?"
+        a = (f"Gunakan mapped types atau kombinasikan utility type bawaan `Readonly<Partial<T>>`:\n"
+             f"```typescript\ntype ImmutablePartial<T> = {{\n  readonly [P in keyof T]?: T[P];\n}};\n\n"
+             f"// Penggunaan:\ntype Safe{tname} = ImmutablePartial<{tname}>;\n```\n"
+             f"Atau cukup gunakan komposisi standar: `type Safe{tname} = Readonly<Partial<{tname}>>;`.")
+        return q, a
+    else:
+        q = "Bagaimana cara mengecilkan ukuran Docker Image Node.js untuk deployment production?"
+        a = ("Lakukan beberapa teknik optimasi:\n"
+             "1. **Gunakan Alpine atau Distroless base image**: `FROM node:20-alpine`.\n"
+             "2. **Multi-stage build**: Pisahkan build stage (yang butuh devDependencies) dari runtime stage.\n"
+             "3. **Gunakan `.dockerignore`**: Kecualikan `node_modules`, `.git`, dan file dokumentasi.\n"
+             "4. **Install production only**: Jalankan `npm ci --only=production`.\n"
+             "Hasilnya ukuran image dapat turun dari ~1GB menjadi di bawah 120MB.")
+        return q, a
+
+
+def build_unbounded_stochastic_dialogue_flow(p: Dict[str, Any], turns_count: int) -> Dict[str, Any]:
+    """Dynamically synthesizes unbounded dialogues with procedural math, code, or science questions."""
+    turns, facts = [], []
+    
+    # Randomly pick procedural question type
+    mode = random.choice(["math", "code", "general"])
+    if mode == "math":
+        q_proc, a_proc = generate_dynamic_math_qa()
+    elif mode == "code":
+        q_proc, a_proc = generate_dynamic_code_qa()
+    else:
+        q_proc, a_proc = random.choice(EXPANDED_DISTRACTORS)
+
+    turns.append({"role": "user", "content": q_proc})
+    turns.append({"role": "assistant", "content": a_proc})
+
+    # Persona drop in Turn 2
+    name = p["name"]
+    intro_replies = [
+        f"Makasih banyak penjelasannya! Btw kenalkan, namaku {name}. Aku tinggal di {p['city']} dan bekerja sebagai {p['job']}.",
+        f"Solusinya sangat mencerahkan! Salam kenal ya, aku {name} dari {p['city']}, sehari-hari sibuk sebagai {p['job']}.",
+        f"Keren banget penjelasannya! Kenalin aku {name}. Profesi utamaku {p['job']} dan saat ini berdomisili di kawasan {p['city']}."
+    ]
+    turns.append({"role": "user", "content": random.choice(intro_replies)})
+    turns.append({"role": "assistant", "content": f"Salam kenal hangat, {name}! Senang sekali bisa berdiskusi dengan seorang {p['job']} dari kota {p['city']}. Ada topik seru apa lagi yang ingin kita eksplorasi?"})
+    facts.append({"turn": 2, "key": "name", "value": name})
+    facts.append({"turn": 2, "key": "city", "value": p["city"]})
+    facts.append({"turn": 2, "key": "job", "value": p["job"]})
+
+    # Turn 4: Pet or drink or food drop
+    attr = random.choice(["pet", "drink", "food", "hobby"])
+    if attr == "pet":
+        turns.append({"role": "user", "content": f"Di rumah aku juga ditemani hewan peliharaanku, yaitu seekor {p['pet_type']} yang kuberi nama {p['pet_name']}."})
+        turns.append({"role": "assistant", "content": f"Pasti sangat menggemaskan! Kehadiran {p['pet_type']} bernama {p['pet_name']} tentu membawa suasana ceria dan penawar lelah di rumah."})
+        facts.append({"turn": 4, "key": "pet_type", "value": p["pet_type"]})
+        facts.append({"turn": 4, "key": "pet_name", "value": p["pet_name"]})
+        target_k = "pet_name"
+    elif attr == "drink":
+        turns.append({"role": "user", "content": f"Pas lagi santai istirahat begini, minuman penyegar favoritku itu {p['drink']}."})
+        turns.append({"role": "assistant", "content": f"Pilihan pelepas dahaga yang sangat nikmat! {p['drink']} memberi kesegaran seketika untuk melanjutkan hari."})
+        facts.append({"turn": 4, "key": "drink", "value": p["drink"]})
+        target_k = "drink"
+    elif attr == "food":
+        turns.append({"role": "user", "content": f"Kalau urusan kuliner makanan kesukaanku di kota {p['city']}, juaranya tetap {p['food']}."})
+        turns.append({"role": "assistant", "content": f"Santapan yang sangat menggugah selera! Menu {p['food']} memang punya cita rasa gurih yang istimewa."})
+        facts.append({"turn": 4, "key": "food", "value": p["food"]})
+        target_k = "food"
+    else:
+        turns.append({"role": "user", "content": f"Di luar rutinitas pekerjaan, hobi santai yang rutin kujalani di akhir pekan itu {p['hobby']}."})
+        turns.append({"role": "assistant", "content": f"Aktivitas yang sangat positif dan menyegarkan! Luang waktu untuk {p['hobby']} menjaga pikiran tetap seimbang."})
+        facts.append({"turn": 4, "key": "hobby", "value": p["hobby"]})
+        target_k = "hobby"
+
+    # Distractor turn
+    d_any = random.choice(EXPANDED_DISTRACTORS)
+    turns.append({"role": "user", "content": d_any[0]})
+    turns.append({"role": "assistant", "content": d_any[1]})
+
+    if turns_count >= 12:
+        d_any2 = random.choice([d for d in EXPANDED_DISTRACTORS if d[0] != d_any[0]])
+        turns.append({"role": "user", "content": d_any2[0]})
+        turns.append({"role": "assistant", "content": d_any2[1]})
+
+    recall_key = random.choice([target_k, "job", "city"])
+    ans = p[recall_key]
+    q_rec, a_rec = format_natural_recall_turn(recall_key, ans)
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q_rec})
+    turns.append({"role": "assistant", "content": a_rec})
+
+    return {
+        "topic": f"unbounded_stochastic_{mode}",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": recall_key,
+            "ground_truth": ans,
+            "question": q_rec,
+            "answer": a_rec
+        }
+    }
+
+
 ALL_FLOWS = [
     build_debugging_diagnostic_flow,
     build_culinary_recipe_safety_flow,
@@ -2115,7 +2326,10 @@ ALL_FLOWS = [
     build_gardening_and_agriculture_flow,
     build_automotive_and_mechanics_flow,
     build_cybersecurity_and_privacy_flow,
-    build_multi_fact_compound_recall_flow
+    build_multi_fact_compound_recall_flow,
+    build_unbounded_stochastic_dialogue_flow,
+    build_unbounded_stochastic_dialogue_flow,
+    build_unbounded_stochastic_dialogue_flow
 ]
 
 

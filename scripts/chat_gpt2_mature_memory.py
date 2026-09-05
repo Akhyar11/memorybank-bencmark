@@ -98,12 +98,18 @@ def main():
             continue
 
         if user_input == "/slots":
-            active_slots = (model.bank.mem_confidence > 0.5).nonzero(as_tuple=True)[0]
-            print(f"[MEMORY]: Active slots {len(active_slots)}/{model.bank.config.memory_capacity}")
-            for s in active_slots[:10]:
-                conf = model.bank.mem_confidence[s].item()
-                imp = model.bank.mem_importance[s].item()
-                print(f"  Slot {s.item():03d} | conf={conf:.3f} imp={imp:.3f}")
+            conf = model.bank.mem_confidence
+            imp = model.bank.mem_importance
+            conf_sum = conf.sum().item()
+            conf_mean = conf.mean().item()
+            imp_mean = imp.mean().item()
+            print(f"[MEMORY]: Capacity {model.bank.config.memory_capacity} slots | Conf Sum: {conf_sum:.2f} | Conf Mean: {conf_mean:.3f} | Imp Mean: {imp_mean:.3f}")
+            top_slots = torch.argsort(conf, descending=True)[:10]
+            for s in top_slots:
+                c_val = conf[s].item()
+                i_val = imp[s].item()
+                if c_val > 0.001 or i_val > 0.001:
+                    print(f"  Slot {s.item():03d} | conf={c_val:.3f} imp={i_val:.3f}")
             continue
 
         with torch.no_grad():
@@ -135,7 +141,9 @@ def main():
         diag = model.last_diagnostics
         print(f"\n[Turn {turn}] AI: {response}")
         print(
-            f"  [Memory] active={diag.get('active_slots', 0.0):.1f} "
+            f"  [Memory] eff_write_slots={diag.get('effective_write_slots', 1.0):.1f} "
+            f"w_sparse={diag.get('write_sparsity', 0.0):.2f} "
+            f"conf_sum={diag.get('confidence_sum', 0.0):.1f} "
             f"avg_write_gate={diag.get('avg_write_gate', 0.0):.3f} "
             f"avg_novelty={diag.get('avg_novelty', 0.0):.3f}\n"
         )

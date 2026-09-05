@@ -160,7 +160,9 @@ def train(args):
                 "ntp_loss": f"{loss.item():.4f}",
                 "avg_loss": f"{avg_loss:.4f}",
                 "ppl": f"{ppl:.2f}",
-                "slots": f"{diag.get('active_slots', 0.0):.1f}",
+                "eff_slots": f"{diag.get('effective_write_slots', 1.0):.1f}",
+                "w_sparse": f"{diag.get('write_sparsity', 0.0):.2f}",
+                "conf_sum": f"{diag.get('confidence_sum', 0.0):.1f}",
                 "w_gate": f"{diag.get('avg_write_gate', 0.0):.3f}",
                 "novelty": f"{diag.get('avg_novelty', 0.0):.3f}",
             })

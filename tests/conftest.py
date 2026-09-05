@@ -1,55 +1,55 @@
 """
-tests/conftest.py – Shared pytest configuration and fixtures (PyTorch Version).
+tests/conftest.py – Shared pytest configuration and fixtures.
 """
 import os
 import sys
+
 # Make project root importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 
-from models.tiny_memory_bank import TinyMemoryBank, TinyMemoryConfig, STATE_EXPIRED, STATE_ACTIVE, STATE_DORMANT
+from models.tiny_memory_bank import TinyMemoryBank, TinyMemoryConfig
 
 
-def make_blank_mem(config):
-    """Create a fresh, completely empty memory dict (all slots EXPIRED)."""
+def make_blank_mem(config, device=torch.device("cpu"), dtype=torch.float32):
+    """Create a fresh, empty continuous memory state dict."""
     bank = TinyMemoryBank(config=config)
-    return bank.empty_memory_state()
+    return bank.empty_memory_state(batch_size=1, device=device, dtype=dtype)
 
 
-def init_bank(config, seed=0):
+def init_bank(config, seed=0, device=torch.device("cpu"), dtype=torch.float32):
     """
     Create TinyMemoryBank + initialized state.
     Returns bank with blank memory state.
     """
     torch.manual_seed(seed)
     bank = TinyMemoryBank(config=config)
-    bank.load_memory_state(bank.empty_memory_state())
+    bank.load_memory_state(bank.empty_memory_state(batch_size=1, device=device, dtype=dtype))
     return bank
 
 
-def apply_write(bank, h, eos=None, wp=None):
-    """Apply bank.write and return target_indices."""
-    if eos is None:
-        eos = torch.ones(h.shape[0], device=h.device)
-    if wp is None:
-        wp = torch.ones(h.shape[0], device=h.device)
-    target_indices = bank.write(h, eos, wp)
-    return target_indices
+def apply_write(bank, h, state=None):
+    """Apply bank.write and return next_state, diag."""
+    if state is None:
+        state = bank.empty_memory_state(batch_size=h.size(0), device=h.device, dtype=h.dtype)
+    return bank.write(h, state)
 
 
-def apply_read(bank, h, rp=None):
-    """Apply bank.read and return output."""
-    return bank.read(h, read_prob=rp)
+def apply_read(bank, h, state=None):
+    """Apply bank.read and return retrieved, attn, scores."""
+    if state is None:
+        state = bank.empty_memory_state(batch_size=h.size(0), device=h.device, dtype=h.dtype)
+    return bank.read(h, state)
 
 
-def apply_decay(bank):
-    """Apply bank.decay_memory and return effective_R."""
-    return bank.decay_memory()
+def apply_decay(bank, state=None):
+    """Apply bank.decay_memory."""
+    return bank.decay_memory(state)
 
 
 def apply_fuse(bank, h, m):
-    """Apply bank.fuse and return output."""
+    """Apply bank.fuse and return fused output, gate."""
     return bank.fuse(h, m)
 
 

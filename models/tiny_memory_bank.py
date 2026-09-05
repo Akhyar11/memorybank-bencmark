@@ -4,10 +4,67 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-STATE_EXPIRED = 0
-STATE_ACTIVE = 1
-STATE_DORMANT = 2
+
+class SparsemaxFunction(torch.autograd.Function):
+    """
+    Exact Euclidean projection onto the probability simplex (Martins & Astudillo, ICML 2016).
+
+    Given input z in R^C:
+      sparsemax(z) = argmin_{p in Delta^{C-1}} ||p - z||^2 = max(z - tau(z), 0)
+
+    Sparsity arises naturally from the geometry of the projection.
+    Zero manual thresholds, zero epsilon filtering.
+    """
+
+    @staticmethod
+    def forward(ctx, input: torch.Tensor, dim: int = -1) -> torch.Tensor:
+        ctx.dim = dim
+
+        # Shift input by max along dim for numerical stability
+        max_val = input.max(dim=dim, keepdim=True).values
+        input_shifted = input - max_val
+
+        # Sort descending along dimension
+        sorted_input, _ = torch.sort(input_shifted, descending=True, dim=dim)
+        input_cumsum = torch.cumsum(sorted_input, dim=dim)
+
+        # 1-based index vector
+        k_indices = torch.arange(1, input.size(dim) + 1, device=input.device, dtype=input.dtype)
+        view_shape = [1] * input.dim()
+        view_shape[dim] = -1
+        k_indices = k_indices.view(view_shape)
+
+        # Support condition: 1 + k * sorted_input > input_cumsum
+        support = (1.0 + k_indices * sorted_input) > input_cumsum
+        k_z = support.sum(dim=dim, keepdim=True).clamp(min=1)
+
+        # Threshold tau(z) = (sum_{j in S} z_j - 1) / |S|
+        tau = (input_cumsum.gather(dim, k_z.long() - 1) - 1.0) / k_z.to(input.dtype)
+        output = torch.clamp(input_shifted - tau, min=0.0)
+
+        ctx.save_for_backward(output)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, None]:
+        (output,) = ctx.saved_tensors
+        dim = ctx.dim
+
+        # Active support is non-zero output
+        non_zeros = (output > 0).to(grad_output.dtype)
+        num_nonzeros = non_zeros.sum(dim=dim, keepdim=True).clamp(min=1.0)
+
+        # Exact subgradient: dL/dz_i = non_zeros * (grad_i - sum_{j in S} grad_j / |S|)
+        sum_grad = (grad_output * non_zeros).sum(dim=dim, keepdim=True)
+        grad_input = non_zeros * (grad_output - sum_grad / num_nonzeros)
+        return grad_input, None
+
+
+def sparsemax(input: torch.Tensor, dim: int = -1) -> torch.Tensor:
+    """Applies the Sparsemax activation function along the specified dimension."""
+    return SparsemaxFunction.apply(input, dim)
 
 
 @dataclass
@@ -25,6 +82,9 @@ class TinyMemoryConfig:
     initial_novelty_bias: float = 0.0
     initial_write_bias: float = 0.0
 
+    # Continuous utility tracking EMA rate
+    utility_decay_rate: float = 0.1
+
     # Optional secondary decay (disabled by default so memory learns through NTP)
     enable_decay: bool = False
     mem_decay_rate: float = 0.001
@@ -32,21 +92,16 @@ class TinyMemoryConfig:
 
 class TinyMemoryBank(nn.Module):
     """
-    Genuine differentiable causal Memory Bank with competitive slot allocation.
+    Differentiable Causal Memory Bank with Competitive Slot Allocation.
 
-    Strict Causal Order:
-      READ(M_t) -> FUSE -> predict x_{t+1} -> WRITE -> M_{t+1}
-
-    Clean Key/Query/Value formulation:
-      q_t = Q(h_t)
-      k_t = K(h_t)
-      v_t = V(h_t)
+    Strict Causal Ordering:
+      READ(M_t) -> FUSE(h_t, r_t) -> PREDICT x_{t+1} -> WRITE(h_t, M_t) -> M_{t+1}
 
     Stored Memory State M_t:
-      K_t in R^{B x C x D}
-      V_t in R^{B x C x D}
-      confidence_t in R^{B x C}
-      importance_t in R^{B x C}
+      keys in R^{B x C x D}
+      vals in R^{B x C x D}
+      confidence in R^{B x C}  (continuous occupancy in [0, 1])
+      importance in R^{B x C}  (continuous utility accumulated from NTP prediction retrieval)
       step in R^{B x 1}
     """
 
@@ -57,38 +112,36 @@ class TinyMemoryBank(nn.Module):
         h = config.hidden_size
         c = config.memory_capacity
 
-        # Problem 2: Clean Q, K, V projections from hidden state h_t
+        # Learned Q, K, V projections from hidden state h_t
         self.q_proj = nn.Linear(h, d, bias=False)
         self.k_proj = nn.Linear(h, d, bias=False)
         self.v_proj = nn.Linear(h, d, bias=False)
 
-        # Write policy: gate determining write strength in [0, 1]
+        # Continuous write gate policy in [0, 1]
         self.write_gate_proj = nn.Linear(h, 1)
         nn.init.constant_(self.write_gate_proj.bias, config.initial_write_bias)
 
-        # Novelty policy: determines trade-off between updating existing slot vs allocating vacant slot
+        # Continuous novelty policy in [0, 1]
         self.novelty_proj = nn.Linear(h, 1)
         nn.init.constant_(self.novelty_proj.bias, config.initial_novelty_bias)
         self.novelty_sim_scale = nn.Parameter(torch.tensor(1.0))
 
-        # Problem 1: Competitive slot allocation mechanism
-        # Learned slot biases break symmetry among empty slots:
-        # Initialized with a decaying rank so slot 0 is preferred over slot 1, etc., when empty
+        # Learned slot biases break initial symmetry among empty slots
         slot_ranks = torch.linspace(2.0, -2.0, steps=c)
         self.slot_bias = nn.Parameter(slot_ranks)
 
-        # Differentiable vacancy score weights
-        self.confidence_weight = nn.Parameter(torch.tensor(3.0))
-        self.importance_weight = nn.Parameter(torch.tensor(1.0))
+        # Learned positive vacancy weights for confidence (occupancy) and utility (importance)
+        self.conf_weight = nn.Parameter(torch.tensor(2.0))
+        self.imp_weight = nn.Parameter(torch.tensor(1.0))
 
-        # Problem 4: Meaningful fusion projections
-        # r_t = sum_i alpha_i V_i
-        # g_t = sigmoid(W_g [h_t ; r_t])
-        # fused_t = h_t + g_t * W_f(r_t)
+        # Learned modulation of retrieval score by memory utility
+        self.read_utility_weight = nn.Parameter(torch.tensor(1.0))
+
+        # Gated residual fusion projections
         self.fusion_proj = nn.Linear(d, h, bias=False)
         self.fusion_gate_proj = nn.Linear(h + d, h)
 
-        # Persistent runtime buffer for single-stream interactive inference
+        # Persistent runtime buffers for single-stream interactive inference
         self.register_buffer("mem_keys", torch.zeros(c, d))
         self.register_buffer("mem_vals", torch.zeros(c, d))
         self.register_buffer("mem_confidence", torch.zeros(c))
@@ -96,10 +149,6 @@ class TinyMemoryBank(nn.Module):
         self.register_buffer("global_step", torch.zeros(1, dtype=torch.int32))
 
         self.last_diagnostics: Dict[str, Any] = {}
-
-    @property
-    def active_count(self) -> int:
-        return int((self.mem_confidence > 0.5).sum().item())
 
     def empty_memory_state(
         self,
@@ -118,7 +167,7 @@ class TinyMemoryBank(nn.Module):
         }
 
     def detach_state(self, state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """Explicit truncated-BPTT boundary: detaches all state tensors."""
+        """Explicit Truncated-BPTT boundary: detaches all state tensors across chunks."""
         return {k: v.detach() for k, v in state.items()}
 
     def get_memory_state(self) -> Dict[str, torch.Tensor]:
@@ -158,7 +207,7 @@ class TinyMemoryBank(nn.Module):
             self.global_step.zero_()
 
     def decay_memory(self, memory_state: Optional[Dict[str, torch.Tensor]] = None) -> Optional[Dict[str, torch.Tensor]]:
-        """Optional secondary decay, clearly separated from differentiable learning."""
+        """Continuous exponential decay, cleanly separated from the differentiable path."""
         rate = self.config.mem_decay_rate
         decay_factor = math.exp(-rate)
         if memory_state is not None:
@@ -183,100 +232,130 @@ class TinyMemoryBank(nn.Module):
         memory_state: Dict[str, torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        READ:
+        Differentiable READ:
           q_t = Q(h_t)
-          score_i = sim(q_t, K_i) + lambda * importance_i
-          alpha = softmax(score / tau_r)
-          r_t = sum_i alpha_i V_i
+          sim_i = <q_t, K_i> / sqrt(D)
+          score_i = sim_i + softplus(read_utility_weight) * importance_i
+          alpha_read = sparsemax(score / tau_r)
+          r_t = sum_i alpha_read_i * V_i
         """
         keys = memory_state["keys"]                # (B, C, D)
         vals = memory_state["vals"]                # (B, C, D)
         importance = memory_state["importance"]    # (B, C)
 
-        # Query projection from hidden state
         q_t = self.q_proj(h_t)                     # (B, D)
 
-        # Direct similarity between query and stored memory keys without re-projection
-        scores = torch.einsum("bd,bcd->bc", q_t, keys) / math.sqrt(self.config.memory_dim)
+        # Scaled dot-product similarity
+        sim = torch.einsum("bd,bcd->bc", q_t, keys) / math.sqrt(self.config.memory_dim)
 
-        # Importance modulates retention and retrieval relevance
-        scores = scores + self.importance_weight * importance
+        # Continuous utility modulation of retrieval score
+        scores = sim + F.softplus(self.read_utility_weight) * importance
 
         tau_r = max(self.config.read_temperature, 1e-4)
-        attn = torch.softmax(scores / tau_r, dim=-1)  # (B, C)
+        attn = sparsemax(scores / tau_r, dim=-1)   # (B, C)
 
         retrieved = torch.einsum("bc,bcd->bd", attn, vals)  # (B, D)
         return retrieved, attn, scores
 
-    def fuse(self, h_t: torch.Tensor, r_t: torch.Tensor) -> torch.Tensor:
+    def fuse(self, h_t: torch.Tensor, r_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        FUSION:
+        Differentiable Gated Residual FUSION:
           g_t = sigmoid(W_g [h_t ; r_t])
           fused_t = h_t + g_t * W_f(r_t)
         """
         cat_feat = torch.cat([h_t, r_t], dim=-1)
         gate = torch.sigmoid(self.fusion_gate_proj(cat_feat))
-        return h_t + gate * self.fusion_proj(r_t)
+        fused_t = h_t + gate * self.fusion_proj(r_t)
+        return fused_t, gate
 
     def write(
         self,
         h_t: torch.Tensor,
         memory_state: Dict[str, torch.Tensor],
-    ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+        alpha_read: Optional[torch.Tensor] = None,
+        fusion_gate: Optional[torch.Tensor] = None,
+    ) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
         """
-        WRITE:
-          k_t = K(h_t)
-          v_t = V(h_t)
-          write_gate = sigmoid(W_w h_t)
-          content_score_i = sim(k_t, K_i)
-          vacancy_score_i = - w_conf * confidence_i + slot_bias_i
-          allocation = (1 - novelty) * softmax(content_score / tau_w) + novelty * softmax(vacancy_score / tau_v)
-          K_{t+1, i} = (1 - write_strength_i) K_i + write_strength_i k_t
-          V_{t+1, i} = (1 - write_strength_i) V_i + write_strength_i v_t
+        Differentiable Competitive WRITE:
+          1. k_t = K(h_t), v_t = V(h_t)
+          2. write_gate = sigmoid(W_w h_t)
+          3. Content Allocation:
+               content_sim_i = <k_t, K_i> / sqrt(D)
+               content_alloc = sparsemax(content_sim / tau_w)
+          4. Vacancy / Replacement Allocation:
+               vacancy_score_i = slot_bias_i - softplus(conf_w) * conf_i - softplus(imp_w) * imp_i
+               vacancy_alloc = sparsemax(vacancy_score / tau_v)
+          5. Continuous Novelty:
+               match_sim = sum_i (content_alloc_i * content_sim_i)
+               novelty = sigmoid(W_nov h_t - softplus(scale) * match_sim + b_nov)
+          6. Blended Allocation:
+               allocation = (1 - novelty) * content_alloc + novelty * vacancy_alloc
+          7. Soft Memory Update:
+               write_strength_i = write_gate * allocation_i
+               K_{t+1, i} = (1 - write_strength_i) * K_{t, i} + write_strength_i * k_t
+               V_{t+1, i} = (1 - write_strength_i) * V_{t, i} + write_strength_i * v_t
+          8. Continuous State Updates:
+               conf_{t+1, i} = conf_{t, i} + (1 - conf_{t, i}) * write_strength_i
+               imp_{t+1, i}  = (1 - lambda_u) * imp_{t, i} + lambda_u * (gate_mean * alpha_read_i)
         """
         keys = memory_state["keys"]                # (B, C, D)
         vals = memory_state["vals"]                # (B, C, D)
         confidence = memory_state["confidence"]    # (B, C)
         importance = memory_state["importance"]    # (B, C)
 
-        # Clean Write Key and Write Value projections (Problem 2)
         k_t = self.k_proj(h_t)                     # (B, D)
         v_t = self.v_proj(h_t)                     # (B, D)
 
-        # Write strength policy in [0, 1]
+        # 1. Continuous write gate in [0, 1]
         write_gate = torch.sigmoid(self.write_gate_proj(h_t)).squeeze(-1)  # (B,)
 
-        # 1. Content-based similarity: compare write key k_t directly with stored keys
+        # 2. Content-based allocation via Sparsemax
         content_sim = torch.einsum("bd,bcd->bc", k_t, keys) / math.sqrt(self.config.memory_dim)
         tau_w = max(self.config.write_temperature, 1e-4)
-        content_alloc = torch.softmax(content_sim / tau_w, dim=-1)  # (B, C)
+        content_alloc = sparsemax(content_sim / tau_w, dim=-1)  # (B, C)
 
-        # 2. Competitive vacancy score with learned slot bias (Problem 1)
-        # Empty slots have confidence ~ 0, so slot_bias breaks symmetry and concentrates allocation
-        vacancy_score = -self.confidence_weight * confidence + self.slot_bias  # (B, C)
+        # 3. Vacancy suitability allocation via Sparsemax
+        w_conf = F.softplus(self.conf_weight)
+        w_imp = F.softplus(self.imp_weight)
+        vacancy_score = self.slot_bias.unsqueeze(0) - w_conf * confidence - w_imp * importance  # (B, C)
         tau_v = max(self.config.vacancy_temperature, 1e-4)
-        vacancy_alloc = torch.softmax(vacancy_score / tau_v, dim=-1)  # (B, C)
+        vacancy_alloc = sparsemax(vacancy_score / tau_v, dim=-1)  # (B, C)
 
-        # 3. Novelty mechanism: determines if information is novel vs redundant
-        max_sim = content_sim.max(dim=-1, keepdim=True).values  # (B, 1)
-        novelty = torch.sigmoid(self.novelty_proj(h_t) - self.novelty_sim_scale * max_sim)  # (B, 1)
+        # 4. Continuous Differentiable Novelty
+        match_sim = (content_alloc * content_sim).sum(dim=-1, keepdim=True)  # (B, 1)
+        nov_scale = F.softplus(self.novelty_sim_scale)
+        novelty = torch.sigmoid(self.novelty_proj(h_t) - nov_scale * match_sim)  # (B, 1)
 
-        # Combined differentiable competitive allocation
+        # 5. Continuous Blended Allocation
         allocation = (1.0 - novelty) * content_alloc + novelty * vacancy_alloc  # (B, C)
 
-        # 4. Differentiable memory update (Problem 3) - NO detaching during forward!
+        # 6. Soft Memory Update (Zero detach, fully differentiable)
         write_strength = write_gate.unsqueeze(-1) * allocation  # (B, C)
         ws_3d = write_strength.unsqueeze(-1)                   # (B, C, 1)
 
         new_keys = (1.0 - ws_3d) * keys + ws_3d * k_t.unsqueeze(1)
         new_vals = (1.0 - ws_3d) * vals + ws_3d * v_t.unsqueeze(1)
 
-        # 5. Differentiable metadata update (Problem 5)
-        new_confidence = (1.0 - write_strength) * confidence + write_strength
-        new_importance = (1.0 - write_strength) * importance + write_strength * write_gate.unsqueeze(-1)
+        # 7. Continuous State Dynamics
+        # Confidence accumulates occupancy continuously in [0, 1]
+        new_confidence = confidence + (1.0 - confidence) * write_strength
+
+        # Importance accumulates continuous utility from prediction retrieval
+        if alpha_read is not None:
+            if fusion_gate is not None:
+                gate_factor = fusion_gate.mean(dim=-1, keepdim=True)  # (B, 1)
+                utility_signal = gate_factor * alpha_read              # (B, C)
+            else:
+                utility_signal = alpha_read
+        else:
+            utility_signal = torch.zeros_like(importance)
+
+        lam_u = self.config.utility_decay_rate
+        new_importance = (1.0 - lam_u) * importance + lam_u * utility_signal
+
         step = memory_state["step"] + 1
 
-        # Optional secondary decay (Problem 6)
+        # Optional secondary continuous decay
         if self.config.enable_decay:
             decay_factor = math.exp(-self.config.mem_decay_rate)
             new_keys = new_keys * decay_factor
@@ -292,11 +371,24 @@ class TinyMemoryBank(nn.Module):
             "step": step,
         }
 
-        diag = {
-            "write_gate": write_gate,
-            "novelty": novelty.squeeze(-1) if novelty.dim() > 1 else novelty,
-            "allocation": allocation,
-        }
+        # Continuous Diagnostics (Non-invasive, zero thresholds)
+        with torch.no_grad():
+            eff_write_slots = 1.0 / (allocation.pow(2).sum(dim=-1).clamp(min=1e-8))  # (B,)
+            write_sparsity = (allocation == 0.0).float().mean(dim=-1)
+            alloc_entropy = -(allocation * torch.log(allocation.clamp(min=1e-12))).sum(dim=-1)
+
+            diag = {
+                "write_gate": write_gate,
+                "novelty": novelty.squeeze(-1) if novelty.dim() > 1 else novelty,
+                "allocation": allocation,
+                "effective_write_slots": eff_write_slots,
+                "write_sparsity": write_sparsity,
+                "allocation_entropy": alloc_entropy,
+                "confidence_sum": new_confidence.sum(dim=-1),
+                "confidence_mean": new_confidence.mean(dim=-1),
+                "importance_mean": new_importance.mean(dim=-1),
+            }
+
         return next_state, diag
 
     def init_or_expand_state(
@@ -313,4 +405,3 @@ class TinyMemoryBank(nn.Module):
             return self.get_memory_state()
 
         return self.empty_memory_state(batch_size=batch_size, device=device, dtype=dtype)
-

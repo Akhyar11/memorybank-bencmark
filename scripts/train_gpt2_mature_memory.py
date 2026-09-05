@@ -106,6 +106,9 @@ def train(args):
     model.print_trainable_parameters()
 
     dialogues = load_dialogues(args.data_path)
+    if args.max_samples > 0:
+        dialogues = dialogues[:args.max_samples]
+
     dialogue_chunks: List[List[torch.Tensor]] = []
     for diag_text in dialogues:
         t_ids = tokenizer(diag_text, return_tensors="pt", truncation=False)["input_ids"][0]
@@ -230,6 +233,7 @@ if __name__ == "__main__":
     parser.add_argument("--stride", type=int, default=128)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--max_samples", type=int, default=-1, help="Batas jumlah percakapan untuk training (-1 untuk semua data)")
     parser.add_argument("--tau_read", "--read_temperature", dest="tau_read", type=float, default=0.05, help="Read temperature tau_read")
     parser.add_argument("--tau_write", "--write_temperature", dest="tau_write", type=float, default=0.05, help="Write temperature tau_write")
     parser.add_argument("--lambda_replace", type=float, default=1.0, help="Replacement score weight lambda_replace")

@@ -112,7 +112,7 @@ def run_conversational_interference_benchmark():
         out_t = model(enc_target["input_ids"], use_memory=True, persist_memory=True)
 
     print(f"✓ Target Fact: '{target_fact}' written into persistent causal memory.")
-    print(f"  └─ Confidence Sum: {model.bank.mem_confidence.sum().item():.2f}")
+    print(f"  └─ Occupancy Sum: {model.bank.mem_occupancy.sum().item():.2f}")
 
     # 2. Inject distractors
     distractors = [
@@ -129,7 +129,7 @@ def run_conversational_interference_benchmark():
             model(enc_d["input_ids"], use_memory=True, persist_memory=True)
         print(f"  Distractor #{i+1:02d}: '{d[:35]}...'")
 
-    print(f"\nConfidence sum after distractors: {model.bank.mem_confidence.sum().item():.2f}/128")
+    print(f"\nOccupancy sum after distractors: {model.bank.mem_occupancy.sum().item():.2f}/128")
 
     # 3. Recall Target Query
     recall_query = "Siapa namaku dan apa pekerjaanku?"

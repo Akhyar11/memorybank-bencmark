@@ -67,7 +67,7 @@ def load_test_samples(data_path, num_samples=None):
 def main():
     parser = argparse.ArgumentParser(description="Evaluate Memory Bank on Test Dataset")
     parser.add_argument("--test_file", type=str, default="dataset/conversations_test.jsonl")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/best_adapter.pt")
+    parser.add_argument("--checkpoint", type=str, default="checkpoints/gpt2_causal_memory_best.pt")
     parser.add_argument("--num_samples", type=int, default=50, help="Jumlah sampel dialog untuk diuji (default: 50, -1 untuk semua 501)")
     parser.add_argument("--max_new_tokens", type=int, default=25)
     parser.add_argument("--output_json", type=str, default="results/test_dataset_evaluation.json")
@@ -87,15 +87,18 @@ def main():
         memory_capacity=128,
         memory_dim=768,
         hidden_size=768,
-        memory_top_k=4,
-        memory_read_threshold=0.2
     )
 
     model = GPT2MemoryModel(model_name_or_path=model_dir, memory_config=mem_config).to(device)
 
     if os.path.exists(args.checkpoint):
         st = torch.load(args.checkpoint, map_location=device, weights_only=False)
-        model.load_state_dict(st.get("adapter_state_dict", st), strict=False)
+        if "model_state_dict" in st:
+            model.load_state_dict(st["model_state_dict"], strict=False)
+        elif "adapter_state_dict" in st:
+            model.load_state_dict(st["adapter_state_dict"], strict=False)
+        else:
+            model.load_state_dict(st, strict=False)
         print(f"✓ Checkpoint loaded: {args.checkpoint}")
     else:
         print(f"⚠️ Checkpoint tidak ditemukan di {args.checkpoint}, menggunakan bobot inisialisasi.")
@@ -108,7 +111,7 @@ def main():
 
     methods = [
         ("No Memory", "no_memory"),
-        ("Proposed (N=8 Soft-Attn)", "proposed_n8")
+        ("Differentiable Causal Memory", "causal_memory")
     ]
 
     metrics = {
@@ -155,19 +158,13 @@ def main():
             model.reset_memory()
 
             # Write memory
-            if m_key == "proposed_n8":
+            if m_key == "causal_memory":
                 with torch.no_grad():
                     for u_text, ai_text in fact_turns:
-                        w_enc = tokenizer(f"User: {u_text}\nAI: {ai_text}", max_length=128, truncation=True, return_tensors="pt").to(device)
-                        u_enc = tokenizer(f"User: {u_text}\n", return_tensors="pt")
-                        u_len = min(u_enc["input_ids"].shape[1], w_enc["input_ids"].shape[1])
-                        out_w = model(w_enc["input_ids"])
-                        h_seq = out_w["hidden_states"][0, pfx_len:u_len-1]
-                        wp_seq = out_w["write_probs"][0, pfx_len:u_len-1]
-                        if h_seq.size(0) > 0:
-                            model.write_memory_chunked(h_seq, wp_seq, chunk_size=8)
+                        w_enc = tokenizer(f"User: {u_text}\nAI: {ai_text}\n", max_length=128, truncation=True, return_tensors="pt").to(device)
+                        model(w_enc["input_ids"], use_memory=True, persist_memory=True)
 
-            slots_used = model.bank.active_count
+            slots_used = float(model.bank.mem_occupancy.sum().item())
 
             # Timed Generation
             t0 = time.perf_counter()

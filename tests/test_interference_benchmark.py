@@ -44,7 +44,7 @@ def run_vector_interference_benchmark():
     print(f"✓ Target Fact written with top slot #{top_target_slot}")
 
     # Read before distractors
-    v_read_before, attn_before, scores_before = bank.read(h_target, state)
+    v_read_before, attn_before = bank.read(h_target, state)
     expected_v = bank.v_proj(h_target)
     sim_before = F.cosine_similarity(v_read_before, expected_v).item()
     top_read_slot_before = torch.argmax(attn_before[0]).item()
@@ -71,7 +71,7 @@ def run_vector_interference_benchmark():
             d_vec = d_vec / torch.norm(d_vec)
             state, _ = bank.write(d_vec, state)
 
-        v_read_after, attn_after, scores_after = bank.read(h_target, state)
+        v_read_after, attn_after = bank.read(h_target, state)
         sim_after = F.cosine_similarity(v_read_after, expected_v).item()
         top_slot_after = torch.argmax(attn_after[0]).item()
         eff_slots = 1.0 / (attn_after.pow(2).sum(dim=-1).item() + 1e-8)

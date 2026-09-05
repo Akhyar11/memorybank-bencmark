@@ -122,12 +122,11 @@ def run_benchmark():
     print("=" * 72)
     print("      ACADEMIC PAPER BENCHMARK SUITE: NEURAL MEMORY BANK")
     print("=" * 72)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Hardware Device : {device}")
 
-    model_dir = "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark/gpt2-indo-instruct-tuned"
-    ckpt_path = "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark/checkpoints/best_adapter.pt"
+    model_dir = "gpt2-indo-instruct-tuned"
+    ckpt_path = "checkpoints/gpt2_causal_memory_best.pt"
 
     print("Loading Tokenizer & Backbone Model...")
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
@@ -138,14 +137,14 @@ def run_benchmark():
         memory_capacity=128,
         memory_dim=768,
         hidden_size=768,
-        memory_top_k=4,
-        memory_read_threshold=0.2
     )
     model = GPT2MemoryModel(model_name_or_path=model_dir, memory_config=mem_config).to(device)
 
     if os.path.exists(ckpt_path):
         st = torch.load(ckpt_path, map_location=device, weights_only=False)
-        if "adapter_state_dict" in st:
+        if "model_state_dict" in st:
+            model.load_state_dict(st["model_state_dict"], strict=False)
+        elif "adapter_state_dict" in st:
             model.load_state_dict(st["adapter_state_dict"], strict=False)
         else:
             model.load_state_dict(st, strict=False)
@@ -157,8 +156,7 @@ def run_benchmark():
 
     methods = [
         ("No Memory", "no_memory"),
-        ("Whole-Sentence Pooling", "sentence_pooled"),
-        ("Proposed (N=8 Soft-Attn)", "proposed_n8")
+        ("Differentiable Causal Memory", "causal_memory")
     ]
 
     distractor_levels = [0, 5, 10]
@@ -186,22 +184,11 @@ def run_benchmark():
             model.reset_memory()
 
             # Step 1: Write fact according to method
-            if m_key == "no_memory":
-                pass
-            elif m_key == "sentence_pooled":
+            if m_key == "causal_memory":
                 with torch.no_grad():
-                    out_f = model(enc_fact["input_ids"])
-                    h_pooled = out_f["hidden_states"][0, pfx_len:-1].mean(dim=0)
-                    wp_pooled = out_f["write_probs"][0, pfx_len:-1].mean()
-                    model.write_memory(h_pooled, wp_pooled)
-            elif m_key == "proposed_n8":
-                with torch.no_grad():
-                    out_f = model(enc_fact["input_ids"])
-                    h_seq = out_f["hidden_states"][0, pfx_len:-1]
-                    wp_seq = out_f["write_probs"][0, pfx_len:-1]
-                    model.write_memory_chunked(h_seq, wp_seq, chunk_size=8)
+                    model(enc_fact["input_ids"], use_memory=True, persist_memory=True)
 
-            slots_used = model.bank.active_count
+            slots_used = float(model.bank.mem_occupancy.sum().item())
 
             # Step 2: Timed Generation
             t0 = time.perf_counter()
@@ -229,7 +216,7 @@ def run_benchmark():
             results[m_key]["slots"].append(slots_used)
             results[m_key]["latency"].append(latency_ms_per_token)
 
-            print(f"  [{m_name:24s}] EM: {em_score:5.1f}% | F1: {f1_score:5.1f}% | Slots: {slots_used:2d} | Latency: {latency_ms_per_token:5.1f}ms")
+            print(f"  [{m_name:28s}] EM: {em_score:5.1f}% | F1: {f1_score:5.1f}% | Slots: {slots_used:5.2f} | Latency: {latency_ms_per_token:5.1f}ms")
 
         # Evaluate Distractor Resistance for Case 1 (Akhyar)
         if case_idx == 0:
@@ -237,28 +224,16 @@ def run_benchmark():
             for lvl in distractor_levels:
                 for m_name, m_key in methods:
                     model.reset_memory()
-                    if m_key == "sentence_pooled":
+                    if m_key == "causal_memory":
                         with torch.no_grad():
-                            out_f = model(enc_fact["input_ids"])
-                            h_p = out_f["hidden_states"][0, pfx_len:-1].mean(dim=0)
-                            wp_p = out_f["write_probs"][0, pfx_len:-1].mean()
-                            model.write_memory(h_p, wp_p)
-                    elif m_key == "proposed_n8":
-                        with torch.no_grad():
-                            out_f = model(enc_fact["input_ids"])
-                            h_s = out_f["hidden_states"][0, pfx_len:-1]
-                            wp_s = out_f["write_probs"][0, pfx_len:-1]
-                            model.write_memory_chunked(h_s, wp_s, chunk_size=8)
+                            model(enc_fact["input_ids"], use_memory=True, persist_memory=True)
 
                     # Inject distractor turns
                     for d_text in DISTRACTORS_POOL[:lvl]:
                         enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
                         with torch.no_grad():
-                            out_d = model(enc_d["input_ids"])
-                            if m_key == "sentence_pooled":
-                                model.write_memory(out_d["hidden_states"][0, pfx_len:-1].mean(dim=0), out_d["write_probs"][0, pfx_len:-1].mean())
-                            elif m_key == "proposed_n8":
-                                model.write_memory_chunked(out_d["hidden_states"][0, pfx_len:-1], out_d["write_probs"][0, pfx_len:-1], chunk_size=8)
+                            if m_key == "causal_memory":
+                                model(enc_d["input_ids"], use_memory=True, persist_memory=True)
 
                     # Query after distractors
                     with torch.no_grad():

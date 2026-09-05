@@ -93,8 +93,7 @@ def main():
             continue
 
         if user_input == "/decay":
-            model.bank.decay_memory()
-            print("[SISTEM]: Decay memory diterapkan.")
+            print("[SISTEM]: Memory decay tidak digunakan (arsitektur murni tanpa threshold/decay).")
             continue
 
         if user_input == "/slots":

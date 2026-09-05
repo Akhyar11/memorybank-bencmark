@@ -32,9 +32,9 @@ def _extract_text_from_item(item: dict) -> str:
     return ""
 
 
-def load_corpus(data_path: str) -> str:
+def load_dialogues(data_path: str) -> List[str]:
     if not os.path.exists(data_path):
-        return "Ini adalah korpus contoh bahasa Indonesia untuk pelatihan next token prediction."
+        return ["Ini adalah korpus contoh bahasa Indonesia untuk pelatihan next token prediction."]
 
     if data_path.endswith(".jsonl"):
         docs: List[str] = []
@@ -51,11 +51,15 @@ def load_corpus(data_path: str) -> str:
                 text = _extract_text_from_item(item)
                 if text:
                     docs.append(text)
-        return "\n\n".join(docs) if docs else "Korpus kosong."
+        return docs if docs else ["Korpus kosong."]
 
     with open(data_path, "r", encoding="utf-8") as f:
         raw = f.read().strip()
-    return raw if raw else "Korpus kosong."
+    if not raw:
+        return ["Korpus kosong."]
+    # Split paragraphs for plain text files
+    paragraphs = [p.strip() for p in raw.split("\n\n") if p.strip()]
+    return paragraphs if paragraphs else [raw]
 
 
 def build_chunks(token_ids: torch.Tensor, seq_len: int, stride: int) -> List[torch.Tensor]:
@@ -101,11 +105,16 @@ def train(args):
     ).to(device)
     model.print_trainable_parameters()
 
-    corpus = load_corpus(args.data_path)
-    token_ids = tokenizer(corpus, return_tensors="pt", truncation=False)["input_ids"][0]
-    chunks = build_chunks(token_ids, seq_len=args.max_seq_len, stride=args.stride)
+    dialogues = load_dialogues(args.data_path)
+    dialogue_chunks: List[List[torch.Tensor]] = []
+    for diag_text in dialogues:
+        t_ids = tokenizer(diag_text, return_tensors="pt", truncation=False)["input_ids"][0]
+        cks = build_chunks(t_ids, seq_len=args.max_seq_len, stride=args.stride)
+        if cks:
+            dialogue_chunks.append(cks)
 
-    if len(chunks) == 0:
+    total_chunks = sum(len(c) for c in dialogue_chunks)
+    if total_chunks == 0:
         raise ValueError("Tidak ada chunk valid untuk training (minimal 2 token per chunk).")
 
     trainable_params = [p for p in model.parameters() if p.requires_grad]
@@ -115,46 +124,54 @@ def train(args):
     history = []
     best_loss = float("inf")
 
-    print(f"Total chunk: {len(chunks)}")
+    print(f"Total percakapan : {len(dialogue_chunks)}")
+    print(f"Total chunk token: {total_chunks}")
     print(f"Memulai training NTP-only selama {args.epochs} epoch (backbone frozen: {freeze_backbone})...")
+    print(f"Boundary policy  : Memori & Graph di-reset di setiap akhir percakapan (clean isolation).")
 
     for epoch in range(1, args.epochs + 1):
         model.train()
-        model.reset_memory()  # explicit epoch boundary
-        memory_state = None  # fresh memory state at epoch boundary
-
         total_loss = 0.0
         steps = 0
 
-        pbar = tqdm(chunks, desc=f"Epoch {epoch}/{args.epochs}", dynamic_ncols=True)
-        for chunk in pbar:
-            chunk = chunk.to(device)
-            input_ids = chunk.unsqueeze(0)
-            labels = input_ids.clone()
+        pbar = tqdm(dialogue_chunks, desc=f"Epoch {epoch}/{args.epochs}", dynamic_ncols=True)
+        for chunks in pbar:
+            # === BOUNDARY PERCAKAPAN: RESET MEMORI UNTUK SESI BARU ===
+            model.reset_memory()
+            memory_state = None
 
-            # Forward pass through causal memory with standard NTP loss
-            out = model(
-                input_ids=input_ids,
-                labels=labels,
-                memory_state=memory_state,
-                use_memory=True,
-                persist_memory=False,
-            )
+            for chunk in chunks:
+                chunk = chunk.to(device)
+                input_ids = chunk.unsqueeze(0)
+                labels = input_ids.clone()
 
-            loss = out["loss"]
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
-            optimizer.step()
+                # Forward pass through causal memory with standard NTP loss
+                out = model(
+                    input_ids=input_ids,
+                    labels=labels,
+                    memory_state=memory_state,
+                    use_memory=True,
+                    persist_memory=False,
+                )
 
-            # Problem 7: Explicit Truncated-BPTT boundary between sequential chunks
-            memory_state = model.detach_memory_state(out["memory_state"])
+                loss = out["loss"]
+                optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
+                optimizer.step()
 
-            total_loss += loss.item()
-            steps += 1
+                # Truncated-BPTT boundary between sequential chunks in the SAME conversation
+                memory_state = model.detach_memory_state(out["memory_state"])
+
+                total_loss += loss.item()
+                steps += 1
+
+            # === AKHIR PERCAKAPAN: RESET MEMORI & PUTUS GRAFIK ===
+            memory_state = None
+            model.reset_memory()
+
             avg_loss = total_loss / max(steps, 1)
             ppl = math.exp(min(avg_loss, 20.0))
-
             diag = model.last_diagnostics
             pbar.set_postfix({
                 "ntp_loss": f"{loss.item():.4f}",
@@ -213,8 +230,8 @@ if __name__ == "__main__":
     parser.add_argument("--stride", type=int, default=128)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--tau_read", "--read_temperature", dest="tau_read", type=float, default=1.0, help="Read temperature tau_read")
-    parser.add_argument("--tau_write", "--write_temperature", dest="tau_write", type=float, default=1.0, help="Write temperature tau_write")
+    parser.add_argument("--tau_read", "--read_temperature", dest="tau_read", type=float, default=0.05, help="Read temperature tau_read")
+    parser.add_argument("--tau_write", "--write_temperature", dest="tau_write", type=float, default=0.05, help="Write temperature tau_write")
     parser.add_argument("--lambda_replace", type=float, default=1.0, help="Replacement score weight lambda_replace")
     parser.add_argument("--unfreeze_backbone", action="store_true", default=False, help="Unfreeze GPT-2 backbone (default is frozen)")
     parser.add_argument("--cpu", action="store_true")

@@ -35,9 +35,9 @@ class TinyMemoryConfig:
     memory_dim: int = 768        # D: memory key/value dimension
     hidden_size: int = 768       # H: backbone hidden dimension
 
-    # Explicit positive temperatures
-    tau_read: float = 1.0        # tau_read > 0
-    tau_write: float = 1.0       # tau_write > 0
+    # Explicit positive temperatures (calibrated to unit-norm cosine similarity ~ 1/sqrt(D))
+    tau_read: float = 0.05       # tau_read > 0
+    tau_write: float = 0.05      # tau_write > 0
 
     # Replacement weight
     lambda_replace: float = 1.0  # lambda_replace >= 0

@@ -394,6 +394,164 @@ def generate_conversation_memory_update(p: Dict[str, Any], target_turns: int = 1
     }
 
 
+def generate_conversation_negative_denial(p: Dict[str, Any], target_turns: int = 10) -> Dict[str, Any]:
+    """Scenario: User explicitly denies an assumption/mistake and provides the real fact."""
+    turns = []
+    facts = []
+
+    # Turn 0-1: User introduces name and true job
+    turns.append({"role": "user", "content": f"Halo, perkenalkan namaku {p['name']}."})
+    turns.append({"role": "assistant", "content": f"Selamat datang {p['name']}! Senang berkenalan denganmu. Kamu sekarang bekerja di bidang apa?"})
+    facts.append({"turn": 0, "key": "name", "value": p["name"]})
+
+    # Turn 2-3: Mistaken presumption vs user denial
+    fake_job = random.choice([j for j in TECH_ROLES if j != p["job"]])
+    turns.append({"role": "user", "content": f"Bukan, aku bukan {fake_job}, tapi aku bekerja sebagai {p['job']}."})
+    turns.append({"role": "assistant", "content": f"Mohon maaf atas kekeliruannya, {p['name']}! Baik, catatanku sudah kuperbarui: kamu berprofesi sebagai {p['job']}, bukan {fake_job}."})
+    facts.append({"turn": 2, "key": "job", "value": p["job"]})
+
+    # Turn 4-5: Discussion on true job
+    turns.append({"role": "user", "content": f"Setiap hari aku sering menangani proyek menggunakan {p['lang']}."})
+    turns.append({"role": "assistant", "content": f"Menarik sekali! Bahasa {p['lang']} memang sangat populer untuk kebutuhan {p['job']}."})
+    facts.append({"turn": 4, "key": "lang", "value": p["lang"]})
+
+    # Turn 6-7: Distractor
+    turns.append({"role": "user", "content": "Kira-kira tips manajemen waktu yang efektif untuk pekerja seperti aku apa ya?"})
+    turns.append({"role": "assistant", "content": "Gunakan teknik time-blocking, prioritaskan tugas berdasarkan urgensi dan dampak (Eisenhower Matrix), serta luangkan jeda istirahat singkat setiap 90 menit."})
+
+    if target_turns >= 10:
+        turns.append({"role": "user", "content": "Sip, akhir-akhir ini aku memang sering merasa burnout karena multitasking."})
+        turns.append({"role": "assistant", "content": f"Fokus pada satu tugas utama dalam satu waktu terbukti jauh lebih efisien dan menjaga kesehatan mentalmu, {p['name']}."})
+
+    # Recall Turn: User checks if assistant remembers the corrected job
+    q = "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi."
+    a = f"Pekerjaanmu yang benar adalah {p['job']}."
+    ans = p["job"]
+
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q})
+    turns.append({"role": "assistant", "content": a})
+
+    return {
+        "topic": "user_denial_and_correction",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": "job",
+            "ground_truth": ans,
+            "rejected_value": fake_job,
+            "question": q,
+            "answer": a
+        }
+    }
+
+
+def generate_conversation_unknown_recall(p: Dict[str, Any], target_turns: int = 10) -> Dict[str, Any]:
+    """Scenario: User asks about an unmentioned fact; Assistant must truthfully abstain / say don't know."""
+    turns = []
+    facts = []
+
+    # Turn 0-1: User shares city and food
+    turns.append({"role": "user", "content": f"Hai! Aku {p['name']} dari {p['city']}. Senang bisa ngobrol."})
+    turns.append({"role": "assistant", "content": f"Halo {p['name']} dari kota {p['city']}! Ada yang bisa kubantu hari ini?"})
+    facts.append({"turn": 0, "key": "name", "value": p["name"]})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+
+    # Turn 2-3: Food preference
+    turns.append({"role": "user", "content": f"Hari ini cuacanya enak banget buat makan {p['food']} hangat."})
+    turns.append({"role": "assistant", "content": f"Wah benar sekali, {p['food']} memang santapan yang pas dinikmati saat cuaca seperti ini."})
+    facts.append({"turn": 2, "key": "food", "value": p["food"]})
+
+    # Turn 4-5: Distractor
+    turns.append({"role": "user", "content": "Ada rekomendasi kegiatan akhir pekan yang santai di rumah?"})
+    turns.append({"role": "assistant", "content": "Membaca buku baru, menonton dokumenter menarik, atau mencoba resep masakan sederhana bisa jadi pilihan akhir pekan yang menyenangkan."})
+
+    if target_turns >= 10:
+        turns.append({"role": "user", "content": "Ide bagus, aku mau coba selesaikan buku yang belum sempat kubaca."})
+        turns.append({"role": "assistant", "content": "Selamat membaca dan menikmati waktu santai di rumah ya!"})
+
+    # Unknown Recall: Ask unmentioned entity
+    unmentioned_topics = [
+        ("warna mobil favoritku", "warna mobil favoritmu", "Boleh tahu apa warna mobil favoritmu?"),
+        ("nama adik kandungku", "nama adik kandungmu", "Siapa nama adik kandungmu?"),
+        ("golongan darahku", "golongan darahmu", "Jika boleh tahu, apa golongan darahmu?"),
+        ("hobi olahragaku", "olahraga favoritmu", "Olahraga apa yang sering kamu lakukan?")
+    ]
+    topic_phrase, target_attr, followup = random.choice(unmentioned_topics)
+    q = f"Kamu tahu nggak apa {topic_phrase}?"
+    a = f"Kamu belum pernah menceritakan tentang {target_attr} sebelumnya. {followup}"
+    ans = "UNKNOWN"
+
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q})
+    turns.append({"role": "assistant", "content": a})
+
+    return {
+        "topic": "unknown_fact_abstention",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": "unmentioned_fact",
+            "ground_truth": ans,
+            "question": q,
+            "answer": a
+        }
+    }
+
+
+def generate_conversation_negative_confirmation(p: Dict[str, Any], target_turns: int = 10) -> Dict[str, Any]:
+    """Scenario: User tests assistant with a false/trick question; Assistant denies politely."""
+    turns = []
+    facts = []
+
+    # Turn 0-1: User shares city
+    turns.append({"role": "user", "content": f"Halo asisten! Aku {p['name']}, aku tinggal menetap di {p['city']}."})
+    turns.append({"role": "assistant", "content": f"Halo {p['name']}! Senang berkenalan dengan warga {p['city']}. Apa kabar hari ini?"})
+    facts.append({"turn": 0, "key": "name", "value": p["name"]})
+    facts.append({"turn": 0, "key": "city", "value": p["city"]})
+
+    # Turn 2-3: User shares hobby/pet
+    turns.append({"role": "user", "content": f"Aku punya peliharaan seekor {p['pet_type']} yang kuberi nama {p['pet_name']}."})
+    turns.append({"role": "assistant", "content": f"Wah menggemaskan! Memelihara {p['pet_type']} bernama {p['pet_name']} pasti sangat menghibur harimu."})
+    facts.append({"turn": 2, "key": "pet_type", "value": p["pet_type"]})
+    facts.append({"turn": 2, "key": "pet_name", "value": p["pet_name"]})
+
+    # Turn 4-5: Distractor
+    turns.append({"role": "user", "content": "Bagaimana tips menjaga konsentrasi saat belajar hal baru?"})
+    turns.append({"role": "assistant", "content": "Jauhkan gangguan gadget, gunakan metode Pomodoro (25 menit fokus, 5 menit istirahat), dan buat ringkasan dengan kata-katamu sendiri."})
+
+    if target_turns >= 10:
+        turns.append({"role": "user", "content": "Metode Pomodoro sering kupakai dan memang sangat membantu."})
+        turns.append({"role": "assistant", "content": "Bagus sekali! Konsistensi ritme kerja seperti itu membantu otak tetap segar tanpa cepat lelah."})
+
+    # False/Trick Question: User mentions wrong city
+    wrong_city = random.choice([c for c in CITIES if c != p["city"]])
+    q = f"Tadi kamu ingat kan kalau aku tinggal di {wrong_city}?"
+    a = f"Bukan, kamu tadi menyebutkan bahwa kamu tinggal di {p['city']}, bukan di {wrong_city}."
+    ans = f"Bukan {wrong_city}, tapi {p['city']}"
+
+    rec_idx = len(turns)
+    turns.append({"role": "user", "content": q})
+    turns.append({"role": "assistant", "content": a})
+
+    return {
+        "topic": "negative_confirmation_denial",
+        "turns": turns,
+        "facts": facts,
+        "target_recall": {
+            "query_turn": rec_idx,
+            "target_key": "city_confirmation",
+            "ground_truth": ans,
+            "wrong_value": wrong_city,
+            "true_value": p["city"],
+            "question": q,
+            "answer": a
+        }
+    }
+
+
 # ---------------------------------------------------------------------------
 # Dataset Generator Pipeline
 # ---------------------------------------------------------------------------
@@ -403,6 +561,9 @@ TOPIC_BUILDERS = [
     generate_conversation_lifestyle_health,
     generate_conversation_travel_adventure,
     generate_conversation_memory_update,
+    generate_conversation_negative_denial,
+    generate_conversation_unknown_recall,
+    generate_conversation_negative_confirmation,
 ]
 
 
@@ -488,7 +649,10 @@ def generate_conversation_dataset(
             "tech_and_career",
             "lifestyle_and_health",
             "travel_and_adventure",
-            "memory_update_and_correction"
+            "memory_update_and_correction",
+            "user_denial_and_correction",
+            "unknown_fact_abstention",
+            "negative_confirmation_denial"
         ]
     }
     meta_path = os.path.join(output_dir, "conversations_metadata.json")

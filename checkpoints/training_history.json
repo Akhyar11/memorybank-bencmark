@@ -1,0 +1,13 @@
+{
+  "model": "GPT-2 Indo + Mature TinyMemoryBank (Episodic)",
+  "epochs": 1,
+  "batch_size": 4,
+  "learning_rate": 0.0005,
+  "best_loss": 0.7876339778202819,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 0.7876339778202819
+    }
+  ]
+}

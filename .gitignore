@@ -4,3 +4,5 @@ __pycache__/
 checkpoints/*.pt
 checkpoints_decoder_only/
 dataset/*.npy
+gpt2-indo-instruct-tuned/
+gpt2-indo-instruct-tuned

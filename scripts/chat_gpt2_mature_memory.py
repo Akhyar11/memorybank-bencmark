@@ -8,7 +8,7 @@ from transformers import AutoTokenizer
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.gpt2_memory_model import GPT2MemoryModel
-from models.tiny_memory_bank import STATE_ACTIVE, TinyMemoryConfig
+from models.tiny_memory_bank import TinyMemoryConfig
 
 
 def load_checkpoint_if_exists(model: GPT2MemoryModel, checkpoint_path: str, device: torch.device) -> bool:
@@ -93,19 +93,17 @@ def main():
             continue
 
         if user_input == "/decay":
-            model.bank.global_step += 5
             model.bank.decay_memory()
             print("[SISTEM]: Decay memory diterapkan.")
             continue
 
         if user_input == "/slots":
-            active_slots = (model.bank.mem_state == STATE_ACTIVE).nonzero(as_tuple=True)[0]
+            active_slots = (model.bank.mem_confidence > 0.5).nonzero(as_tuple=True)[0]
             print(f"[MEMORY]: Active slots {len(active_slots)}/{model.bank.config.memory_capacity}")
             for s in active_slots[:10]:
-                imp = model.bank.mem_importance[s].item()
                 conf = model.bank.mem_confidence[s].item()
-                acc = model.bank.mem_access_count[s].item()
-                print(f"  Slot {s.item():03d} | imp={imp:.3f} conf={conf:.3f} access={acc}")
+                imp = model.bank.mem_importance[s].item()
+                print(f"  Slot {s.item():03d} | conf={conf:.3f} imp={imp:.3f}")
             continue
 
         with torch.no_grad():

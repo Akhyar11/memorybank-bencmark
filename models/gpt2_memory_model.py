@@ -33,6 +33,7 @@ class GPT2MemoryModel(nn.Module):
         self.config = self.gpt2.config
         embed_dim = self.config.n_embd
 
+        # Problem 9: Backbone isolation (frozen GPT-2 by default)
         if freeze_backbone:
             for p in self.gpt2.parameters():
                 p.requires_grad = False
@@ -54,6 +55,10 @@ class GPT2MemoryModel(nn.Module):
         memory_state: Dict[str, torch.Tensor],
         use_memory: bool = True,
     ) -> Dict[str, Any]:
+        """
+        Causal memory loop across sequence tokens t = 0 ... T-1:
+          READ(M_t) -> FUSE -> [predict x_{t+1}] -> WRITE -> M_{t+1}
+        """
         bsz, seqlen, _ = hidden_states.shape
         fused_steps = []
         mean_read_attn = []
@@ -66,7 +71,9 @@ class GPT2MemoryModel(nn.Module):
             h_t = hidden_states[:, t, :]
 
             if use_memory:
+                # 1. READ from M_t
                 r_t, attn_t, _ = self.bank.read(h_t, state)
+                # 2. FUSE with h_t
                 fused_t = self.bank.fuse(h_t, r_t)
             else:
                 r_t = torch.zeros(bsz, self.memory_config.memory_dim, device=h_t.device, dtype=h_t.dtype)
@@ -77,6 +84,7 @@ class GPT2MemoryModel(nn.Module):
             mean_read_attn.append(attn_t.mean(dim=-1))
 
             if use_memory:
+                # 3. WRITE after fusion to obtain M_{t+1}
                 state, write_diag = self.bank.write(h_t, state)
                 mean_write_gate.append(write_diag["write_gate"])
                 mean_novelty.append(write_diag["novelty"])
@@ -97,13 +105,13 @@ class GPT2MemoryModel(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
-        write_targets: Optional[torch.Tensor] = None,
-        read_targets: Optional[torch.Tensor] = None,
         memory_state: Optional[Dict[str, torch.Tensor]] = None,
         use_memory: bool = True,
-        persist_memory: bool = True,
+        persist_memory: bool = False,
     ) -> Dict[str, Any]:
-        del write_targets, read_targets
+        """
+        Forward pass with standard causal Next Token Prediction (NTP) loss.
+        """
         transformer_outputs = self.gpt2.transformer(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -125,6 +133,7 @@ class GPT2MemoryModel(nn.Module):
 
         logits = self.gpt2.lm_head(fused_hidden)
 
+        # Standard Next Token Prediction loss only (Problem 14)
         loss = None
         if labels is not None:
             shift_logits = logits[..., :-1, :].contiguous()
@@ -135,7 +144,8 @@ class GPT2MemoryModel(nn.Module):
                 ignore_index=-100,
             )
 
-        if persist_memory and memory_state is None and use_memory:
+        # Persistent runtime buffer used ONLY for single-stream interactive inference
+        if persist_memory and memory_state is None and use_memory and hidden_states.size(0) == 1:
             self.bank.persist_runtime_state(next_state)
 
         self.last_diagnostics = {k: float(v.detach().cpu().item()) for k, v in mem_out["diagnostics"].items()}
@@ -168,6 +178,7 @@ class GPT2MemoryModel(nn.Module):
         self.bank.reset_memory()
 
     def detach_memory_state(self, memory_state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Problem 7: Explicit Truncated-BPTT boundary."""
         return self.bank.detach_state(memory_state)
 
     def write_memory(
@@ -189,31 +200,6 @@ class GPT2MemoryModel(nn.Module):
             self.bank.persist_runtime_state(next_state)
         return next_state
 
-    def pool_n_tokens(
-        self,
-        token_hiddens: torch.Tensor,
-        chunk_size: int = 8,
-    ) -> torch.Tensor:
-        if token_hiddens.dim() == 1:
-            return token_hiddens.unsqueeze(0)
-        if token_hiddens.size(0) == 0:
-            return token_hiddens
-
-        pooled = []
-        for i in range(0, token_hiddens.size(0), chunk_size):
-            pooled.append(token_hiddens[i : i + chunk_size].mean(dim=0))
-        return torch.stack(pooled, dim=0)
-
-    def write_memory_chunked(
-        self,
-        token_hiddens: torch.Tensor,
-        chunk_size: int = 8,
-        memory_state: Optional[Dict[str, torch.Tensor]] = None,
-        persist_memory: bool = True,
-    ) -> Dict[str, torch.Tensor]:
-        pooled_h = self.pool_n_tokens(token_hiddens=token_hiddens, chunk_size=chunk_size)
-        return self.write_memory(pooled_h, memory_state=memory_state, persist_memory=persist_memory)
-
     @torch.no_grad()
     def generate(
         self,
@@ -228,12 +214,15 @@ class GPT2MemoryModel(nn.Module):
         pad_token_id: Optional[int] = None,
         stop_token_ids: Optional[list] = None,
     ) -> torch.Tensor:
+        """
+        Problem 11: Generation follows the exact same causal memory loop:
+          READ(M_t) -> FUSE -> predict x_{t+1} -> WRITE -> M_{t+1}
+        """
         del pad_token_id
         stop_ids = set(stop_token_ids or [])
         if eos_token_id is not None:
             stop_ids.add(eos_token_id)
 
-        # Prime GPT cache + memory with prompt tokens exactly once.
         past_key_values = None
         state = self.bank.get_memory_state()
         generated = input_ids.clone()
@@ -306,3 +295,4 @@ class GPT2MemoryModel(nn.Module):
 
         self.bank.persist_runtime_state(state)
         return generated
+

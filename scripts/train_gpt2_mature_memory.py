@@ -90,14 +90,14 @@ def train(args):
         hidden_size=768,
         read_temperature=args.read_temperature,
         write_temperature=args.write_temperature,
-        novelty_temperature=args.novelty_temperature,
-        empty_temperature=args.empty_temperature,
+        vacancy_temperature=args.vacancy_temperature,
     )
 
+    freeze_backbone = not args.unfreeze_backbone
     model = GPT2MemoryModel(
         model_name_or_path=args.model_dir,
         memory_config=mem_config,
-        freeze_backbone=args.freeze_backbone,
+        freeze_backbone=freeze_backbone,
     ).to(device)
     model.print_trainable_parameters()
 
@@ -116,11 +116,12 @@ def train(args):
     best_loss = float("inf")
 
     print(f"Total chunk: {len(chunks)}")
-    print(f"Memulai training NTP-only selama {args.epochs} epoch...")
+    print(f"Memulai training NTP-only selama {args.epochs} epoch (backbone frozen: {freeze_backbone})...")
 
     for epoch in range(1, args.epochs + 1):
         model.train()
         model.reset_memory()  # explicit epoch boundary
+        memory_state = None  # fresh memory state at epoch boundary
 
         total_loss = 0.0
         steps = 0
@@ -131,11 +132,13 @@ def train(args):
             input_ids = chunk.unsqueeze(0)
             labels = input_ids.clone()
 
+            # Forward pass through causal memory with standard NTP loss
             out = model(
                 input_ids=input_ids,
                 labels=labels,
+                memory_state=memory_state,
                 use_memory=True,
-                persist_memory=True,
+                persist_memory=False,
             )
 
             loss = out["loss"]
@@ -143,6 +146,9 @@ def train(args):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
             optimizer.step()
+
+            # Problem 7: Explicit Truncated-BPTT boundary between sequential chunks
+            memory_state = model.detach_memory_state(out["memory_state"])
 
             total_loss += loss.item()
             steps += 1
@@ -156,6 +162,7 @@ def train(args):
                 "ppl": f"{ppl:.2f}",
                 "slots": f"{diag.get('active_slots', 0.0):.1f}",
                 "w_gate": f"{diag.get('avg_write_gate', 0.0):.3f}",
+                "novelty": f"{diag.get('avg_novelty', 0.0):.3f}",
             })
 
         epoch_loss = total_loss / max(steps, 1)
@@ -208,9 +215,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--read_temperature", type=float, default=1.0)
     parser.add_argument("--write_temperature", type=float, default=1.0)
-    parser.add_argument("--novelty_temperature", type=float, default=1.0)
-    parser.add_argument("--empty_temperature", type=float, default=1.0)
-    parser.add_argument("--freeze_backbone", action="store_true", default=False)
+    parser.add_argument("--vacancy_temperature", type=float, default=1.0)
+    parser.add_argument("--unfreeze_backbone", action="store_true", default=False, help="Unfreeze GPT-2 backbone (default is frozen)")
     parser.add_argument("--cpu", action="store_true")
     args = parser.parse_args()
 

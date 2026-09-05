@@ -269,6 +269,7 @@ class ConversationalEvaluator:
             "old_value_suppressed": old_value_suppressed,
             "causal_difference": causal_diff,
             "target_prob_increased": target_prob_increased,
+            "pred_answer": pred_answer,
             "topic": topic
         }
 

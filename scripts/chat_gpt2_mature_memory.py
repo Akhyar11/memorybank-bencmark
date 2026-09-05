@@ -98,18 +98,20 @@ def main():
             continue
 
         if user_input == "/slots":
-            conf = model.bank.mem_confidence
-            imp = model.bank.mem_importance
-            conf_sum = conf.sum().item()
-            conf_mean = conf.mean().item()
-            imp_mean = imp.mean().item()
-            print(f"[MEMORY]: Capacity {model.bank.config.memory_capacity} slots | Conf Sum: {conf_sum:.2f} | Conf Mean: {conf_mean:.3f} | Imp Mean: {imp_mean:.3f}")
-            top_slots = torch.argsort(conf, descending=True)[:10]
+            occ = model.bank.mem_occupancy
+            usage = model.bank.mem_usage
+            age = model.bank.mem_age
+            occ_sum = occ.sum().item()
+            occ_mean = occ.mean().item()
+            usage_mean = usage.mean().item()
+            print(f"[MEMORY]: Capacity {model.bank.config.memory_capacity} slots | Occupancy Sum: {occ_sum:.2f} | Occ Mean: {occ_mean:.3f} | Usage Mean: {usage_mean:.3f}")
+            top_slots = torch.argsort(occ, descending=True)[:10]
             for s in top_slots:
-                c_val = conf[s].item()
-                i_val = imp[s].item()
-                if c_val > 0.001 or i_val > 0.001:
-                    print(f"  Slot {s.item():03d} | conf={c_val:.3f} imp={i_val:.3f}")
+                o_val = occ[s].item()
+                u_val = usage[s].item()
+                a_val = age[s].item()
+                if o_val > 0.001 or u_val > 0.001:
+                    print(f"  Slot {s.item():03d} | occ={o_val:.3f} usage={u_val:.3f} age={a_val:.1f}")
             continue
 
         with torch.no_grad():
@@ -141,11 +143,10 @@ def main():
         diag = model.last_diagnostics
         print(f"\n[Turn {turn}] AI: {response}")
         print(
-            f"  [Memory] eff_write_slots={diag.get('effective_write_slots', 1.0):.1f} "
-            f"w_sparse={diag.get('write_sparsity', 0.0):.2f} "
-            f"conf_sum={diag.get('confidence_sum', 0.0):.1f} "
-            f"avg_write_gate={diag.get('avg_write_gate', 0.0):.3f} "
-            f"avg_novelty={diag.get('avg_novelty', 0.0):.3f}\n"
+            f"  [Memory] occ_sum={diag.get('occupancy_sum', 0.0):.1f} "
+            f"occ_mean={diag.get('occupancy_mean', 0.0):.3f} "
+            f"usage_mean={diag.get('usage_mean', 0.0):.3f} "
+            f"avg_write_gate={diag.get('avg_write_gate', 0.0):.3f}\n"
         )
 
         turn += 1

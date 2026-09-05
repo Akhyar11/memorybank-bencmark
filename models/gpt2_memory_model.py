@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM
 
-from models.tiny_memory_bank import TinyMemoryBank, TinyMemoryConfig
+from models.tiny_memory_bank import MemoryState, TinyMemoryBank, TinyMemoryConfig
 
 
 class GPT2MemoryModel(nn.Module):
@@ -13,10 +13,10 @@ class GPT2MemoryModel(nn.Module):
     GPT-2 + Differentiable Causal Memory Bank.
 
     Strict Causal Loop for each token position t:
-      1) READ from M_t:       r_t = READ(M_t)
-      2) FUSE with h_t:       fused_t = FUSE(h_t, r_t)
-      3) PREDICT x_{t+1}:     logits_t = lm_head(fused_t)
-      4) WRITE to get M_{t+1}: M_{t+1} = WRITE(h_t, M_t)
+      1) READ from M_t:       r_t = READ(h_t, M_t)
+      2) FUSE with h_t:       z_t = FUSE(h_t, r_t)
+      3) PREDICT x_{t+1}:     logits_t = lm_head(z_t)
+      4) WRITE to get M_{t+1}: M_{t+1} = WRITE(h_t, M_t, alpha_t, g_t)
 
     Training objective: strictly standard causal Next Token Prediction (NTP) loss.
     No auxiliary labels, losses, or manual thresholds.
@@ -34,7 +34,7 @@ class GPT2MemoryModel(nn.Module):
         self.config = self.gpt2.config
         embed_dim = self.config.n_embd
 
-        # Frozen backbone by default: isolates whether Memory Bank learns through NTP
+        # Frozen backbone by default (Section 1)
         if freeze_backbone:
             for p in self.gpt2.parameters():
                 p.requires_grad = False
@@ -50,74 +50,69 @@ class GPT2MemoryModel(nn.Module):
 
         self.last_diagnostics: Dict[str, Any] = {}
 
-    def _causal_memory_fusion(
+    def _causal_memory_loop(
         self,
         hidden_states: torch.Tensor,
-        memory_state: Dict[str, torch.Tensor],
+        state: MemoryState,
         use_memory: bool = True,
     ) -> Dict[str, Any]:
         """
-        Causal memory loop across sequence tokens t = 0 ... T-1:
-          READ(M_t) -> FUSE(h_t, r_t) -> PREDICT x_{t+1} -> WRITE(h_t, M_t) -> M_{t+1}
+        Non-negotiable causal sequence (Section 2 & 26):
+          For t = 0 ... T-1:
+            r_t = READ(h_t, M_t)
+            z_t = FUSE(h_t, r_t)
+            logits_t = LMHead(z_t)
+            M_{t+1} = WRITE(h_t, M_t)
         """
         bsz, seqlen, _ = hidden_states.shape
         fused_steps = []
         logits_steps = []
 
-        mean_read_attn = []
         mean_write_gate = []
-        mean_novelty = []
-        mean_eff_write_slots = []
-        mean_write_sparsity = []
-
-        state = memory_state
+        mean_occupancy = []
+        mean_usage = []
 
         for t in range(seqlen):
             h_t = hidden_states[:, t, :]
 
             if use_memory:
                 # 1. READ from M_t
-                r_t, attn_t, _ = self.bank.read(h_t, state)
+                r_t, alpha_t = self.bank.read(h_t, state)
                 # 2. FUSE with h_t
-                fused_t, gate_t = self.bank.fuse(h_t, r_t)
+                z_t, g_t = self.bank.fuse(h_t, r_t)
             else:
                 r_t = torch.zeros(bsz, self.memory_config.memory_dim, device=h_t.device, dtype=h_t.dtype)
-                attn_t = torch.zeros(bsz, self.memory_config.memory_capacity, device=h_t.device, dtype=h_t.dtype)
-                fused_t = h_t
-                gate_t = torch.zeros_like(h_t)
+                alpha_t = torch.zeros(bsz, self.memory_config.memory_capacity, device=h_t.device, dtype=h_t.dtype)
+                z_t = h_t
+                g_t = torch.zeros_like(h_t)
 
-            fused_steps.append(fused_t)
-            mean_read_attn.append(attn_t.mean(dim=-1))
+            fused_steps.append(z_t)
 
-            # 3. PREDICT x_{t+1}: projection through lm_head occurs strictly BEFORE write
-            logits_t = self.gpt2.lm_head(fused_t)
+            # 3. PREDICT x_{t+1}: strictly before write
+            logits_t = self.gpt2.lm_head(z_t)
             logits_steps.append(logits_t)
 
             if use_memory:
-                # 4. WRITE after prediction to obtain M_{t+1} (available only at step t+1)
+                # 4. WRITE to obtain M_{t+1}
                 state, write_diag = self.bank.write(
                     h_t,
                     state,
-                    alpha_read=attn_t,
-                    fusion_gate=gate_t,
+                    alpha_read=alpha_t,
+                    fusion_gate=g_t,
                 )
                 mean_write_gate.append(write_diag["write_gate"])
-                mean_novelty.append(write_diag["novelty"])
-                mean_eff_write_slots.append(write_diag["effective_write_slots"])
-                mean_write_sparsity.append(write_diag["write_sparsity"])
+                mean_occupancy.append(write_diag["occupancy_mean"])
+                mean_usage.append(write_diag["usage_mean"])
 
         fused_hidden = torch.stack(fused_steps, dim=1)
         logits = torch.stack(logits_steps, dim=1)
 
         diagnostics = {
-            "avg_read_attn": torch.stack(mean_read_attn, dim=1).mean(),
             "avg_write_gate": torch.stack(mean_write_gate, dim=1).mean() if mean_write_gate else torch.tensor(0.0, device=hidden_states.device),
-            "avg_novelty": torch.stack(mean_novelty, dim=1).mean() if mean_novelty else torch.tensor(0.0, device=hidden_states.device),
-            "effective_write_slots": torch.stack(mean_eff_write_slots, dim=1).mean() if mean_eff_write_slots else torch.tensor(1.0, device=hidden_states.device),
-            "write_sparsity": torch.stack(mean_write_sparsity, dim=1).mean() if mean_write_sparsity else torch.tensor(0.0, device=hidden_states.device),
-            "confidence_sum": state["confidence"].sum(dim=-1).mean(),
-            "confidence_mean": state["confidence"].mean(),
-            "importance_mean": state["importance"].mean(),
+            "occupancy_sum": state.occupancy.sum(dim=-1).mean(),
+            "occupancy_mean": state.occupancy.mean(),
+            "usage_mean": state.usage.mean(),
+            "age_mean": state.age.mean(),
         }
 
         return {
@@ -132,13 +127,12 @@ class GPT2MemoryModel(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
-        memory_state: Optional[Dict[str, torch.Tensor]] = None,
+        memory_state: Optional[MemoryState] = None,
         use_memory: bool = True,
         persist_memory: bool = False,
     ) -> Dict[str, Any]:
         """
-        Forward pass with standard causal Next Token Prediction (NTP) loss.
-        Strictly: READ -> FUSE -> PREDICT -> WRITE.
+        Forward pass with strictly standard Next Token Prediction (NTP) loss.
         """
         transformer_outputs = self.gpt2.transformer(
             input_ids=input_ids,
@@ -148,19 +142,23 @@ class GPT2MemoryModel(nn.Module):
         )
         hidden_states = transformer_outputs.last_hidden_state
 
-        state = self.bank.init_or_expand_state(
-            batch_size=hidden_states.size(0),
-            device=hidden_states.device,
-            dtype=hidden_states.dtype,
-            memory_state=memory_state,
-        )
+        if memory_state is not None:
+            state = memory_state
+        elif persist_memory and hidden_states.size(0) == 1:
+            state = self.bank.get_runtime_state()
+        else:
+            state = self.bank.initialize_state(
+                batch_size=hidden_states.size(0),
+                device=hidden_states.device,
+                dtype=hidden_states.dtype,
+            )
 
-        mem_out = self._causal_memory_fusion(hidden_states, state, use_memory=use_memory)
+        mem_out = self._causal_memory_loop(hidden_states, state, use_memory=use_memory)
         fused_hidden = mem_out["fused_hidden"]
         logits = mem_out["logits"]
         next_state = mem_out["memory_state"]
 
-        # Standard Next Token Prediction loss only (strictly NTP)
+        # Section 24: NTP Loss only
         loss = None
         if labels is not None:
             shift_logits = logits[..., :-1, :].contiguous()
@@ -171,7 +169,7 @@ class GPT2MemoryModel(nn.Module):
                 ignore_index=-100,
             )
 
-        # Persistent runtime buffer used ONLY for single-stream interactive inference
+        # Single-stream persistent buffer for interactive inference (detached)
         if persist_memory and memory_state is None and use_memory and hidden_states.size(0) == 1:
             self.bank.persist_runtime_state(next_state)
 
@@ -204,28 +202,9 @@ class GPT2MemoryModel(nn.Module):
     def reset_memory(self):
         self.bank.reset_memory()
 
-    def detach_memory_state(self, memory_state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """Explicit Truncated-BPTT boundary."""
-        return self.bank.detach_state(memory_state)
-
-    def write_memory(
-        self,
-        h_t: torch.Tensor,
-        memory_state: Optional[Dict[str, torch.Tensor]] = None,
-        persist_memory: bool = True,
-    ) -> Dict[str, torch.Tensor]:
-        if h_t.dim() == 1:
-            h_t = h_t.unsqueeze(0)
-        state = self.bank.init_or_expand_state(
-            batch_size=h_t.size(0),
-            device=h_t.device,
-            dtype=h_t.dtype,
-            memory_state=memory_state,
-        )
-        next_state, _ = self.bank.write(h_t, state)
-        if persist_memory and memory_state is None and h_t.size(0) == 1:
-            self.bank.persist_runtime_state(next_state)
-        return next_state
+    def detach_memory_state(self, memory_state: MemoryState) -> MemoryState:
+        """Section 23: Explicit TBPTT boundary."""
+        return memory_state.detach()
 
     @torch.no_grad()
     def generate(
@@ -242,7 +221,7 @@ class GPT2MemoryModel(nn.Module):
         stop_token_ids: Optional[list] = None,
     ) -> torch.Tensor:
         """
-        Generation follows the exact same causal memory loop:
+        Section 29: Generation follows the exact same causal memory loop:
           READ(M_t) -> FUSE(h_t, r_t) -> PREDICT x_{t+1} -> WRITE(h_t, M_t) -> M_{t+1}
         """
         del pad_token_id
@@ -251,7 +230,7 @@ class GPT2MemoryModel(nn.Module):
             stop_ids.add(eos_token_id)
 
         past_key_values = None
-        state = self.bank.get_memory_state()
+        state = self.bank.get_runtime_state()
         generated = input_ids.clone()
 
         prompt_outputs = self.gpt2.transformer(
@@ -267,13 +246,13 @@ class GPT2MemoryModel(nn.Module):
         for t in range(hidden.size(1)):
             h_t = hidden[:, t, :]
             # 1. READ
-            r_t, attn_t, _ = self.bank.read(h_t, state)
+            r_t, alpha_t = self.bank.read(h_t, state)
             # 2. FUSE
-            fused_t, gate_t = self.bank.fuse(h_t, r_t)
+            z_t, g_t = self.bank.fuse(h_t, r_t)
             # 3. PREDICT
-            next_token_logits = self.gpt2.lm_head(fused_t)
+            next_token_logits = self.gpt2.lm_head(z_t)
             # 4. WRITE
-            state, _ = self.bank.write(h_t, state, alpha_read=attn_t, fusion_gate=gate_t)
+            state, _ = self.bank.write(h_t, state, alpha_read=alpha_t, fusion_gate=g_t)
 
         for _ in range(max_new_tokens):
             logits = next_token_logits.clone()
@@ -320,13 +299,13 @@ class GPT2MemoryModel(nn.Module):
 
             h_t = step_out.last_hidden_state[:, -1, :]
             # 1. READ
-            r_t, attn_t, _ = self.bank.read(h_t, state)
+            r_t, alpha_t = self.bank.read(h_t, state)
             # 2. FUSE
-            fused_t, gate_t = self.bank.fuse(h_t, r_t)
+            z_t, g_t = self.bank.fuse(h_t, r_t)
             # 3. PREDICT
-            next_token_logits = self.gpt2.lm_head(fused_t)
+            next_token_logits = self.gpt2.lm_head(z_t)
             # 4. WRITE
-            state, _ = self.bank.write(h_t, state, alpha_read=attn_t, fusion_gate=gate_t)
+            state, _ = self.bank.write(h_t, state, alpha_read=alpha_t, fusion_gate=g_t)
 
         self.bank.persist_runtime_state(state)
         return generated

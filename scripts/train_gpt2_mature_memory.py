@@ -88,9 +88,9 @@ def train(args):
         memory_capacity=args.capacity,
         memory_dim=768,
         hidden_size=768,
-        read_temperature=args.read_temperature,
-        write_temperature=args.write_temperature,
-        vacancy_temperature=args.vacancy_temperature,
+        tau_read=args.tau_read,
+        tau_write=args.tau_write,
+        lambda_replace=args.lambda_replace,
     )
 
     freeze_backbone = not args.unfreeze_backbone
@@ -160,11 +160,9 @@ def train(args):
                 "ntp_loss": f"{loss.item():.4f}",
                 "avg_loss": f"{avg_loss:.4f}",
                 "ppl": f"{ppl:.2f}",
-                "eff_slots": f"{diag.get('effective_write_slots', 1.0):.1f}",
-                "w_sparse": f"{diag.get('write_sparsity', 0.0):.2f}",
-                "conf_sum": f"{diag.get('confidence_sum', 0.0):.1f}",
+                "occ_sum": f"{diag.get('occupancy_sum', 0.0):.1f}",
                 "w_gate": f"{diag.get('avg_write_gate', 0.0):.3f}",
-                "novelty": f"{diag.get('avg_novelty', 0.0):.3f}",
+                "usage": f"{diag.get('usage_mean', 0.0):.3f}",
             })
 
         epoch_loss = total_loss / max(steps, 1)
@@ -215,9 +213,9 @@ if __name__ == "__main__":
     parser.add_argument("--stride", type=int, default=128)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--read_temperature", type=float, default=1.0)
-    parser.add_argument("--write_temperature", type=float, default=1.0)
-    parser.add_argument("--vacancy_temperature", type=float, default=1.0)
+    parser.add_argument("--tau_read", "--read_temperature", dest="tau_read", type=float, default=1.0, help="Read temperature tau_read")
+    parser.add_argument("--tau_write", "--write_temperature", dest="tau_write", type=float, default=1.0, help="Write temperature tau_write")
+    parser.add_argument("--lambda_replace", type=float, default=1.0, help="Replacement score weight lambda_replace")
     parser.add_argument("--unfreeze_backbone", action="store_true", default=False, help="Unfreeze GPT-2 backbone (default is frozen)")
     parser.add_argument("--cpu", action="store_true")
     args = parser.parse_args()

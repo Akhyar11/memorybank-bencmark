@@ -6,31 +6,28 @@
     "k_proj",
     "v_proj",
     "write_gate_proj",
-    "novelty_proj",
-    "slot_bias",
     "fusion_proj",
     "fusion_gate_proj",
+    "P",
     "mem_keys",
     "mem_vals",
-    "mem_importance",
-    "mem_confidence",
-    "global_step"
+    "mem_occupancy",
+    "mem_usage",
+    "mem_age"
   ],
   "locked_flow": [
     "read",
     "fuse",
     "predict",
-    "write",
-    "decay_memory"
+    "write"
   ],
   "allowed_changes": [
     "memory_capacity",
     "memory_dim",
     "hidden_size",
-    "read_temperature",
-    "write_temperature",
-    "vacancy_temperature",
-    "utility_decay_rate",
+    "tau_read",
+    "tau_write",
+    "lambda_replace",
     "batch_size"
   ]
 }

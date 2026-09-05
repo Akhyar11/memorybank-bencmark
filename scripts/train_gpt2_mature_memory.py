@@ -132,8 +132,7 @@ def train(args):
         """Menjalankan satu siklus lengkap: Write fakta -> Recall prompt singkat."""
         model.reset_memory()
 
-        # Langkah 1: Write Fakta ke TinyMemoryBank (Konsep N-Token Representasi)
-        write_loss_accum = torch.tensor(0.0, device=device)
+        # Langkah 1: Write Fakta ke TinyMemoryBank (Konsep N=8 Token Representasi)
         for u_text, ai_text in item["fact_turns"]:
             write_text = f"User: {u_text}\nAI: {ai_text}"
             w_enc = tokenizer(write_text, max_length=args.max_seq_len, truncation=True, return_tensors="pt").to(device)
@@ -143,17 +142,10 @@ def train(args):
             u_enc = tokenizer(f"User: {u_text}\n", return_tensors="pt")
             u_len = min(u_enc["input_ids"].shape[1], w_enc["input_ids"].shape[1])
 
-            write_targets = torch.zeros_like(w_enc["input_ids"]).float().to(device)
-            if u_len > pfx_len + 1:
-                write_targets[0, pfx_len:u_len-1] = 1.0
-
             out_w = model(
                 input_ids=w_enc["input_ids"],
-                attention_mask=w_enc["attention_mask"],
-                write_targets=write_targets
+                attention_mask=w_enc["attention_mask"]
             )
-            if out_w["loss"] is not None:
-                write_loss_accum = write_loss_accum + out_w["loss"]
 
             # N-Token Representasi (N=8, Opsi 1: Attention-Weighted Soft Pooling)
             user_hiddens = out_w["hidden_states"][0, pfx_len:u_len-1]
@@ -161,7 +153,7 @@ def train(args):
             if user_hiddens.size(0) > 0:
                 model.write_memory_chunked(user_hiddens, user_w_probs, chunk_size=8)
 
-        # Langkah 2: Recall dengan Prompt Singkat (Tanpa teks fakta di prompt!)
+        # Langkah 2: Recall Faktual (Pure Autoregressive Cross-Entropy Loss)
         query_prompt = f"User: {item['recall_query']}\nAI:"
         target_answer = f" {item['recall_answer']}"
         full_recall = query_prompt + target_answer
@@ -174,19 +166,15 @@ def train(args):
         recall_mask = full_enc["attention_mask"]
 
         recall_labels = recall_ids.clone()
-        recall_labels[0, :q_len] = -100  # Zero loss pada pertanyaan; model hanya dinilai pada target jawaban
-
-        read_targets = torch.zeros_like(recall_ids).float().to(device)
-        read_targets[0, :q_len] = 1.0   # Supervisi read_head agar membuka gerbang memori saat mendeteksi pertanyaan
+        recall_labels[0, :q_len] = -100  # Zero loss pada pertanyaan; murni melatih prediksi jawaban faktual
 
         out_r = model(
             input_ids=recall_ids,
             attention_mask=recall_mask,
-            labels=recall_labels,
-            read_targets=read_targets
+            labels=recall_labels
         )
 
-        step_loss = out_r["loss"] + 0.3 * write_loss_accum
+        step_loss = out_r["loss"]
         return step_loss, out_r["loss"].item()
 
     if args.dry_run:

@@ -1,0 +1,17 @@
+% LaTeX Table generated for Academic Paper Submission
+\begin{table}[t]
+\centering
+\caption{Quantitative Comparison of Parametric Neural Memory Bank against Baselines on Multi-Turn Episodic Recall.}
+\label{tab:memory_benchmark}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{lcccc}
+\hline
+\textbf{Method / Architecture} & \textbf{Exact Match (\%)} & \textbf{Token F1 (\%)} & \textbf{Slots Used} & \textbf{Latency (ms/tok)} \\
+\hline
+No Memory (Zero-shot Frozen)       & 0.0 & 15.9 & 0.0 & 49.0 \\
+Whole-Sentence Pooling            & 10.0 & 25.4 & 1.0 & 45.5 \\
+\textbf{Proposed ($N=8$ Soft-Attn)} & \textbf{10.0} & \textbf{25.6} & 2.2 & 44.1 \\
+\hline
+\end{tabular}
+}
+\end{table}

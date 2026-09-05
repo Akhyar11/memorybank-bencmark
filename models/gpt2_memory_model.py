@@ -95,9 +95,9 @@ class GPT2MemoryModel(nn.Module):
         h_flat = hidden_states.reshape(B * T, H)
         r_flat = read_probs.reshape(B * T)
 
-        # Read dari TinyMemoryBank (read_prob sudah diterapkan di dalam bank.read)
+        # Read dari TinyMemoryBank (100% transmisi sinyal memori tanpa diredam gate)
         query_rep = self.memory_proj_in(h_flat)
-        m_read_flat = self.bank.read(query_rep, read_prob=r_flat)
+        m_read_flat = self.bank.read(query_rep)
         m_read = self.memory_proj_out(m_read_flat).view(B, T, -1)
 
         # Fuse hidden state dengan m_read menggunakan fusion_proj milik TinyMemoryBank

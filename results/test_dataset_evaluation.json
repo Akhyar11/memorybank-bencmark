@@ -1,0 +1,91 @@
+{
+  "num_samples": 20,
+  "summary": {
+    "no_memory": {
+      "name": "No Memory",
+      "mean_em": 10.0,
+      "mean_f1": 42.26981380874402,
+      "mean_slots": 0.0,
+      "mean_latency_ms": 46.034996643982595
+    },
+    "proposed_n8": {
+      "name": "Proposed (N=8 Soft-Attn)",
+      "mean_em": 10.0,
+      "mean_f1": 39.51106357263867,
+      "mean_slots": 10.45,
+      "mean_latency_ms": 46.01537022803677
+    }
+  },
+  "by_topic": {
+    "lifestyle_and_health": {
+      "no_memory": {
+        "f1": 28.666666666666664,
+        "em": 0.0
+      },
+      "proposed_n8": {
+        "f1": 23.538461538461533,
+        "em": 0.0
+      }
+    },
+    "memory_update_and_correction": {
+      "no_memory": {
+        "f1": 34.78260869565218,
+        "em": 0.0
+      },
+      "proposed_n8": {
+        "f1": 32.9004329004329,
+        "em": 33.333333333333336
+      }
+    },
+    "negative_confirmation_denial": {
+      "no_memory": {
+        "f1": 50.0,
+        "em": 0.0
+      },
+      "proposed_n8": {
+        "f1": 48.48484848484849,
+        "em": 0.0
+      }
+    },
+    "tech_and_career": {
+      "no_memory": {
+        "f1": 35.279030910609855,
+        "em": 33.333333333333336
+      },
+      "proposed_n8": {
+        "f1": 25.93285799168152,
+        "em": 0.0
+      }
+    },
+    "travel_and_adventure": {
+      "no_memory": {
+        "f1": 40.86609686609686,
+        "em": 0.0
+      },
+      "proposed_n8": {
+        "f1": 38.72063968015993,
+        "em": 0.0
+      }
+    },
+    "unknown_fact_abstention": {
+      "no_memory": {
+        "f1": 72.03643578643579,
+        "em": 0.0
+      },
+      "proposed_n8": {
+        "f1": 72.85714285714286,
+        "em": 0.0
+      }
+    },
+    "user_denial_and_correction": {
+      "no_memory": {
+        "f1": 33.33333333333333,
+        "em": 0.0
+      },
+      "proposed_n8": {
+        "f1": 57.14285714285715,
+        "em": 100.0
+      }
+    }
+  }
+}

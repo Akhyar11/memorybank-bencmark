@@ -328,23 +328,17 @@ class TinyMemoryBank(nn.Module):
     # -----------------------------------------------------------------------
     # LOCKED OPERATION 5: forward (decay → read → fuse)
     # -----------------------------------------------------------------------
-    def forward(self, h_eos: torch.Tensor, read_prob: torch.Tensor,
-                 write_prob: torch.Tensor, deterministic: bool = False, return_scores: bool = False):
+    def forward(self, h_eos: torch.Tensor, read_prob: torch.Tensor = None,
+                 write_prob: torch.Tensor = None, deterministic: bool = False, return_scores: bool = False):
         self.global_step[0] += 1
 
         self.decay_memory()
         if return_scores:
-            read_val, score = self.read(h_eos, read_prob=read_prob, return_scores=True)
+            read_val, score = self.read(h_eos, read_prob=None, return_scores=True)
         else:
-            read_val = self.read(h_eos, read_prob=read_prob, return_scores=False)
+            read_val = self.read(h_eos, read_prob=None, return_scores=False)
 
-        if deterministic:
-            is_read = read_prob > self.config.memory_read_threshold
-            m_eff   = torch.where(is_read.unsqueeze(-1), read_val, torch.zeros_like(read_val))
-        else:
-            m_eff = read_val * read_prob.unsqueeze(-1)
-
-        fused_h = self.fuse(h_eos, m_eff)
+        fused_h = self.fuse(h_eos, read_val)
         if return_scores:
             return fused_h, score
         return fused_h

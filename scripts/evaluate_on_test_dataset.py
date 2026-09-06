@@ -228,8 +228,8 @@ def main():
     for top in all_topics:
         no_top_f1 = sum(metrics["no_memory"]["by_topic"][top]["f1"]) / max(1, len(metrics["no_memory"]["by_topic"][top]["f1"]))
         no_top_em = sum(metrics["no_memory"]["by_topic"][top]["em"]) / max(1, len(metrics["no_memory"]["by_topic"][top]["em"]))
-        p_top_f1 = sum(metrics["proposed_n8"]["by_topic"][top]["f1"]) / max(1, len(metrics["proposed_n8"]["by_topic"][top]["f1"]))
-        p_top_em = sum(metrics["proposed_n8"]["by_topic"][top]["em"]) / max(1, len(metrics["proposed_n8"]["by_topic"][top]["em"]))
+        p_top_f1 = sum(metrics["causal_memory"]["by_topic"][top]["f1"]) / max(1, len(metrics["causal_memory"]["by_topic"][top]["f1"]))
+        p_top_em = sum(metrics["causal_memory"]["by_topic"][top]["em"]) / max(1, len(metrics["causal_memory"]["by_topic"][top]["em"]))
         print(f"{top:<32} | {no_top_f1:5.1f}% / {no_top_em:4.1f}%     | {p_top_f1:5.1f}% / {p_top_em:4.1f}%")
     print("=" * 76)
 
@@ -246,8 +246,8 @@ def main():
                         "em": sum(metrics["no_memory"]["by_topic"][top]["em"]) / max(1, len(metrics["no_memory"]["by_topic"][top]["em"])),
                     },
                     "proposed_n8": {
-                        "f1": sum(metrics["proposed_n8"]["by_topic"][top]["f1"]) / max(1, len(metrics["proposed_n8"]["by_topic"][top]["f1"])),
-                        "em": sum(metrics["proposed_n8"]["by_topic"][top]["em"]) / max(1, len(metrics["proposed_n8"]["by_topic"][top]["em"])),
+                        "f1": sum(metrics["causal_memory"]["by_topic"][top]["f1"]) / max(1, len(metrics["causal_memory"]["by_topic"][top]["f1"])),
+                        "em": sum(metrics["causal_memory"]["by_topic"][top]["em"]) / max(1, len(metrics["causal_memory"]["by_topic"][top]["em"])),
                     }
                 }
                 for top in all_topics

@@ -1,33 +1,31 @@
 {
-  "source": "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark/",
+  "source": "MemoryBank-bencmark",
   "locked_components": [
     "TinyMemoryBank",
-    "q_proj",
-    "k_proj",
-    "v_proj",
-    "write_gate_proj",
+    "GPT2MemoryModel",
+    "c_proj",
     "fusion_proj",
-    "fusion_gate_proj",
-    "P",
-    "mem_keys",
-    "mem_vals",
-    "mem_occupancy",
-    "mem_usage",
-    "mem_age"
+    "add_memory",
+    "read",
+    "step_turn",
+    "evict_lifecycle"
   ],
   "locked_flow": [
-    "read",
-    "fuse",
-    "predict",
-    "write"
+    "prompt_forward_save_memory_1",
+    "query_c_proj",
+    "read_top_k_cosine",
+    "fusion_proj",
+    "generate_tokens",
+    "save_memory_2",
+    "lifecycle_eviction"
   ],
   "allowed_changes": [
     "memory_capacity",
     "memory_dim",
     "hidden_size",
-    "tau_read",
-    "tau_write",
-    "lambda_replace",
-    "batch_size"
+    "top_k",
+    "eviction_threshold_ratio",
+    "min_age_for_eviction",
+    "temperature"
   ]
 }

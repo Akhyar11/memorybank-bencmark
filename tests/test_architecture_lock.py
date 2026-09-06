@@ -1,8 +1,8 @@
 """
-tests/test_architecture_lock.py – PyTorch Architecture Lock Test
+tests/test_architecture_lock.py – Architecture Lock Test
 
-Verifies that TinyMemoryBank contains all architecture-locked components in PyTorch.
-This test MUST pass. If any locked component is removed or renamed, FAIL.
+Verifies that the new Turn-Level Semantic Memory Bank architecture
+contains all locked components, parameters, and methods.
 """
 import json
 import os
@@ -14,64 +14,38 @@ import pytest
 import torch
 import torch.nn as nn
 
+from models.gpt2_memory_model import GPT2MemoryModel
 from models.tiny_memory_bank import MemoryState, TinyMemoryBank, TinyMemoryConfig
-from tests.conftest import init_bank
+
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gpt2-indo-instruct-tuned")
+if not os.path.exists(MODEL_PATH):
+    MODEL_PATH = "izzulgod/gpt2-indo-instruct-tuned"
 
 
 @pytest.fixture
 def bank_fixture():
-    config = TinyMemoryConfig(
-        memory_capacity=16, memory_dim=8, hidden_size=8,
-    )
-    bank = init_bank(config, seed=0)
+    config = TinyMemoryConfig(memory_capacity=16, memory_dim=8, hidden_size=8)
+    bank = TinyMemoryBank(config=config)
     return bank, config
 
 
 class TestLockedComponents:
     """Verify all architecture-locked components exist in PyTorch."""
 
-    def test_locked_projections(self, bank_fixture):
-        """q_proj, k_proj, v_proj, write_gate_proj, fusion_proj, fusion_gate_proj must exist."""
-        bank, _ = bank_fixture
-        for name in ['q_proj', 'k_proj', 'v_proj', 'write_gate_proj', 'fusion_proj', 'fusion_gate_proj']:
-            assert hasattr(bank, name), f"LOCKED COMPONENT MISSING: {name}"
-            assert isinstance(getattr(bank, name), nn.Linear), f"{name} must be nn.Linear"
-
-    def test_locked_slot_address_parameter(self, bank_fixture):
-        """Learned slot address matrix P must exist as a Parameter."""
-        bank, config = bank_fixture
-        assert hasattr(bank, 'P'), "LOCKED PARAMETER MISSING: P"
-        assert isinstance(bank.P, nn.Parameter)
-        assert bank.P.shape == (config.memory_capacity, config.memory_dim)
-
-    def test_locked_memory_buffers(self, bank_fixture):
-        """All memory state tensors must exist as buffers."""
-        bank, _ = bank_fixture
-        buffers = dict(bank.named_buffers())
-        for name in ['mem_keys', 'mem_vals', 'mem_occupancy', 'mem_usage', 'mem_age']:
-            assert name in buffers, f"LOCKED MEMORY BUFFER MISSING: {name}"
-
     def test_locked_methods(self, bank_fixture):
         bank, _ = bank_fixture
-        for name in ['read', 'write', 'fuse', 'initialize_state', 'detach_state']:
-            assert callable(getattr(bank, name, None)), f"{name}() missing"
+        for name in ['read', 'add_memory', 'step_turn', 'evict_lifecycle', 'reset_memory']:
+            assert callable(getattr(bank, name, None)), f"{name}() missing from TinyMemoryBank"
 
-    def test_projections_have_weights(self, bank_fixture):
-        bank, _ = bank_fixture
-        for name in ['q_proj', 'k_proj', 'v_proj', 'write_gate_proj', 'fusion_proj', 'fusion_gate_proj']:
-            layer = getattr(bank, name)
-            assert hasattr(layer, 'weight'), f"{name} must have weight attribute"
-            assert layer.weight is not None
-
-    def test_memory_shapes(self, bank_fixture):
-        bank, config = bank_fixture
-        cap = config.memory_capacity
-        dim = config.memory_dim
-        assert bank.mem_keys.shape      == (cap, dim)
-        assert bank.mem_vals.shape      == (cap, dim)
-        assert bank.mem_occupancy.shape == (cap,)
-        assert bank.mem_usage.shape     == (cap,)
-        assert bank.mem_age.shape       == (cap,)
+    def test_locked_model_projections(self):
+        config = TinyMemoryConfig(memory_dim=768, hidden_size=768)
+        model = GPT2MemoryModel(model_name_or_path=MODEL_PATH, memory_config=config, freeze_backbone=True)
+        assert hasattr(model, 'c_proj'), "LOCKED PROJECTION MISSING: c_proj"
+        assert hasattr(model, 'fusion_proj'), "LOCKED PROJECTION MISSING: fusion_proj"
+        assert isinstance(model.c_proj, nn.Linear)
+        assert isinstance(model.fusion_proj, nn.Linear)
+        assert model.c_proj.weight.shape == (768, 768)
+        assert model.fusion_proj.weight.shape == (768, 1536)
 
     def test_architecture_lock_json(self):
         lock_path = os.path.join(
@@ -81,34 +55,31 @@ class TestLockedComponents:
         assert os.path.exists(lock_path), "architecture_lock.json missing"
         with open(lock_path) as f:
             lock = json.load(f)
-        for comp in ['q_proj', 'k_proj', 'v_proj', 'write_gate_proj', 'fusion_proj', 'fusion_gate_proj',
-                     'P', 'mem_keys', 'mem_vals', 'mem_occupancy', 'mem_usage', 'mem_age']:
+        for comp in ['TinyMemoryBank', 'GPT2MemoryModel', 'c_proj', 'fusion_proj', 'add_memory', 'read', 'step_turn', 'evict_lifecycle']:
             assert comp in lock['locked_components'], f"{comp} not in architecture_lock.json"
 
 
 class TestLockedPipeline:
     """Verify locked differentiable pipeline executes correctly."""
 
-    def test_read_uses_q_proj(self, bank_fixture):
+    def test_read_pipeline(self, bank_fixture):
         bank, config = bank_fixture
-        h = torch.ones((1, config.hidden_size))
-        state = bank.initialize_state(1, h.device, h.dtype)
-        r_t, alpha = bank.read(h, state)
-        assert r_t.shape == (1, config.memory_dim)
-        assert alpha.shape == (1, config.memory_capacity)
+        # Add sample memory
+        v = torch.randn(config.memory_dim)
+        bank.add_memory(v)
 
-    def test_fuse_uses_fusion_proj(self, bank_fixture):
-        bank, config = bank_fixture
-        h = torch.ones((2, config.hidden_size))
-        m = torch.ones((2, config.memory_dim))
-        z_t, gate = bank.fuse(h, m)
-        assert z_t.shape == (2, config.hidden_size)
-        assert gate.shape == (2, config.hidden_size)
+        q = torch.randn(1, config.memory_dim)
+        m_bar, top_idx = bank.read(q, top_k=1)
+        assert m_bar.shape == (1, config.memory_dim)
+        assert len(top_idx) == 1
 
-    def test_write_uses_kv_proj(self, bank_fixture):
+    def test_evict_pipeline(self, bank_fixture):
         bank, config = bank_fixture
-        h = torch.ones((1, config.hidden_size))
-        state = bank.initialize_state(1, h.device, h.dtype)
-        keys_before = state.keys.clone()
-        next_state, diag = bank.write(h, state)
-        assert not torch.allclose(keys_before, next_state.keys)
+        for _ in range(5):
+            bank.add_memory(torch.randn(config.memory_dim))
+        for _ in range(3):
+            bank.step_turn()
+        bank.read_counts = [50, 50, 50, 50, 0]
+        evicted = bank.evict_lifecycle(threshold_ratio=0.05, min_age=3)
+        assert evicted == 1
+        assert bank.num_memories == 4

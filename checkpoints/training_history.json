@@ -1,21 +1,14 @@
 {
-  "model": "GPT-2 Indo + Mature TinyMemoryBank (Episodic)",
-  "epochs": 3,
-  "batch_size": 4,
+  "objective": "turn_level_semantic_memory_ntp",
+  "epochs": 1,
+  "max_seq_len": 128,
   "learning_rate": 0.0005,
-  "best_loss": 0.7064747229664318,
+  "best_ntp_loss": 3.1468772097864997,
   "history": [
     {
       "epoch": 1,
-      "loss": 0.7838148519865062
-    },
-    {
-      "epoch": 2,
-      "loss": 0.7139692124664107
-    },
-    {
-      "epoch": 3,
-      "loss": 0.7064747229664318
+      "ntp_loss": 3.1468772097864997,
+      "perplexity": 23.263304613034084
     }
   ]
 }

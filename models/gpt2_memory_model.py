@@ -10,16 +10,19 @@ from models.tiny_memory_bank import MemoryState, TinyMemoryBank, TinyMemoryConfi
 
 class GPT2MemoryModel(nn.Module):
     """
-    GPT-2 + Differentiable Causal Memory Bank.
-
-    Strict Causal Loop for each token position t:
-      1) READ from M_t:       r_t = READ(h_t, M_t)
-      2) FUSE with h_t:       z_t = FUSE(h_t, r_t)
-      3) PREDICT x_{t+1}:     logits_t = lm_head(z_t)
-      4) WRITE to get M_{t+1}: M_{t+1} = WRITE(h_t, M_t, alpha_t, g_t)
-
-    Training objective: strictly standard causal Next Token Prediction (NTP) loss.
-    No auxiliary labels, losses, or manual thresholds.
+    GPT-2 with Turn-Level Semantic Memory Bank.
+    
+    Architecture:
+      1. Backbone GPT-2 is frozen.
+      2. Trainable Parameters:
+         - W_c (Query Projection): R^(768 -> 768)
+         - W_f (Fusion Projection): R^(1536 -> 768)
+      3. Turn Lifecycle:
+         - Prompt arrival: 1 forward pass -> last hidden state (768) saved to memory (Memory 1).
+         - Read: Top-K cosine similarity between C = h_prompt * W_c and Memory Bank.
+         - Generation: token-by-token generation with fused states z = [h_t ; M_bar] * W_f -> LM Head.
+         - Generation complete: final AI token hidden state (768) saved to memory (Memory 2).
+         - Lifecycle Eviction: memories with reads < 5% of mean(reads) for age >= min_age are evicted.
     """
 
     def __init__(
@@ -34,13 +37,13 @@ class GPT2MemoryModel(nn.Module):
         self.config = self.gpt2.config
         embed_dim = self.config.n_embd
 
-        # Frozen backbone by default (Section 1)
+        # Freeze backbone parameters
         if freeze_backbone:
             for p in self.gpt2.parameters():
                 p.requires_grad = False
 
         if memory_config is None:
-            memory_config = TinyMemoryConfig(memory_capacity=128, memory_dim=embed_dim, hidden_size=embed_dim)
+            memory_config = TinyMemoryConfig(memory_dim=embed_dim, hidden_size=embed_dim)
         else:
             memory_config.hidden_size = embed_dim
             memory_config.memory_dim = embed_dim
@@ -48,79 +51,19 @@ class GPT2MemoryModel(nn.Module):
         self.memory_config = memory_config
         self.bank = TinyMemoryBank(memory_config)
 
+        # 1. Trainable Query Projection: C = h * W_c
+        self.c_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        nn.init.eye_(self.c_proj.weight)
+        self.c_proj.weight.requires_grad = True
+
+        # 2. Trainable Fusion Projection: z = [h ; M_bar] * W_f
+        self.fusion_proj = nn.Linear(embed_dim * 2, embed_dim, bias=False)
+        with torch.no_grad():
+            self.fusion_proj.weight[:, :embed_dim].copy_(torch.eye(embed_dim))
+            nn.init.normal_(self.fusion_proj.weight[:, embed_dim:], mean=0.0, std=0.02)
+        self.fusion_proj.weight.requires_grad = True
+
         self.last_diagnostics: Dict[str, Any] = {}
-
-    def _causal_memory_loop(
-        self,
-        hidden_states: torch.Tensor,
-        state: MemoryState,
-        use_memory: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Non-negotiable causal sequence (Section 2 & 26):
-          For t = 0 ... T-1:
-            r_t = READ(h_t, M_t)
-            z_t = FUSE(h_t, r_t)
-            logits_t = LMHead(z_t)
-            M_{t+1} = WRITE(h_t, M_t)
-        """
-        bsz, seqlen, _ = hidden_states.shape
-        fused_steps = []
-        logits_steps = []
-
-        mean_write_gate = []
-        mean_occupancy = []
-        mean_usage = []
-
-        for t in range(seqlen):
-            h_t = hidden_states[:, t, :]
-
-            if use_memory:
-                # 1. READ from M_t
-                r_t, alpha_t = self.bank.read(h_t, state)
-                # 2. FUSE with h_t
-                z_t, g_t = self.bank.fuse(h_t, r_t)
-            else:
-                r_t = torch.zeros(bsz, self.memory_config.memory_dim, device=h_t.device, dtype=h_t.dtype)
-                alpha_t = torch.zeros(bsz, self.memory_config.memory_capacity, device=h_t.device, dtype=h_t.dtype)
-                z_t = h_t
-                g_t = torch.zeros_like(h_t)
-
-            fused_steps.append(z_t)
-
-            # 3. PREDICT x_{t+1}: strictly before write
-            logits_t = self.gpt2.lm_head(z_t)
-            logits_steps.append(logits_t)
-
-            if use_memory:
-                # 4. WRITE to obtain M_{t+1}
-                state, write_diag = self.bank.write(
-                    h_t,
-                    state,
-                    alpha_read=alpha_t,
-                    fusion_gate=g_t,
-                )
-                mean_write_gate.append(write_diag["write_gate"])
-                mean_occupancy.append(write_diag["occupancy_mean"])
-                mean_usage.append(write_diag["usage_mean"])
-
-        fused_hidden = torch.stack(fused_steps, dim=1)
-        logits = torch.stack(logits_steps, dim=1)
-
-        diagnostics = {
-            "avg_write_gate": torch.stack(mean_write_gate, dim=1).mean() if mean_write_gate else torch.tensor(0.0, device=hidden_states.device),
-            "occupancy_sum": state.occupancy.sum(dim=-1).mean(),
-            "occupancy_mean": state.occupancy.mean(),
-            "usage_mean": state.usage.mean(),
-            "age_mean": state.age.mean(),
-        }
-
-        return {
-            "fused_hidden": fused_hidden,
-            "logits": logits,
-            "memory_state": state,
-            "diagnostics": diagnostics,
-        }
 
     def forward(
         self,
@@ -132,7 +75,7 @@ class GPT2MemoryModel(nn.Module):
         persist_memory: bool = False,
     ) -> Dict[str, Any]:
         """
-        Forward pass with strictly standard Next Token Prediction (NTP) loss.
+        Forward pass for training with Next Token Prediction (NTP) loss or feature extraction.
         """
         transformer_outputs = self.gpt2.transformer(
             input_ids=input_ids,
@@ -140,25 +83,29 @@ class GPT2MemoryModel(nn.Module):
             use_cache=False,
             return_dict=True,
         )
-        hidden_states = transformer_outputs.last_hidden_state
+        hidden = transformer_outputs.last_hidden_state  # (B, T, D)
+        bsz, seqlen, d = hidden.shape
 
-        if memory_state is not None:
-            state = memory_state
-        elif persist_memory and hidden_states.size(0) == 1:
-            state = self.bank.get_runtime_state()
+        h_prompt = hidden[:, -1, :]  # Last token representation (B, D)
+
+        if use_memory:
+            # Query C and read from memory bank for every position in sequence
+            C = self.c_proj(hidden)
+            M_bar, top_indices = self.bank.read(C, top_k=self.memory_config.top_k)
+
+            # Ingest to bank if persist_memory requested
+            if persist_memory:
+                for b in range(bsz):
+                    self.bank.add_memory(h_prompt[b].detach())
+
+            # Fuse across all token positions in the sequence
+            fused_input = torch.cat([hidden, M_bar], dim=-1)   # (B, T, 2D)
+            z = self.fusion_proj(fused_input)                  # (B, T, D)
         else:
-            state = self.bank.initialize_state(
-                batch_size=hidden_states.size(0),
-                device=hidden_states.device,
-                dtype=hidden_states.dtype,
-            )
+            z = hidden
 
-        mem_out = self._causal_memory_loop(hidden_states, state, use_memory=use_memory)
-        fused_hidden = mem_out["fused_hidden"]
-        logits = mem_out["logits"]
-        next_state = mem_out["memory_state"]
+        logits = self.gpt2.lm_head(z)  # (B, T, V)
 
-        # Section 24: NTP Loss only
         loss = None
         if labels is not None:
             shift_logits = logits[..., :-1, :].contiguous()
@@ -169,42 +116,18 @@ class GPT2MemoryModel(nn.Module):
                 ignore_index=-100,
             )
 
-        # Single-stream persistent buffer for interactive inference (detached)
-        if persist_memory and memory_state is None and use_memory and hidden_states.size(0) == 1:
-            self.bank.persist_runtime_state(next_state)
-
-        self.last_diagnostics = {k: float(v.detach().cpu().item()) for k, v in mem_out["diagnostics"].items()}
+        self.last_diagnostics = {
+            "num_memories": float(self.bank.num_memories),
+            "mean_reads": float(sum(self.bank.read_counts) / max(1, len(self.bank.read_counts))),
+        }
 
         return {
             "loss": loss,
             "logits": logits,
-            "hidden_states": fused_hidden,
-            "memory_state": next_state,
-            "memory_diagnostics": mem_out["diagnostics"],
+            "hidden_states": z,
+            "memory_state": self.bank.get_runtime_state(),
+            "diagnostics": self.last_diagnostics,
         }
-
-    def print_trainable_parameters(self):
-        total_params = sum(p.numel() for p in self.parameters())
-        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        frozen_params = total_params - trainable_params
-        ratio = (trainable_params / total_params) * 100
-
-        print("=" * 55)
-        print("   PARAMETER AUDIT: GPT-2 + DIFFERENTIABLE MEMORY")
-        print("=" * 55)
-        print(f"Total Parameters     : {total_params:,}")
-        print(f"Frozen Parameters    : {frozen_params:,}")
-        print(f"Trainable Parameters : {trainable_params:,}")
-        print(f"Trainable Ratio      : {ratio:.2f}%")
-        print("=" * 55)
-        return trainable_params, total_params
-
-    def reset_memory(self):
-        self.bank.reset_memory()
-
-    def detach_memory_state(self, memory_state: MemoryState) -> MemoryState:
-        """Section 23: Explicit TBPTT boundary."""
-        return memory_state.detach()
 
     @torch.no_grad()
     def generate(
@@ -219,41 +142,54 @@ class GPT2MemoryModel(nn.Module):
         eos_token_id: Optional[int] = None,
         pad_token_id: Optional[int] = None,
         stop_token_ids: Optional[list] = None,
+        use_memory: bool = True,
     ) -> torch.Tensor:
         """
-        Section 29: Generation follows the exact same causal memory loop:
-          READ(M_t) -> FUSE(h_t, r_t) -> PREDICT x_{t+1} -> WRITE(h_t, M_t) -> M_{t+1}
+        Turn-level Autoregressive Generation:
+          1. 1x forward prompt through transformer -> extract h_prompt (768).
+          2. Read Top-K memory using Query C = h_prompt * W_c.
+          3. Save Memory 1 (h_prompt) to Memory Bank.
+          4. Decode tokens: z_t = [h_t ; M_bar] * W_f -> LM Head.
+          5. Save Memory 2 (final AI token hidden state 768) to Memory Bank.
+          6. Step turn & execute lifecycle eviction.
         """
         del pad_token_id
         stop_ids = set(stop_token_ids or [])
         if eos_token_id is not None:
             stop_ids.add(eos_token_id)
 
-        past_key_values = None
-        state = self.bank.get_runtime_state()
-        generated = input_ids.clone()
-
+        # 1. Forward prompt through transformer (1x forward)
         prompt_outputs = self.gpt2.transformer(
             input_ids=input_ids,
             attention_mask=attention_mask,
             use_cache=True,
             return_dict=True,
         )
-        hidden = prompt_outputs.last_hidden_state
         past_key_values = prompt_outputs.past_key_values
+        hidden = prompt_outputs.last_hidden_state
+        h_prompt = hidden[:, -1, :]  # (B, 768)
 
-        next_token_logits = None
-        for t in range(hidden.size(1)):
-            h_t = hidden[:, t, :]
-            # 1. READ
-            r_t, alpha_t = self.bank.read(h_t, state)
-            # 2. FUSE
-            z_t, g_t = self.bank.fuse(h_t, r_t)
-            # 3. PREDICT
-            next_token_logits = self.gpt2.lm_head(z_t)
-            # 4. WRITE
-            state, _ = self.bank.write(h_t, state, alpha_read=alpha_t, fusion_gate=g_t)
+        if use_memory:
+            # Query C and Read from existing memory
+            C = self.c_proj(h_prompt)
+            M_bar, _ = self.bank.read(C, top_k=self.memory_config.top_k)
 
+            # SIMPAN MEMORY 1: Prompt user langsung disimpan ke Memory Bank
+            for b in range(input_ids.size(0)):
+                self.bank.add_memory(h_prompt[b].detach())
+
+            # Fuse prompt hidden state for first token prediction
+            fused_prompt = torch.cat([h_prompt, M_bar], dim=-1)
+            z_prompt = self.fusion_proj(fused_prompt)
+            next_token_logits = self.gpt2.lm_head(z_prompt)
+        else:
+            next_token_logits = self.gpt2.lm_head(h_prompt)
+            M_bar = None
+
+        generated = input_ids.clone()
+        last_ai_hidden = None
+
+        # 2. Token-by-token decoding loop
         for _ in range(max_new_tokens):
             logits = next_token_logits.clone()
 
@@ -296,16 +232,53 @@ class GPT2MemoryModel(nn.Module):
                 return_dict=True,
             )
             past_key_values = step_out.past_key_values
-
             h_t = step_out.last_hidden_state[:, -1, :]
-            # 1. READ
-            r_t, alpha_t = self.bank.read(h_t, state)
-            # 2. FUSE
-            z_t, g_t = self.bank.fuse(h_t, r_t)
-            # 3. PREDICT
-            next_token_logits = self.gpt2.lm_head(z_t)
-            # 4. WRITE
-            state, _ = self.bank.write(h_t, state, alpha_read=alpha_t, fusion_gate=g_t)
+            last_ai_hidden = h_t
 
-        self.bank.persist_runtime_state(state)
+            if use_memory:
+                # Membaca memory di SETIAP forward pass decoding
+                C_t = self.c_proj(h_t)
+                M_bar_t, _ = self.bank.read(C_t, top_k=self.memory_config.top_k)
+                fused_t = torch.cat([h_t, M_bar_t], dim=-1)
+                z_t = self.fusion_proj(fused_t)
+                next_token_logits = self.gpt2.lm_head(z_t)
+            else:
+                next_token_logits = self.gpt2.lm_head(h_t)
+
+        # 3. SIMPAN MEMORY 2: Forward paling terakhir dari respon AI
+        if use_memory and last_ai_hidden is not None:
+            for b in range(input_ids.size(0)):
+                self.bank.add_memory(last_ai_hidden[b].detach())
+
+        # 4. Lifecycle turn step & eviction check
+        if use_memory:
+            self.bank.step_turn()
+            self.bank.evict_lifecycle()
+
         return generated
+
+    def reset_memory(self):
+        """Clears all stored memories in the bank."""
+        self.bank.reset_memory()
+
+    def detach_memory_state(self, memory_state: Optional[MemoryState] = None) -> MemoryState:
+        """Compatibility method for TBPTT boundaries."""
+        if memory_state is not None:
+            return memory_state.detach()
+        return self.bank.get_runtime_state().detach()
+
+    def print_trainable_parameters(self):
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        frozen_params = total_params - trainable_params
+        ratio = (trainable_params / total_params) * 100
+
+        print("=" * 55)
+        print("   PARAMETER AUDIT: GPT-2 + TURN SEMANTIC MEMORY")
+        print("=" * 55)
+        print(f"Total Parameters     : {total_params:,}")
+        print(f"Frozen Parameters    : {frozen_params:,}")
+        print(f"Trainable Parameters : {trainable_params:,}")
+        print(f"Trainable Ratio      : {ratio:.2f}%")
+        print("=" * 55)
+        return trainable_params, total_params

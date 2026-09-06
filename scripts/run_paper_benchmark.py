@@ -318,6 +318,14 @@ def run_benchmark():
     print(f"\n✓ Saved JSON results: {json_path}")
 
     tex_path = os.path.join(res_dir, "paper_benchmark_table.tex")
+    table_rows = []
+    for m_name, m_key in methods:
+        m_data = summary[m_key]
+        table_rows.append(
+            f"{m_name:<32} & {m_data['mean_em']:>6.1f} & {m_data['mean_f1']:>6.1f} & {m_data['mean_slots']:>6.1f} & {m_data['mean_latency_ms']:>6.1f} \\\\"
+        )
+    rows_str = "\n".join(table_rows)
+
     latex_content = f"""% LaTeX Table generated for Academic Paper Submission
 \\begin{{table}}[t]
 \\centering
@@ -328,9 +336,7 @@ def run_benchmark():
 \\hline
 \\textbf{{Method / Architecture}} & \\textbf{{Exact Match (\\%)}} & \\textbf{{Token F1 (\\%)}} & \\textbf{{Slots Used}} & \\textbf{{Latency (ms/tok)}} \\\\
 \\hline
-No Memory (Zero-shot Frozen)       & {summary['no_memory']['mean_em']:.1f} & {summary['no_memory']['mean_f1']:.1f} & {summary['no_memory']['mean_slots']:.1f} & {summary['no_memory']['mean_latency_ms']:.1f} \\\\
-Whole-Sentence Pooling            & {summary['sentence_pooled']['mean_em']:.1f} & {summary['sentence_pooled']['mean_f1']:.1f} & {summary['sentence_pooled']['mean_slots']:.1f} & {summary['sentence_pooled']['mean_latency_ms']:.1f} \\\\
-\\textbf{{Proposed ($N=8$ Soft-Attn)}} & \\textbf{{{summary['proposed_n8']['mean_em']:.1f}}} & \\textbf{{{summary['proposed_n8']['mean_f1']:.1f}}} & {summary['proposed_n8']['mean_slots']:.1f} & {summary['proposed_n8']['mean_latency_ms']:.1f} \\\\
+{rows_str}
 \\hline
 \\end{{tabular}}
 }}

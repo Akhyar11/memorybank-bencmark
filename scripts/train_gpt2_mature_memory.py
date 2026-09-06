@@ -1,9 +1,28 @@
+"""
+scripts/train_gpt2_mature_memory.py
+===================================
+Training Turn-Level Semantic Memory Bank for GPT-2 (NTP-only).
+
+Trainable Parameters:
+  - W_c (c_proj): R^(768 -> 768)
+  - W_f (fusion_proj): R^(1536 -> 768)
+Backbone GPT-2 and LM Head: 100% FROZEN.
+
+Flow per Conversation Turn:
+  1. User Prompt enters -> Forward -> Save Memory 1 (h_prompt).
+  2. Read Memory using C = h_prompt * W_c.
+  3. Predict Assistant Response tokens with fusion z = [h ; M_bar] * W_f -> LM Head.
+  4. Compute NTP loss on assistant response tokens, backward & optimizer step.
+  5. Save Memory 2 (h_ai_final).
+  6. Lifecycle turn step & eviction.
+  7. End of conversation: reset memory for clean session boundary.
+"""
 import argparse
 import json
 import math
 import os
 import sys
-from typing import List
+from typing import Any, Dict, List, Tuple
 
 import torch
 from tqdm.auto import tqdm
@@ -15,29 +34,22 @@ from models.gpt2_memory_model import GPT2MemoryModel
 from models.tiny_memory_bank import TinyMemoryConfig
 
 
-def _extract_text_from_item(item: dict) -> str:
-    if isinstance(item, dict):
-        if isinstance(item.get("text"), str) and item["text"].strip():
-            return item["text"].strip()
-        turns = item.get("turns")
-        if isinstance(turns, list) and turns:
-            pieces = []
-            for t in turns:
-                role = str(t.get("role", "")).strip() if isinstance(t, dict) else ""
-                content = str(t.get("content", "")).strip() if isinstance(t, dict) else ""
-                if content:
-                    pieces.append(f"{role}: {content}" if role else content)
-            if pieces:
-                return "\n".join(pieces)
-    return ""
-
-
-def load_dialogues(data_path: str) -> List[str]:
+def load_conversations(data_path: str) -> List[List[Tuple[str, str]]]:
+    """
+    Loads multi-turn conversations from a JSONL file.
+    Returns a list of conversations, where each conversation is a list of (user_msg, assistant_msg) turns.
+    """
+    conversations: List[List[Tuple[str, str]]] = []
     if not os.path.exists(data_path):
-        return ["Ini adalah korpus contoh bahasa Indonesia untuk pelatihan next token prediction."]
+        return [
+            [
+                ("Halo, perkenalkan namaku Akhyar.", "Halo Akhyar! Senang berkenalan denganmu. Ada yang bisa dibantu?"),
+                ("Aku bekerja sebagai Programmer Python.", "Keren sekali! Programmer Python sangat banyak diminati saat ini."),
+                ("Siapa namaku dan apa pekerjaanku?", "Namamu adalah Akhyar dan kamu bekerja sebagai Programmer Python."),
+            ]
+        ]
 
     if data_path.endswith(".jsonl"):
-        docs: List[str] = []
         with open(data_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -46,43 +58,42 @@ def load_dialogues(data_path: str) -> List[str]:
                 try:
                     item = json.loads(line)
                 except json.JSONDecodeError:
-                    docs.append(line)
                     continue
-                text = _extract_text_from_item(item)
-                if text:
-                    docs.append(text)
-        return docs if docs else ["Korpus kosong."]
 
-    with open(data_path, "r", encoding="utf-8") as f:
-        raw = f.read().strip()
-    if not raw:
-        return ["Korpus kosong."]
-    # Split paragraphs for plain text files
-    paragraphs = [p.strip() for p in raw.split("\n\n") if p.strip()]
-    return paragraphs if paragraphs else [raw]
+                turns = item.get("turns", [])
+                if isinstance(turns, list) and len(turns) >= 2:
+                    conv_turns: List[Tuple[str, str]] = []
+                    i = 0
+                    while i < len(turns):
+                        t1 = turns[i] if isinstance(turns[i], dict) else {}
+                        role1 = t1.get("role", "")
+                        content1 = t1.get("content", "").strip()
+                        if role1 == "user" and i + 1 < len(turns):
+                            t2 = turns[i + 1] if isinstance(turns[i + 1], dict) else {}
+                            role2 = t2.get("role", "")
+                            content2 = t2.get("content", "").strip()
+                            if role2 == "assistant" and content1 and content2:
+                                conv_turns.append((content1, content2))
+                                i += 2
+                                continue
+                        i += 1
+                    if conv_turns:
+                        conversations.append(conv_turns)
 
-
-def build_chunks(token_ids: torch.Tensor, seq_len: int, stride: int) -> List[torch.Tensor]:
-    chunks: List[torch.Tensor] = []
-    total = token_ids.numel()
-    if total < 2:
-        return chunks
-
-    pos = 0
-    while pos + 1 < total:
-        end = min(pos + seq_len + 1, total)
-        chunk = token_ids[pos:end]
-        if chunk.numel() >= 2:
-            chunks.append(chunk)
-        if end == total:
-            break
-        pos += stride
-    return chunks
+    return conversations if conversations else [
+        [
+            ("Halo, perkenalkan namaku Akhyar.", "Halo Akhyar! Senang berkenalan denganmu. Ada yang bisa dibantu?"),
+            ("Aku bekerja sebagai Programmer Python.", "Keren sekali! Programmer Python sangat banyak diminati saat ini."),
+        ]
+    ]
 
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
-    print(f"Menggunakan device: {device}")
+    print("=" * 68)
+    print("   TRAINING GPT-2 + TURN-LEVEL SEMANTIC MEMORY BANK (NTP-ONLY)")
+    print("=" * 68)
+    print(f"Device: {device}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
     if tokenizer.pad_token is None:
@@ -92,9 +103,7 @@ def train(args):
         memory_capacity=args.capacity,
         memory_dim=768,
         hidden_size=768,
-        tau_read=args.tau_read,
-        tau_write=args.tau_write,
-        lambda_replace=args.lambda_replace,
+        top_k=args.top_k,
     )
 
     freeze_backbone = not args.unfreeze_backbone
@@ -105,20 +114,13 @@ def train(args):
     ).to(device)
     model.print_trainable_parameters()
 
-    dialogues = load_dialogues(args.data_path)
+    conversations = load_conversations(args.data_path)
     if args.max_samples > 0:
-        dialogues = dialogues[:args.max_samples]
+        conversations = conversations[:args.max_samples]
 
-    dialogue_chunks: List[List[torch.Tensor]] = []
-    for diag_text in dialogues:
-        t_ids = tokenizer(diag_text, return_tensors="pt", truncation=False)["input_ids"][0]
-        cks = build_chunks(t_ids, seq_len=args.max_seq_len, stride=args.stride)
-        if cks:
-            dialogue_chunks.append(cks)
-
-    total_chunks = sum(len(c) for c in dialogue_chunks)
-    if total_chunks == 0:
-        raise ValueError("Tidak ada chunk valid untuk training (minimal 2 token per chunk).")
+    total_turns = sum(len(c) for c in conversations)
+    if total_turns == 0:
+        raise ValueError("Tidak ada turn dialog valid untuk training.")
 
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=0.01)
@@ -127,32 +129,48 @@ def train(args):
     history = []
     best_loss = float("inf")
 
-    print(f"Total percakapan : {len(dialogue_chunks)}")
-    print(f"Total chunk token: {total_chunks}")
-    print(f"Memulai training NTP-only selama {args.epochs} epoch (backbone frozen: {freeze_backbone})...")
-    print(f"Boundary policy  : Memori & Graph di-reset di setiap akhir percakapan (clean isolation).")
+    print(f"Total percakapan : {len(conversations)}")
+    print(f"Total turn dialog: {total_turns}")
+    print(f"Memulai training turn-level selama {args.epochs} epoch (backbone frozen: {freeze_backbone})...")
+    print(f"Boundary policy  : Memori di-reset di setiap akhir percakapan (clean session isolation).\n")
 
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
         steps = 0
 
-        pbar = tqdm(dialogue_chunks, desc=f"Epoch {epoch}/{args.epochs}", dynamic_ncols=True)
-        for chunks in pbar:
-            # === BOUNDARY PERCAKAPAN: RESET MEMORI UNTUK SESI BARU ===
+        pbar = tqdm(conversations, desc=f"Epoch {epoch}/{args.epochs}", dynamic_ncols=True)
+        for conv_turns in pbar:
+            # Boundary percakapan: reset memori untuk sesi baru
             model.reset_memory()
-            memory_state = None
 
-            for chunk in chunks:
-                chunk = chunk.to(device)
-                input_ids = chunk.unsqueeze(0)
-                labels = input_ids.clone()
+            for user_text, ai_text in conv_turns:
+                # 1. Format User Prompt dan Assistant Response
+                prompt_str = f"User: {user_text}\nAI:"
+                ai_str = f" {ai_text}\n"
 
-                # Forward pass through causal memory with standard NTP loss
+                prompt_ids = tokenizer(prompt_str, return_tensors="pt")["input_ids"].to(device)
+                ai_ids = tokenizer(ai_str, return_tensors="pt")["input_ids"].to(device)
+
+                # Batasi panjang sekuens jika melebihi max_seq_len
+                full_ids = torch.cat([prompt_ids, ai_ids], dim=-1)
+                if full_ids.size(1) > args.max_seq_len:
+                    full_ids = full_ids[:, :args.max_seq_len]
+                    prompt_len = min(prompt_ids.size(1), args.max_seq_len - 1)
+                else:
+                    prompt_len = prompt_ids.size(1)
+
+                if full_ids.size(1) <= prompt_len:
+                    continue
+
+                # Target labels: hanya hitung loss pada token respons AI (-100 pada prompt)
+                labels = full_ids.clone()
+                labels[:, :prompt_len] = -100
+
+                # 2. Forward pass & compute NTP loss dengan Memory Retrieval
                 out = model(
-                    input_ids=input_ids,
+                    input_ids=full_ids,
                     labels=labels,
-                    memory_state=memory_state,
                     use_memory=True,
                     persist_memory=False,
                 )
@@ -163,14 +181,26 @@ def train(args):
                 torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
                 optimizer.step()
 
-                # Truncated-BPTT boundary between sequential chunks in the SAME conversation
-                memory_state = model.detach_memory_state(out["memory_state"])
+                # 3. Update Memory Bank untuk Turn ini (2 memori):
+                with torch.no_grad():
+                    # Memory 1: Token terakhir prompt
+                    prompt_out = model.gpt2.transformer(input_ids=prompt_ids)
+                    h_prompt = prompt_out.last_hidden_state[:, -1, :]
+                    model.bank.add_memory(h_prompt.detach())
+
+                    # Memory 2: Token terakhir respon AI
+                    ai_out = model.gpt2.transformer(input_ids=full_ids)
+                    h_ai = ai_out.last_hidden_state[:, -1, :]
+                    model.bank.add_memory(h_ai.detach())
+
+                # Step turn & eviction lifecycle
+                model.bank.step_turn()
+                model.bank.evict_lifecycle()
 
                 total_loss += loss.item()
                 steps += 1
 
-            # === AKHIR PERCAKAPAN: RESET MEMORI & PUTUS GRAFIK ===
-            memory_state = None
+            # Akhir percakapan: reset memori
             model.reset_memory()
 
             avg_loss = total_loss / max(steps, 1)
@@ -180,9 +210,8 @@ def train(args):
                 "ntp_loss": f"{loss.item():.4f}",
                 "avg_loss": f"{avg_loss:.4f}",
                 "ppl": f"{ppl:.2f}",
-                "occ_sum": f"{diag.get('occupancy_sum', 0.0):.1f}",
-                "w_gate": f"{diag.get('avg_write_gate', 0.0):.3f}",
-                "usage": f"{diag.get('usage_mean', 0.0):.3f}",
+                "mems": f"{diag.get('num_memories', 0.0):.0f}",
+                "reads": f"{diag.get('mean_reads', 0.0):.1f}",
             })
 
         epoch_loss = total_loss / max(steps, 1)
@@ -208,10 +237,9 @@ def train(args):
     with open(history_path, "w", encoding="utf-8") as f:
         json.dump(
             {
-                "objective": "next_token_prediction_only",
+                "objective": "turn_level_semantic_memory_ntp",
                 "epochs": args.epochs,
                 "max_seq_len": args.max_seq_len,
-                "stride": args.stride,
                 "learning_rate": args.lr,
                 "best_ntp_loss": best_loss,
                 "history": history,
@@ -220,23 +248,20 @@ def train(args):
             indent=2,
         )
 
-    print("Selesai. Checkpoint dan riwayat training sudah disimpan.")
+    print("✓ Selesai. Checkpoint dan riwayat training sudah disimpan.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Training GPT-2 + Differentiable Causal Memory (NTP-only)")
+    parser = argparse.ArgumentParser(description="Training GPT-2 + Turn-Level Semantic Memory Bank")
     parser.add_argument("--data_path", type=str, default="dataset/conversations_train.jsonl")
     parser.add_argument("--model_dir", type=str, default="gpt2-indo-instruct-tuned")
     parser.add_argument("--output_dir", type=str, default="checkpoints")
     parser.add_argument("--capacity", type=int, default=128)
     parser.add_argument("--max_seq_len", type=int, default=128)
-    parser.add_argument("--stride", type=int, default=128)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--max_samples", type=int, default=-1, help="Batas jumlah percakapan untuk training (-1 untuk semua data)")
-    parser.add_argument("--tau_read", "--read_temperature", dest="tau_read", type=float, default=0.05, help="Read temperature tau_read")
-    parser.add_argument("--tau_write", "--write_temperature", dest="tau_write", type=float, default=0.05, help="Write temperature tau_write")
-    parser.add_argument("--lambda_replace", type=float, default=1.0, help="Replacement score weight lambda_replace")
+    parser.add_argument("--top_k", type=int, default=1, help="Top-K memories to retrieve")
     parser.add_argument("--unfreeze_backbone", action="store_true", default=False, help="Unfreeze GPT-2 backbone (default is frozen)")
     parser.add_argument("--cpu", action="store_true")
     args = parser.parse_args()

@@ -48,11 +48,11 @@ class DifferentiableMemoryMatrix(nn.Module):
         else:
             self.scale_factor = 1.0 / math.sqrt(memory_dim)
 
-        # Memory state buffer: Non-trainable (requires_grad = False)
+        # Memory state buffer: Non-trainable runtime state (persistent=False allows arbitrary slot expansion)
         self.register_buffer(
             "M",
             torch.zeros(capacity, memory_dim, dtype=torch.float32),
-            persistent=True,
+            persistent=False,
         )
         self.M.requires_grad_(False)
 

@@ -174,3 +174,29 @@ class TestGPT2MatrixMemoryModel:
 
         # After Turn 2 completes: exactly 4 memories written
         assert model.matrix_bank.num_memories == 4
+
+    def test_slot_expansion_without_retraining(self, model_fixture):
+        """Verifies checkpoint trained with 128 slots loads seamlessly into 1024 slots."""
+        model_128 = model_fixture
+        sd = model_128.state_dict()
+
+        # Instantiate model with 1024 slots
+        model_1024 = GPT2MatrixMemoryModel(
+            model_name_or_path=MODEL_PATH,
+            capacity=1024,
+            scaling=True,
+            freeze_backbone=True,
+        )
+
+        # Seamless loading without size mismatch
+        model_1024.load_state_dict(sd)
+
+        # Verify writing 500 memories into expanded capacity
+        for _ in range(500):
+            model_1024.matrix_bank.write(torch.randn(768))
+
+        assert model_1024.matrix_bank.num_memories == 500
+
+        # Verify forward pass
+        out = model_1024(torch.tensor([[50256, 100]]), use_memory=True)
+        assert out["logits"].shape == (1, 2, 50257)

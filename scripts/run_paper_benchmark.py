@@ -60,45 +60,96 @@ def check_entity_match(prediction: str, entities: list) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Benchmark Dataset & Distractors
+# Benchmark Dataset Loader & Distractors Pool
 # ---------------------------------------------------------------------------
-BENCHMARK_CASES = [
-    {
-        "id": "case_1",
-        "fact": "Halo, perkenalkan namaku Akhyar dan aku bekerja sebagai Programmer.",
-        "entities": ["Akhyar", "Programmer"],
-        "query": "Siapa namaku dan apa pekerjaanku?",
-        "ground_truth": "Namamu adalah Akhyar dan kamu bekerja sebagai Programmer."
-    },
-    {
-        "id": "case_2",
-        "fact": "Aku Fira, aku tinggal menetap di Pontianak dan punya anjing bernama Milo.",
-        "entities": ["Fira", "Pontianak", "Milo"],
-        "query": "Di mana aku tinggal dan apa nama anjingku?",
-        "ground_truth": "Kamu tinggal di Pontianak dan anjingmu bernama Milo."
-    },
-    {
-        "id": "case_3",
-        "fact": "Namaku Fajar, aku berencana liburan ke Seoul dan menjalankan usaha thrift shop.",
-        "entities": ["Fajar", "Seoul", "thrift shop"],
-        "query": "Ke mana tujuanku liburan dan apa usahaku?",
-        "ground_truth": "Kamu berencana liburan ke Seoul dan memiliki usaha thrift shop."
-    },
-    {
-        "id": "case_4",
-        "fact": "Aku bekerja menggunakan framework PyTorch dan saat senggang suka bermain Apex Legends.",
-        "entities": ["PyTorch", "Apex Legends"],
-        "query": "Framework apa yang kugunakan dan game apa yang kumainkan?",
-        "ground_truth": "Kamu menggunakan framework PyTorch dan bermain game Apex Legends."
-    },
-    {
-        "id": "case_5",
-        "fact": "Minuman favoritku adalah Kopi Arabika dan aku sangat menyukai masakan Rendang Padang.",
-        "entities": ["Kopi Arabika", "Rendang Padang"],
-        "query": "Apa minuman favoritku dan makanan yang kusukai?",
-        "ground_truth": "Minuman favoritmu adalah Kopi Arabika dan makanan kesukaanmu Rendang Padang."
-    }
-]
+def load_benchmark_cases(test_file: str, max_cases: int = 20):
+    """
+    Loads benchmark evaluation cases from JSONL (conversations_test.jsonl / val) or CSV (test.csv / val).
+    Resolves relative paths against PROJECT_ROOT automatically.
+    """
+    resolved_path = test_file
+    if not os.path.isabs(resolved_path) and not os.path.exists(resolved_path):
+        candidates = [
+            os.path.join(PROJECT_ROOT, test_file),
+            os.path.join(PROJECT_ROOT, "dataset", os.path.basename(test_file)),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                resolved_path = c
+                break
+
+    if not os.path.exists(resolved_path):
+        raise FileNotFoundError(f"File benchmark test '{test_file}' tidak ditemukan di sistem!")
+
+    cases = []
+    if resolved_path.endswith(".jsonl"):
+        with open(resolved_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except Exception:
+                    continue
+
+                recall_meta = item.get("target_recall", {})
+                if not recall_meta:
+                    continue
+
+                q_turn = recall_meta.get("query_turn", 8)
+                turns = item.get("turns", [])
+
+                history_turns = []
+                for idx, t in enumerate(turns):
+                    if idx >= q_turn:
+                        break
+                    role = t.get("role", "")
+                    content = t.get("content", "").strip()
+                    if content:
+                        history_turns.append((role, content))
+
+                question = recall_meta.get("question", "")
+                target_entity = recall_meta.get("ground_truth", "")
+                target_answer = recall_meta.get("answer", target_entity)
+
+                # Skip unknown/abstention cases for factual recall evaluation
+                if target_entity == "UNKNOWN" or not question:
+                    continue
+
+                cases.append({
+                    "id": item.get("id", f"case_{len(cases)+1}"),
+                    "topic": item.get("topic", "general"),
+                    "history_turns": history_turns,
+                    "query": question,
+                    "entities": [target_entity] if isinstance(target_entity, str) else list(target_entity),
+                    "ground_truth": target_answer,
+                })
+                if max_cases > 0 and len(cases) >= max_cases:
+                    break
+
+    elif resolved_path.endswith(".csv"):
+        import csv
+        with open(resolved_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                fact = row.get("write_fact_A", "").strip()
+                query = row.get("query_B", "").strip()
+                ans = row.get("expected_output_A", "").strip()
+                if fact and query and ans:
+                    cases.append({
+                        "id": row.get("fact_id", f"case_{len(cases)+1}"),
+                        "topic": "fact_retrieval",
+                        "history_turns": [("user", fact)],
+                        "query": query,
+                        "entities": [ans],
+                        "ground_truth": f"Jawabannya adalah {ans}.",
+                    })
+                if max_cases > 0 and len(cases) >= max_cases:
+                    break
+
+    print(f"✓ Berhasil memuat {len(cases)} kasus evaluasi dari: {resolved_path}")
+    return cases
 
 DISTRACTORS_POOL = [
     "Hari ini cuaca di luar sangat cerah dan langit berwarna biru terang.",
@@ -122,7 +173,13 @@ DISTRACTORS_POOL = [
 # ---------------------------------------------------------------------------
 # Main Evaluator Engine
 # ---------------------------------------------------------------------------
-def run_benchmark():
+def run_benchmark(
+    test_file: str = "dataset/conversations_test.jsonl",
+    max_cases: int = 20,
+    model_dir_arg: str = None,
+    output_dir: str = "results",
+    verbose: bool = True,
+):
     print("=" * 72)
     print("      ACADEMIC PAPER BENCHMARK SUITE: NEURAL MEMORY BANK")
     print("=" * 72)
@@ -130,13 +187,14 @@ def run_benchmark():
     print(f"Hardware Device : {device}")
 
     candidate_model_dirs = [
+        model_dir_arg,
         os.path.join(PROJECT_ROOT, "gpt2-indo-instruct-tuned"),
         "gpt2-indo-instruct-tuned",
         "izzulgod/gpt2-indo-instruct-tuned",
     ]
     model_dir = "izzulgod/gpt2-indo-instruct-tuned"
     for candidate in candidate_model_dirs:
-        if os.path.exists(candidate):
+        if candidate and os.path.exists(candidate):
             model_dir = candidate
             break
 
@@ -202,25 +260,36 @@ def run_benchmark():
     ]
 
     distractor_levels = [0, 5, 10]
-    pfx_len = tokenizer("User: ", return_tensors="pt")["input_ids"].shape[1]
-
     results = {m_key: {"em": [], "f1": [], "slots": [], "latency": []} for _, m_key in methods}
     distractor_results = {lvl: {m_key: [] for _, m_key in methods} for lvl in distractor_levels}
+    sample_predictions = []
+
+    # Load evaluation cases dynamically from test/validation dataset
+    cases = load_benchmark_cases(test_file=test_file, max_cases=max_cases)
+    if not cases:
+        raise ValueError(f"Tidak ada kasus pengujian yang berhasil dimuat dari {test_file}")
 
     print("\n" + "-" * 72)
-    print("Starting Quantitative Evaluation across benchmark scenarios...")
+    print(f"Starting Quantitative Evaluation across {len(cases)} test cases...")
+    print(f"Dataset Source: {test_file}")
     print("-" * 72)
 
-    for case_idx, case in enumerate(BENCHMARK_CASES):
-        print(f"\nEvaluating Case {case_idx + 1}/{len(BENCHMARK_CASES)}: '{case['id']}'")
-        fact_text = case["fact"]
+    for case_idx, case in enumerate(cases):
+        case_id = case["id"]
+        history_turns = case.get("history_turns", [])
         query_text = f"User: {case['query']}\nAI:"
         entities = case["entities"]
         ground_truth = case["ground_truth"]
 
-        enc_fact = tokenizer(f"User: {fact_text}\n", return_tensors="pt").to(device)
         enc_query = tokenizer(query_text, return_tensors="pt").to(device)
         q_len = enc_query["input_ids"].shape[1]
+
+        print(f"\n[Case {case_idx + 1}/{len(cases)}] ID: '{case_id}' (Topic: {case.get('topic', 'general')})")
+        if verbose:
+            print(f"  Q : {case['query']}")
+            print(f"  GT: {ground_truth} | Target Entities: {entities}")
+
+        case_preds = {"id": case_id, "query": case["query"], "ground_truth": ground_truth, "entities": entities}
 
         for m_name, m_key in methods:
             if m_key == "no_memory":
@@ -231,7 +300,7 @@ def run_benchmark():
                 with torch.no_grad():
                     out_gen = model_causal.generate(
                         input_ids=enc_query["input_ids"],
-                        max_new_tokens=25,
+                        max_new_tokens=30,
                         temperature=0.1,
                         top_k=20,
                         stop_token_ids=[199],
@@ -242,14 +311,17 @@ def run_benchmark():
             elif m_key == "causal_memory":
                 model_causal.reset_memory()
                 with torch.no_grad():
-                    model_causal(enc_fact["input_ids"], use_memory=True, persist_memory=True)
+                    for role, content in history_turns:
+                        pfx = "User: " if role.lower() == "user" else "AI: "
+                        enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                        model_causal(enc_t["input_ids"], use_memory=True, persist_memory=True)
                 slots_used = float(model_causal.bank.mem_occupancy.sum().item())
 
                 t0 = time.perf_counter()
                 with torch.no_grad():
                     out_gen = model_causal.generate(
                         input_ids=enc_query["input_ids"],
-                        max_new_tokens=25,
+                        max_new_tokens=30,
                         temperature=0.1,
                         top_k=20,
                         stop_token_ids=[199],
@@ -260,16 +332,19 @@ def run_benchmark():
             elif m_key == "matrix_memory":
                 model_matrix.reset_memory()
                 with torch.no_grad():
-                    fact_out = model_matrix.gpt2.transformer(enc_fact["input_ids"], return_dict=True)
-                    h_fact = fact_out.last_hidden_state[:, -1, :]
-                    model_matrix.matrix_bank.write(h_fact)
+                    for role, content in history_turns:
+                        pfx = "User: " if role.lower() == "user" else "AI: "
+                        enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                        t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                        h_t = t_out.last_hidden_state[:, -1, :]
+                        model_matrix.matrix_bank.write(h_t)
                 slots_used = float(model_matrix.matrix_bank.num_memories)
 
                 t0 = time.perf_counter()
                 with torch.no_grad():
                     out_gen = model_matrix.generate(
                         input_ids=enc_query["input_ids"],
-                        max_new_tokens=25,
+                        max_new_tokens=30,
                         temperature=0.1,
                         top_k=20,
                         stop_token_ids=[199],
@@ -290,10 +365,15 @@ def run_benchmark():
             results[m_key]["f1"].append(f1_score)
             results[m_key]["slots"].append(slots_used)
             results[m_key]["latency"].append(latency_ms_per_token)
+            case_preds[m_key] = {"prediction": prediction, "em": em_score, "f1": f1_score}
 
             print(f"  [{m_name:28s}] EM: {em_score:5.1f}% | F1: {f1_score:5.1f}% | Slots: {slots_used:5.2f} | Latency: {latency_ms_per_token:5.1f}ms")
+            if verbose:
+                print(f"     └─ Pred: \"{prediction}\"")
 
-        # Evaluate Distractor Resistance for Case 1 (Akhyar)
+        sample_predictions.append(case_preds)
+
+        # Evaluate Distractor Resistance for Case 1
         if case_idx == 0:
             print("\nEvaluating Distractor Interference Impact on Case 1:")
             for lvl in distractor_levels:
@@ -303,7 +383,7 @@ def run_benchmark():
                         with torch.no_grad():
                             out_dgen = model_causal.generate(
                                 input_ids=enc_query["input_ids"],
-                                max_new_tokens=25,
+                                max_new_tokens=30,
                                 temperature=0.1,
                                 top_k=20,
                                 stop_token_ids=[199],
@@ -312,7 +392,10 @@ def run_benchmark():
                     elif m_key == "causal_memory":
                         model_causal.reset_memory()
                         with torch.no_grad():
-                            model_causal(enc_fact["input_ids"], use_memory=True, persist_memory=True)
+                            for role, content in history_turns:
+                                pfx = "User: " if role.lower() == "user" else "AI: "
+                                enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                                model_causal(enc_t["input_ids"], use_memory=True, persist_memory=True)
 
                         # Inject distractor turns
                         for d_text in DISTRACTORS_POOL[:lvl]:
@@ -324,7 +407,7 @@ def run_benchmark():
                         with torch.no_grad():
                             out_dgen = model_causal.generate(
                                 input_ids=enc_query["input_ids"],
-                                max_new_tokens=25,
+                                max_new_tokens=30,
                                 temperature=0.1,
                                 top_k=20,
                                 stop_token_ids=[199],
@@ -333,9 +416,12 @@ def run_benchmark():
                     elif m_key == "matrix_memory":
                         model_matrix.reset_memory()
                         with torch.no_grad():
-                            fact_out = model_matrix.gpt2.transformer(enc_fact["input_ids"], return_dict=True)
-                            h_fact = fact_out.last_hidden_state[:, -1, :]
-                            model_matrix.matrix_bank.write(h_fact)
+                            for role, content in history_turns:
+                                pfx = "User: " if role.lower() == "user" else "AI: "
+                                enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                                t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                                h_t = t_out.last_hidden_state[:, -1, :]
+                                model_matrix.matrix_bank.write(h_t)
 
                         # Inject distractor turns
                         for d_text in DISTRACTORS_POOL[:lvl]:
@@ -349,7 +435,7 @@ def run_benchmark():
                         with torch.no_grad():
                             out_dgen = model_matrix.generate(
                                 input_ids=enc_query["input_ids"],
-                                max_new_tokens=25,
+                                max_new_tokens=30,
                                 temperature=0.1,
                                 top_k=20,
                                 stop_token_ids=[199],
@@ -396,16 +482,19 @@ def run_benchmark():
     print("=" * 76)
 
     # ---------------------------------------------------------------------------
-    # Export LaTeX Table File
+    # Export LaTeX Table File & JSON
     # ---------------------------------------------------------------------------
-    res_dir = os.path.join(PROJECT_ROOT, "results")
+    res_dir = os.path.join(PROJECT_ROOT, output_dir)
     os.makedirs(res_dir, exist_ok=True)
     json_path = os.path.join(res_dir, "paper_benchmark_results.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({
+            "test_file": test_file,
+            "total_cases_evaluated": len(cases),
             "summary": summary,
             "distractor_results": distractor_results,
-            "raw_results": results
+            "raw_results": results,
+            "sample_predictions": sample_predictions,
         }, f, indent=2)
     print(f"\n✓ Saved JSON results: {json_path}")
 
@@ -441,5 +530,29 @@ def run_benchmark():
     return summary
 
 
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Academic Paper Benchmark Suite: Neural Memory Bank")
+    parser.add_argument("--test_file", type=str, default="dataset/conversations_test.jsonl",
+                        help="Path to test dataset (.jsonl or .csv)")
+    parser.add_argument("--max_cases", type=int, default=10,
+                        help="Max number of test cases to benchmark (default: 10, -1 for all)")
+    parser.add_argument("--model_dir", type=str, default=None,
+                        help="Path or name of pretrained model")
+    parser.add_argument("--output_dir", type=str, default="results",
+                        help="Directory to save output json and tex")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Disable printing prediction text per case")
+    args = parser.parse_args()
+
+    run_benchmark(
+        test_file=args.test_file,
+        max_cases=args.max_cases,
+        model_dir_arg=args.model_dir,
+        output_dir=args.output_dir,
+        verbose=not args.quiet,
+    )
+
+
 if __name__ == "__main__":
-    run_benchmark()
+    main()

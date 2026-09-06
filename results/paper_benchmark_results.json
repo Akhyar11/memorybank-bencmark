@@ -1,25 +1,27 @@
 {
+  "test_file": "dataset/conversations_test.jsonl",
+  "total_cases_evaluated": 2,
   "summary": {
     "no_memory": {
       "name": "No Memory",
       "mean_em": 0.0,
-      "mean_f1": 8.71264367816092,
+      "mean_f1": 10.512820512820513,
       "mean_slots": 0.0,
-      "mean_latency_ms": 14.880743651072004
+      "mean_latency_ms": 15.795402633361496
     },
     "causal_memory": {
       "name": "Differentiable Causal Memory",
-      "mean_em": 0.0,
-      "mean_f1": 29.427351339809967,
-      "mean_slots": 1.0,
-      "mean_latency_ms": 15.090152564640448
+      "mean_em": 100.0,
+      "mean_f1": 100.0,
+      "mean_slots": 8.0,
+      "mean_latency_ms": 14.659169399965322
     },
     "matrix_memory": {
       "name": "Differentiable Matrix Memory",
       "mean_em": 0.0,
-      "mean_f1": 13.357142857142858,
-      "mean_slots": 1.0,
-      "mean_latency_ms": 14.265876679267318
+      "mean_f1": 0.0,
+      "mean_slots": 8.0,
+      "mean_latency_ms": 14.086768216596585
     }
   },
   "distractor_results": {
@@ -28,7 +30,7 @@
         0.0
       ],
       "causal_memory": [
-        0.0
+        100.0
       ],
       "matrix_memory": [
         0.0
@@ -39,7 +41,7 @@
         0.0
       ],
       "causal_memory": [
-        0.0
+        100.0
       ],
       "matrix_memory": [
         0.0
@@ -50,7 +52,7 @@
         0.0
       ],
       "causal_memory": [
-        0.0
+        100.0
       ],
       "matrix_memory": [
         0.0
@@ -61,92 +63,104 @@
     "no_memory": {
       "em": [
         0.0,
-        0.0,
-        0.0,
-        0.0,
         0.0
       ],
       "f1": [
-        6.896551724137931,
-        0.0,
-        13.333333333333334,
-        6.666666666666667,
-        16.666666666666664
+        7.692307692307692,
+        13.333333333333334
       ],
       "slots": [
-        0.0,
-        0.0,
-        0.0,
         0.0,
         0.0
       ],
       "latency": [
-        18.08106451993808,
-        13.668294055403548,
-        14.567508759937482,
-        13.957678000006126,
-        14.12917292007478
+        17.74900550005371,
+        13.841799766669283
       ]
     },
     "causal_memory": {
       "em": [
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0
+        100.0,
+        100.0
       ],
       "f1": [
-        13.793103448275861,
-        50.0,
-        31.57894736842105,
-        11.76470588235294,
-        40.0
+        100.0,
+        100.0
       ],
       "slots": [
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0
+        8.0,
+        8.0
       ],
       "latency": [
-        14.488076039997395,
-        15.198302333374158,
-        15.798208363610847,
-        14.26454244992783,
-        15.701633636292009
+        15.32642880010826,
+        13.991909999822383
       ]
     },
     "matrix_memory": {
       "em": [
         0.0,
-        0.0,
-        0.0,
-        0.0,
         0.0
       ],
       "f1": [
-        19.04761904761905,
-        28.571428571428577,
-        6.666666666666667,
         0.0,
-        12.500000000000004
+        0.0
       ],
       "slots": [
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-        1.0
+        8.0,
+        8.0
       ],
       "latency": [
-        13.894556388954193,
-        14.548976727382978,
-        14.508331280085258,
-        13.88006844004849,
-        14.497450559865683
+        14.406920166584314,
+        13.766616266608859
       ]
     }
-  }
+  },
+  "sample_predictions": [
+    {
+      "id": "conv_000919",
+      "query": "Usaha sampingan apa yang sedang kujalankan tadi?",
+      "ground_truth": "Kamu menjalankan jasa pembuatan website freelance.",
+      "entities": [
+        "jasa pembuatan website freelance"
+      ],
+      "no_memory": {
+        "prediction": "Untuk membantu Anda dalam menjalankan usaha sampingan, ada beberapa hal yang perlu diperhatikan. Berikut adalah beberapa langkah-langkah untuk melakukan ini:",
+        "em": 0.0,
+        "f1": 7.692307692307692
+      },
+      "causal_memory": {
+        "prediction": "Kamu menjalankan jasa pembuatan website freelance.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "Lock gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000823",
+      "query": "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi.",
+      "ground_truth": "Pekerjaanmu yang benar adalah Product Manager.",
+      "entities": [
+        "Product Manager"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanku adalah sebuah pekerjaan yang sangat penting dalam kehidupan sehari-hari kita. Dalam hal ini, saya akan memberikan beberapa tips dan saran untuk membantu Anda",
+        "em": 0.0,
+        "f1": 13.333333333333334
+      },
+      "causal_memory": {
+        "prediction": "Pekerjaanmu yang benar adalah Product Manager.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "Lock gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    }
+  ]
 }

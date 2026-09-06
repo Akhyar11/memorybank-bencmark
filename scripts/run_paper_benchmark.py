@@ -31,6 +31,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from models.gpt2_memory_model import GPT2MemoryModel
+from models.gpt2_matrix_memory_model import GPT2MatrixMemoryModel
 from models.tiny_memory_bank import TinyMemoryConfig
 
 
@@ -159,25 +160,45 @@ def run_benchmark():
         memory_dim=768,
         hidden_size=768,
     )
-    model = GPT2MemoryModel(model_name_or_path=model_dir, memory_config=mem_config).to(device)
+    model_causal = GPT2MemoryModel(model_name_or_path=model_dir, memory_config=mem_config).to(device)
 
     if os.path.exists(ckpt_path):
         st = torch.load(ckpt_path, map_location=device, weights_only=False)
         if "model_state_dict" in st:
-            model.load_state_dict(st["model_state_dict"], strict=False)
+            model_causal.load_state_dict(st["model_state_dict"], strict=False)
         elif "adapter_state_dict" in st:
-            model.load_state_dict(st["adapter_state_dict"], strict=False)
+            model_causal.load_state_dict(st["adapter_state_dict"], strict=False)
         else:
-            model.load_state_dict(st, strict=False)
-        print(f"✓ Checkpoint loaded: {ckpt_path}")
+            model_causal.load_state_dict(st, strict=False)
+        print(f"✓ Causal Memory Checkpoint loaded: {ckpt_path}")
     else:
-        print("⚠️ Checkpoint not found; using initialized model weights.")
+        print("⚠️ Causal Memory Checkpoint not found; using initialized model weights.")
+    model_causal.eval()
 
-    model.eval()
+    # Load Matrix Memory Model
+    model_matrix = GPT2MatrixMemoryModel(
+        model_name_or_path=model_dir,
+        capacity=128,
+        scaling="dim",
+        freeze_backbone=True,
+    ).to(device)
+
+    ckpt_matrix_path = os.path.join(PROJECT_ROOT, "checkpoints", "gpt2_matrix_memory_best.pt")
+    if os.path.exists(ckpt_matrix_path):
+        st_m = torch.load(ckpt_matrix_path, map_location=device, weights_only=False)
+        if "model_state_dict" in st_m:
+            model_matrix.load_state_dict(st_m["model_state_dict"], strict=False)
+        else:
+            model_matrix.load_state_dict(st_m, strict=False)
+        print(f"✓ Matrix Memory Checkpoint loaded: {ckpt_matrix_path}")
+    else:
+        print("ℹ Matrix Memory Checkpoint not found; using initialized model weights.")
+    model_matrix.eval()
 
     methods = [
         ("No Memory", "no_memory"),
-        ("Differentiable Causal Memory", "causal_memory")
+        ("Differentiable Causal Memory", "causal_memory"),
+        ("Differentiable Matrix Memory", "matrix_memory"),
     ]
 
     distractor_levels = [0, 5, 10]
@@ -202,26 +223,59 @@ def run_benchmark():
         q_len = enc_query["input_ids"].shape[1]
 
         for m_name, m_key in methods:
-            model.reset_memory()
+            if m_key == "no_memory":
+                model_causal.reset_memory()
+                slots_used = 0.0
 
-            # Step 1: Write fact according to method
-            if m_key == "causal_memory":
+                t0 = time.perf_counter()
                 with torch.no_grad():
-                    model(enc_fact["input_ids"], use_memory=True, persist_memory=True)
+                    out_gen = model_causal.generate(
+                        input_ids=enc_query["input_ids"],
+                        max_new_tokens=25,
+                        temperature=0.1,
+                        top_k=20,
+                        stop_token_ids=[199],
+                        use_memory=False,
+                    )
+                t1 = time.perf_counter()
 
-            slots_used = float(model.bank.mem_occupancy.sum().item())
+            elif m_key == "causal_memory":
+                model_causal.reset_memory()
+                with torch.no_grad():
+                    model_causal(enc_fact["input_ids"], use_memory=True, persist_memory=True)
+                slots_used = float(model_causal.bank.mem_occupancy.sum().item())
 
-            # Step 2: Timed Generation
-            t0 = time.perf_counter()
-            with torch.no_grad():
-                out_gen = model.generate(
-                    input_ids=enc_query["input_ids"],
-                    max_new_tokens=25,
-                    temperature=0.1,
-                    top_k=20,
-                    stop_token_ids=[199]
-                )
-            t1 = time.perf_counter()
+                t0 = time.perf_counter()
+                with torch.no_grad():
+                    out_gen = model_causal.generate(
+                        input_ids=enc_query["input_ids"],
+                        max_new_tokens=25,
+                        temperature=0.1,
+                        top_k=20,
+                        stop_token_ids=[199],
+                        use_memory=True,
+                    )
+                t1 = time.perf_counter()
+
+            elif m_key == "matrix_memory":
+                model_matrix.reset_memory()
+                with torch.no_grad():
+                    fact_out = model_matrix.gpt2.transformer(enc_fact["input_ids"], return_dict=True)
+                    h_fact = fact_out.last_hidden_state[:, -1, :]
+                    model_matrix.matrix_bank.write(h_fact)
+                slots_used = float(model_matrix.matrix_bank.num_memories)
+
+                t0 = time.perf_counter()
+                with torch.no_grad():
+                    out_gen = model_matrix.generate(
+                        input_ids=enc_query["input_ids"],
+                        max_new_tokens=25,
+                        temperature=0.1,
+                        top_k=20,
+                        stop_token_ids=[199],
+                        use_memory=True,
+                    )
+                t1 = time.perf_counter()
 
             gen_tokens = out_gen[0][q_len:]
             num_tokens = max(1, len(gen_tokens))
@@ -244,26 +298,64 @@ def run_benchmark():
             print("\nEvaluating Distractor Interference Impact on Case 1:")
             for lvl in distractor_levels:
                 for m_name, m_key in methods:
-                    model.reset_memory()
-                    if m_key == "causal_memory":
+                    if m_key == "no_memory":
+                        model_causal.reset_memory()
                         with torch.no_grad():
-                            model(enc_fact["input_ids"], use_memory=True, persist_memory=True)
-
-                    # Inject distractor turns
-                    for d_text in DISTRACTORS_POOL[:lvl]:
-                        enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
+                            out_dgen = model_causal.generate(
+                                input_ids=enc_query["input_ids"],
+                                max_new_tokens=25,
+                                temperature=0.1,
+                                top_k=20,
+                                stop_token_ids=[199],
+                                use_memory=False,
+                            )
+                    elif m_key == "causal_memory":
+                        model_causal.reset_memory()
                         with torch.no_grad():
-                            if m_key == "causal_memory":
-                                model(enc_d["input_ids"], use_memory=True, persist_memory=True)
+                            model_causal(enc_fact["input_ids"], use_memory=True, persist_memory=True)
 
-                    # Query after distractors
-                    with torch.no_grad():
-                        out_dgen = model.generate(
-                            input_ids=enc_query["input_ids"],
-                            max_new_tokens=25,
-                            temperature=0.1,
-                            stop_token_ids=[199]
-                        )
+                        # Inject distractor turns
+                        for d_text in DISTRACTORS_POOL[:lvl]:
+                            enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
+                            with torch.no_grad():
+                                model_causal(enc_d["input_ids"], use_memory=True, persist_memory=True)
+
+                        # Query after distractors
+                        with torch.no_grad():
+                            out_dgen = model_causal.generate(
+                                input_ids=enc_query["input_ids"],
+                                max_new_tokens=25,
+                                temperature=0.1,
+                                top_k=20,
+                                stop_token_ids=[199],
+                                use_memory=True,
+                            )
+                    elif m_key == "matrix_memory":
+                        model_matrix.reset_memory()
+                        with torch.no_grad():
+                            fact_out = model_matrix.gpt2.transformer(enc_fact["input_ids"], return_dict=True)
+                            h_fact = fact_out.last_hidden_state[:, -1, :]
+                            model_matrix.matrix_bank.write(h_fact)
+
+                        # Inject distractor turns
+                        for d_text in DISTRACTORS_POOL[:lvl]:
+                            enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
+                            with torch.no_grad():
+                                d_out = model_matrix.gpt2.transformer(enc_d["input_ids"], return_dict=True)
+                                h_d = d_out.last_hidden_state[:, -1, :]
+                                model_matrix.matrix_bank.write(h_d)
+
+                        # Query after distractors
+                        with torch.no_grad():
+                            out_dgen = model_matrix.generate(
+                                input_ids=enc_query["input_ids"],
+                                max_new_tokens=25,
+                                temperature=0.1,
+                                top_k=20,
+                                stop_token_ids=[199],
+                                use_memory=True,
+                            )
+
                     p_d = tokenizer.decode(out_dgen[0][q_len:], skip_special_tokens=True).strip()
                     em_d = check_entity_match(p_d, entities)
                     distractor_results[lvl][m_key].append(em_d)

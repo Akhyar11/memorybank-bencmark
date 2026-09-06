@@ -1,27 +1,27 @@
 {
   "test_file": "dataset/conversations_test.jsonl",
-  "total_cases_evaluated": 2,
+  "total_cases_evaluated": 5,
   "summary": {
     "no_memory": {
       "name": "No Memory",
       "mean_em": 0.0,
-      "mean_f1": 10.512820512820513,
+      "mean_f1": 21.52824442479615,
       "mean_slots": 0.0,
-      "mean_latency_ms": 15.795402633361496
+      "mean_latency_ms": 14.812982191119854
     },
     "causal_memory": {
       "name": "Differentiable Causal Memory",
-      "mean_em": 100.0,
-      "mean_f1": 100.0,
-      "mean_slots": 8.0,
-      "mean_latency_ms": 14.659169399965322
+      "mean_em": 20.0,
+      "mean_f1": 75.33333333333334,
+      "mean_slots": 8.4,
+      "mean_latency_ms": 14.692370545276725
     },
     "matrix_memory": {
       "name": "Differentiable Matrix Memory",
       "mean_em": 0.0,
-      "mean_f1": 0.0,
-      "mean_slots": 8.0,
-      "mean_latency_ms": 14.086768216596585
+      "mean_f1": 5.0,
+      "mean_slots": 8.4,
+      "mean_latency_ms": 28.694275799898605
     }
   },
   "distractor_results": {
@@ -63,55 +63,91 @@
     "no_memory": {
       "em": [
         0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0
       ],
       "f1": [
         7.692307692307692,
-        13.333333333333334
+        20.0,
+        20.689655172413794,
+        14.814814814814813,
+        44.44444444444445
       ],
       "slots": [
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0
       ],
       "latency": [
-        17.74900550005371,
-        13.841799766669283
+        18.852803846060013,
+        13.749208599983831,
+        14.172974366617078,
+        13.759728000098091,
+        13.530196142840266
       ]
     },
     "causal_memory": {
       "em": [
         100.0,
-        100.0
+        0.0,
+        0.0,
+        0.0,
+        0.0
       ],
       "f1": [
         100.0,
-        100.0
+        66.66666666666666,
+        80.00000000000001,
+        50.0,
+        80.00000000000001
       ],
       "slots": [
+        8.0,
+        8.0,
+        10.0,
         8.0,
         8.0
       ],
       "latency": [
-        15.32642880010826,
-        13.991909999822383
+        15.355621699927724,
+        14.105438454531726,
+        14.561164000042481,
+        15.317265000097299,
+        14.122363571784392
       ]
     },
     "matrix_memory": {
       "em": [
         0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0
       ],
       "f1": [
+        0.0,
+        0.0,
+        25.0,
         0.0,
         0.0
       ],
       "slots": [
         8.0,
+        8.0,
+        10.0,
+        8.0,
         8.0
       ],
       "latency": [
-        14.406920166584314,
-        13.766616266608859
+        46.12288499993156,
+        22.71840899993549,
+        15.613626000231307,
+        33.97254399897065,
+        25.043915000424022
       ]
     }
   },
@@ -124,7 +160,7 @@
         "jasa pembuatan website freelance"
       ],
       "no_memory": {
-        "prediction": "Untuk membantu Anda dalam menjalankan usaha sampingan, ada beberapa hal yang perlu diperhatikan. Berikut adalah beberapa langkah-langkah untuk melakukan ini:",
+        "prediction": "Untuk menjalankan usaha sampingan, ada beberapa hal yang perlu diperhatikan. Berikut adalah beberapa langkah-langkah yang dapat dilakukan untuk melakukan ini:",
         "em": 0.0,
         "f1": 7.692307692307692
       },
@@ -134,7 +170,7 @@
         "f1": 100.0
       },
       "matrix_memory": {
-        "prediction": "Lock gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang",
+        "prediction": "",
         "em": 0.0,
         "f1": 0.0
       }
@@ -147,17 +183,86 @@
         "Product Manager"
       ],
       "no_memory": {
-        "prediction": "Pekerjaanku adalah sebuah pekerjaan yang sangat penting dalam kehidupan sehari-hari kita. Dalam hal ini, saya akan memberikan beberapa tips dan saran untuk membantu Anda",
+        "prediction": "Pekerjaanmu adalah sebuah pekerjaan yang sangat penting dalam kehidupan sehari-hari, terutama bagi mereka yang bekerja di bidang kesehatan dan pendidikan. Namun, sebagai seorang profesional",
         "em": 0.0,
-        "f1": 13.333333333333334
+        "f1": 20.0
       },
       "causal_memory": {
-        "prediction": "Pekerjaanmu yang benar adalah Product Manager.",
-        "em": 100.0,
-        "f1": 100.0
+        "prediction": "Pekerjaanmu yang benar adalah QA Engineer.",
+        "em": 0.0,
+        "f1": 66.66666666666666
       },
       "matrix_memory": {
-        "prediction": "Lock gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang gelanggang",
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000524",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Palembang.",
+      "entities": [
+        "Palembang"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di Indonesia dan memiliki",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (",
+        "em": 0.0,
+        "f1": 25.0
+      }
+    },
+    {
+      "id": "conv_000584",
+      "query": "Makanan kesukaanku yang kusebutkan tadi apa ya?",
+      "ground_truth": "Makanan kesukaanmu adalah Nasi Goreng spesial.",
+      "entities": [
+        "Nasi Goreng spesial"
+      ],
+      "no_memory": {
+        "prediction": "Makanan kesukaanku yang kusebutkan tersebut adalah makanan yang lezat dan enak. Berikut ini beberapa contoh makanan favoritku yang bisa kamu nikmati:",
+        "em": 0.0,
+        "f1": 14.814814814814813
+      },
+      "causal_memory": {
+        "prediction": "Makanan kesukaanmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 50.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000717",
+      "query": "Di kota mana aku tinggal tadi ya?",
+      "ground_truth": "Kamu tinggal di kota Yogyakarta.",
+      "entities": [
+        "Yogyakarta"
+      ],
+      "no_memory": {
+        "prediction": "Aku tinggal di sana.",
+        "em": 0.0,
+        "f1": 44.44444444444445
+      },
+      "causal_memory": {
+        "prediction": "Kamu tinggal di kota Semarang.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "",
         "em": 0.0,
         "f1": 0.0
       }

@@ -221,33 +221,42 @@ def run_benchmark(
     model_causal = GPT2MemoryModel(model_name_or_path=model_dir, memory_config=mem_config).to(device)
 
     if os.path.exists(ckpt_path):
-        st = torch.load(ckpt_path, map_location=device, weights_only=False)
+        st = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         if "model_state_dict" in st:
             model_causal.load_state_dict(st["model_state_dict"], strict=False)
         elif "adapter_state_dict" in st:
             model_causal.load_state_dict(st["adapter_state_dict"], strict=False)
         else:
             model_causal.load_state_dict(st, strict=False)
+        del st
+        torch.cuda.empty_cache()
         print(f"✓ Causal Memory Checkpoint loaded: {ckpt_path}")
     else:
         print("⚠️ Causal Memory Checkpoint not found; using initialized model weights.")
     model_causal.eval()
 
-    # Load Matrix Memory Model
+    # Load Matrix Memory Model (Share frozen backbone to save 500MB VRAM!)
     model_matrix = GPT2MatrixMemoryModel(
         model_name_or_path=model_dir,
         capacity=128,
         scaling="dim",
         freeze_backbone=True,
-    ).to(device)
+    )
+    model_matrix.gpt2 = model_causal.gpt2  # Shared backbone
+    model_matrix.to(device)
 
     ckpt_matrix_path = os.path.join(PROJECT_ROOT, "checkpoints", "gpt2_matrix_memory_best.pt")
     if os.path.exists(ckpt_matrix_path):
-        st_m = torch.load(ckpt_matrix_path, map_location=device, weights_only=False)
+        st_m = torch.load(ckpt_matrix_path, map_location="cpu", weights_only=False)
         if "model_state_dict" in st_m:
-            model_matrix.load_state_dict(st_m["model_state_dict"], strict=False)
+            sd_m = dict(st_m["model_state_dict"])
         else:
-            model_matrix.load_state_dict(st_m, strict=False)
+            sd_m = dict(st_m)
+        if "c_proj.weight" in sd_m and "query_encoder.weight" not in sd_m:
+            sd_m["query_encoder.weight"] = sd_m["c_proj.weight"]
+        model_matrix.load_state_dict(sd_m, strict=False)
+        del st_m
+        torch.cuda.empty_cache()
         print(f"✓ Matrix Memory Checkpoint loaded: {ckpt_matrix_path}")
     else:
         print("ℹ Matrix Memory Checkpoint not found; using initialized model weights.")

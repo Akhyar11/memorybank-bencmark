@@ -24,6 +24,7 @@ import time
 import json
 import torch
 import numpy as np
+from tqdm import tqdm
 from transformers import AutoTokenizer
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -182,7 +183,7 @@ def run_benchmark(
     max_cases: int = 20,
     model_dir_arg: str = None,
     output_dir: str = "results",
-    verbose: bool = True,
+    verbose: bool = False,
 ):
     print("=" * 72)
     print("      ACADEMIC PAPER BENCHMARK SUITE: NEURAL MEMORY BANK")
@@ -268,6 +269,7 @@ def run_benchmark(
 
     methods = [
         ("No Memory", "no_memory"),
+        ("Full In-Context GPT-2", "full_context"),
         ("Differentiable Causal Memory", "causal_memory"),
         ("Differentiable Matrix Memory", "matrix_memory"),
     ]
@@ -287,7 +289,8 @@ def run_benchmark(
     print(f"Dataset Source: {test_file}")
     print("-" * 72)
 
-    for case_idx, case in enumerate(cases):
+    pbar = tqdm(enumerate(cases), total=len(cases), desc="Benchmarking Cases", unit="case", dynamic_ncols=True)
+    for case_idx, case in pbar:
         case_id = case["id"]
         history_turns = case.get("history_turns", [])
         query_text = f"User: {case['query']}\nAI:"
@@ -297,8 +300,8 @@ def run_benchmark(
         enc_query = tokenizer(query_text, return_tensors="pt").to(device)
         q_len = enc_query["input_ids"].shape[1]
 
-        print(f"\n[Case {case_idx + 1}/{len(cases)}] ID: '{case_id}' (Topic: {case.get('topic', 'general')})")
         if verbose:
+            print(f"\n[Case {case_idx + 1}/{len(cases)}] ID: '{case_id}' (Topic: {case.get('topic', 'general')})")
             print(f"  Q : {case['query']}")
             print(f"  GT: {ground_truth} | Target Entities: {entities}")
 
@@ -320,6 +323,35 @@ def run_benchmark(
                         use_memory=False,
                     )
                 t1 = time.perf_counter()
+                gen_q_len = q_len
+
+            elif m_key == "full_context":
+                context_parts = []
+                for role, content in history_turns:
+                    pfx = "User: " if role.lower() == "user" else "AI: "
+                    context_parts.append(f"{pfx}{content}")
+                context_parts.append(query_text)
+                full_prompt = "\n".join(context_parts)
+
+                enc_full = tokenizer(full_prompt, return_tensors="pt").to(device)
+                if enc_full["input_ids"].shape[1] > 1000:
+                    enc_full["input_ids"] = enc_full["input_ids"][:, -1000:]
+                    enc_full["attention_mask"] = enc_full["attention_mask"][:, -1000:]
+                prompt_len_full = enc_full["input_ids"].shape[1]
+                slots_used = 0.0
+
+                t0 = time.perf_counter()
+                with torch.no_grad():
+                    out_gen = model_causal.gpt2.generate(
+                        input_ids=enc_full["input_ids"],
+                        attention_mask=enc_full["attention_mask"],
+                        max_new_tokens=30,
+                        do_sample=False,
+                        pad_token_id=tokenizer.eos_token_id,
+                        eos_token_id=tokenizer.eos_token_id,
+                    )
+                t1 = time.perf_counter()
+                gen_q_len = prompt_len_full
 
             elif m_key == "causal_memory":
                 model_causal.reset_memory()
@@ -341,6 +373,7 @@ def run_benchmark(
                         use_memory=True,
                     )
                 t1 = time.perf_counter()
+                gen_q_len = q_len
 
             elif m_key == "matrix_memory":
                 model_matrix.reset_memory()
@@ -364,12 +397,15 @@ def run_benchmark(
                         use_memory=True,
                     )
                 t1 = time.perf_counter()
+                gen_q_len = q_len
 
-            gen_tokens = out_gen[0][q_len:]
+            gen_tokens = out_gen[0][gen_q_len:]
             num_tokens = max(1, len(gen_tokens))
             latency_ms_per_token = ((t1 - t0) / num_tokens) * 1000.0
 
             prediction = tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
+            if "\n" in prediction:
+                prediction = prediction.split("\n")[0].strip()
 
             em_score = check_entity_match(prediction, entities)
             f1_score = compute_token_f1(prediction, ground_truth) * 100.0
@@ -380,15 +416,19 @@ def run_benchmark(
             results[m_key]["latency"].append(latency_ms_per_token)
             case_preds[m_key] = {"prediction": prediction, "em": em_score, "f1": f1_score}
 
-            print(f"  [{m_name:28s}] EM: {em_score:5.1f}% | F1: {f1_score:5.1f}% | Slots: {slots_used:5.2f} | Latency: {latency_ms_per_token:5.1f}ms")
             if verbose:
+                print(f"  [{m_name:28s}] EM: {em_score:5.1f}% | F1: {f1_score:5.1f}% | Slots: {slots_used:5.2f} | Latency: {latency_ms_per_token:5.1f}ms")
                 print(f"     └─ Pred: \"{prediction}\"")
 
         sample_predictions.append(case_preds)
 
+        pbar.set_postfix({
+            "Causal_F1": f"{np.mean(results['causal_memory']['f1']):.1f}%",
+            "FullCtx_F1": f"{np.mean(results['full_context']['f1']):.1f}%",
+        })
+
         # Evaluate Distractor Resistance for Case 1
         if case_idx == 0:
-            print("\nEvaluating Distractor Interference Impact on Case 1:")
             for lvl in distractor_levels:
                 for m_name, m_key in methods:
                     if m_key == "no_memory":
@@ -402,6 +442,35 @@ def run_benchmark(
                                 stop_token_ids=[199],
                                 use_memory=False,
                             )
+                        dgen_tokens = out_dgen[0][q_len:]
+
+                    elif m_key == "full_context":
+                        d_parts = []
+                        for role, content in history_turns:
+                            pfx = "User: " if role.lower() == "user" else "AI: "
+                            d_parts.append(f"{pfx}{content}")
+                        for d_text in DISTRACTORS_POOL[:lvl]:
+                            d_parts.append(f"User: {d_text}")
+                        d_parts.append(query_text)
+                        full_d_prompt = "\n".join(d_parts)
+
+                        enc_d = tokenizer(full_d_prompt, return_tensors="pt").to(device)
+                        if enc_d["input_ids"].shape[1] > 1000:
+                            enc_d["input_ids"] = enc_d["input_ids"][:, -1000:]
+                            enc_d["attention_mask"] = enc_d["attention_mask"][:, -1000:]
+                        d_prompt_len = enc_d["input_ids"].shape[1]
+
+                        with torch.no_grad():
+                            out_dgen = model_causal.gpt2.generate(
+                                input_ids=enc_d["input_ids"],
+                                attention_mask=enc_d["attention_mask"],
+                                max_new_tokens=30,
+                                do_sample=False,
+                                pad_token_id=tokenizer.eos_token_id,
+                                eos_token_id=tokenizer.eos_token_id,
+                            )
+                        dgen_tokens = out_dgen[0][d_prompt_len:]
+
                     elif m_key == "causal_memory":
                         model_causal.reset_memory()
                         with torch.no_grad():
@@ -426,6 +495,8 @@ def run_benchmark(
                                 stop_token_ids=[199],
                                 use_memory=True,
                             )
+                        dgen_tokens = out_dgen[0][q_len:]
+
                     elif m_key == "matrix_memory":
                         model_matrix.reset_memory()
                         with torch.no_grad():
@@ -454,8 +525,11 @@ def run_benchmark(
                                 stop_token_ids=[199],
                                 use_memory=True,
                             )
+                        dgen_tokens = out_dgen[0][q_len:]
 
-                    p_d = tokenizer.decode(out_dgen[0][q_len:], skip_special_tokens=True).strip()
+                    p_d = tokenizer.decode(dgen_tokens, skip_special_tokens=True).strip()
+                    if "\n" in p_d:
+                        p_d = p_d.split("\n")[0].strip()
                     em_d = check_entity_match(p_d, entities)
                     distractor_results[lvl][m_key].append(em_d)
 
@@ -472,27 +546,27 @@ def run_benchmark(
             "mean_latency_ms": float(np.mean(results[m_key]["latency"]))
         }
 
-    print("\n" + "=" * 76)
+    print("\n" + "=" * 80)
     print("                 FORMAL ACADEMIC BENCHMARK RESULTS")
-    print("=" * 76)
-    print(f"{'Method / Architecture':<28} | {'Exact Match':<11} | {'Token F1':<10} | {'Avg Slots':<10} | {'Latency':<9}")
-    print("-" * 76)
+    print("=" * 80)
+    print(f"{'Method / Architecture':<30} | {'Exact Match':<11} | {'Token F1':<10} | {'Avg Slots':<10} | {'Latency':<9}")
+    print("-" * 80)
     for _, m_key in methods:
         s = summary[m_key]
-        print(f"{s['name']:<28} | {s['mean_em']:9.2f}% | {s['mean_f1']:8.2f}% | {s['mean_slots']:9.1f} | {s['mean_latency_ms']:6.1f} ms")
-    print("=" * 76)
+        print(f"{s['name']:<30} | {s['mean_em']:9.2f}% | {s['mean_f1']:8.2f}% | {s['mean_slots']:9.1f} | {s['mean_latency_ms']:6.1f} ms")
+    print("=" * 80)
 
-    print("\n" + "=" * 76)
+    print("\n" + "=" * 80)
     print("         INTERFERENCE RESISTANCE UNDER DISTRACTOR TURNS (EM %)")
-    print("=" * 76)
-    print(f"{'Method / Architecture':<28} | {'0 Distractors':<14} | {'5 Distractors':<14} | {'10 Distractors':<14}")
-    print("-" * 76)
+    print("=" * 80)
+    print(f"{'Method / Architecture':<30} | {'0 Distractors':<14} | {'5 Distractors':<14} | {'10 Distractors':<14}")
+    print("-" * 80)
     for m_name, m_key in methods:
         em_0 = distractor_results[0][m_key][0] if distractor_results[0][m_key] else 0.0
         em_5 = distractor_results[5][m_key][0] if distractor_results[5][m_key] else 0.0
         em_10 = distractor_results[10][m_key][0] if distractor_results[10][m_key] else 0.0
-        print(f"{m_name:<28} | {em_0:12.1f}% | {em_5:12.1f}% | {em_10:12.1f}%")
-    print("=" * 76)
+        print(f"{m_name:<30} | {em_0:12.1f}% | {em_5:12.1f}% | {em_10:12.1f}%")
+    print("=" * 80)
 
     # ---------------------------------------------------------------------------
     # Export LaTeX Table File & JSON
@@ -554,8 +628,8 @@ def main():
                         help="Path or name of pretrained model")
     parser.add_argument("--output_dir", type=str, default="results",
                         help="Directory to save output json and tex")
-    parser.add_argument("--quiet", action="store_true",
-                        help="Disable printing prediction text per case")
+    parser.add_argument("--verbose", action="store_true", default=False,
+                        help="Print verbose model predictions per case (default: False, progress bar only)")
     args = parser.parse_args()
 
     run_benchmark(
@@ -563,7 +637,7 @@ def main():
         max_cases=args.max_cases,
         model_dir_arg=args.model_dir,
         output_dir=args.output_dir,
-        verbose=not args.quiet,
+        verbose=args.verbose,
     )
 
 

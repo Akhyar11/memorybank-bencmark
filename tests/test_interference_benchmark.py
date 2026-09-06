@@ -11,7 +11,9 @@ Evaluates memory persistence against:
 import os
 import sys
 
-sys.path.insert(0, "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 import torch
 import torch.nn.functional as F
@@ -92,7 +94,9 @@ def run_conversational_interference_benchmark():
     print("=" * 68)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_dir = "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark/gpt2-indo-instruct-tuned"
+    model_dir = os.path.join(PROJECT_ROOT, "gpt2-indo-instruct-tuned")
+    if not os.path.exists(model_dir):
+        model_dir = "izzulgod/gpt2-indo-instruct-tuned"
     tok = AutoTokenizer.from_pretrained(model_dir)
 
     mem_config = TinyMemoryConfig(

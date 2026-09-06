@@ -11,7 +11,10 @@ import torch.nn.functional as F
 from models.gpt2_memory_model import GPT2MemoryModel
 from models.tiny_memory_bank import MemoryState, TinyMemoryBank, TinyMemoryConfig
 
-MODEL_PATH = "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark/gpt2-indo-instruct-tuned"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(PROJECT_ROOT, "gpt2-indo-instruct-tuned")
+if not os.path.exists(MODEL_PATH):
+    MODEL_PATH = "izzulgod/gpt2-indo-instruct-tuned"
 
 
 def test_adversarial_case_a_empty_memory():

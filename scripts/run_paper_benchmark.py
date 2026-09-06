@@ -26,7 +26,10 @@ import torch
 import numpy as np
 from transformers import AutoTokenizer
 
-sys.path.insert(0, "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from models.gpt2_memory_model import GPT2MemoryModel
 from models.tiny_memory_bank import TinyMemoryConfig
 
@@ -125,8 +128,26 @@ def run_benchmark():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Hardware Device : {device}")
 
-    model_dir = "gpt2-indo-instruct-tuned"
-    ckpt_path = "checkpoints/gpt2_causal_memory_best.pt"
+    candidate_model_dirs = [
+        os.path.join(PROJECT_ROOT, "gpt2-indo-instruct-tuned"),
+        "gpt2-indo-instruct-tuned",
+        "izzulgod/gpt2-indo-instruct-tuned",
+    ]
+    model_dir = "izzulgod/gpt2-indo-instruct-tuned"
+    for candidate in candidate_model_dirs:
+        if os.path.exists(candidate):
+            model_dir = candidate
+            break
+
+    candidate_ckpts = [
+        os.path.join(PROJECT_ROOT, "checkpoints/gpt2_causal_memory_best.pt"),
+        "checkpoints/gpt2_causal_memory_best.pt",
+    ]
+    ckpt_path = candidate_ckpts[0]
+    for c in candidate_ckpts:
+        if os.path.exists(c):
+            ckpt_path = c
+            break
 
     print("Loading Tokenizer & Backbone Model...")
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
@@ -285,7 +306,7 @@ def run_benchmark():
     # ---------------------------------------------------------------------------
     # Export LaTeX Table File
     # ---------------------------------------------------------------------------
-    res_dir = "/home/akhyar/Dokumen/Code/python/MemoryBank-bencmark/results"
+    res_dir = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(res_dir, exist_ok=True)
     json_path = os.path.join(res_dir, "paper_benchmark_results.json")
     with open(json_path, "w", encoding="utf-8") as f:

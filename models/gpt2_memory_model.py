@@ -73,6 +73,7 @@ class GPT2MemoryModel(nn.Module):
         memory_state: Optional[MemoryState] = None,
         use_memory: bool = True,
         persist_memory: bool = False,
+        prompt_len: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Forward pass for training with Next Token Prediction (NTP) loss or feature extraction.
@@ -89,9 +90,17 @@ class GPT2MemoryModel(nn.Module):
         h_prompt = hidden[:, -1, :]  # Last token representation (B, D)
 
         if use_memory:
-            # Query C and read from memory bank for every position in sequence
-            C = self.c_proj(hidden)
-            M_bar, top_indices = self.bank.read(C, top_k=self.memory_config.top_k)
+            if prompt_len is not None and prompt_len > 0 and prompt_len < seqlen:
+                # Turn-level prompt-conditioned memory retrieval:
+                # Query memory using the prompt's boundary token (prompt_len - 1)
+                h_p = hidden[:, prompt_len - 1, :]  # (B, D)
+                C_p = self.c_proj(h_p)              # (B, D)
+                M_bar_p, top_indices = self.bank.read(C_p, top_k=self.memory_config.top_k)  # (B, D)
+                M_bar = M_bar_p.unsqueeze(1).expand(bsz, seqlen, d)
+            else:
+                # Query C and read from memory bank for every position in sequence
+                C = self.c_proj(hidden)
+                M_bar, top_indices = self.bank.read(C, top_k=self.memory_config.top_k)
 
             # Ingest to bank if persist_memory requested
             if persist_memory:
@@ -174,10 +183,6 @@ class GPT2MemoryModel(nn.Module):
             C = self.c_proj(h_prompt)
             M_bar, _ = self.bank.read(C, top_k=self.memory_config.top_k)
 
-            # SIMPAN MEMORY 1: Prompt user langsung disimpan ke Memory Bank
-            for b in range(input_ids.size(0)):
-                self.bank.add_memory(h_prompt[b].detach())
-
             # Fuse prompt hidden state for first token prediction
             fused_prompt = torch.cat([h_prompt, M_bar], dim=-1)
             z_prompt = self.fusion_proj(fused_prompt)
@@ -236,19 +241,21 @@ class GPT2MemoryModel(nn.Module):
             last_ai_hidden = h_t
 
             if use_memory:
-                # Membaca memory di SETIAP forward pass decoding
-                C_t = self.c_proj(h_t)
-                M_bar_t, _ = self.bank.read(C_t, top_k=self.memory_config.top_k)
+                # In Turn-Level Semantic Memory, query C is maintained across decoding steps
+                M_bar_t, _ = self.bank.read(C, top_k=self.memory_config.top_k)
                 fused_t = torch.cat([h_t, M_bar_t], dim=-1)
                 z_t = self.fusion_proj(fused_t)
                 next_token_logits = self.gpt2.lm_head(z_t)
             else:
                 next_token_logits = self.gpt2.lm_head(h_t)
 
-        # 3. SIMPAN MEMORY 2: Forward paling terakhir dari respon AI
-        if use_memory and last_ai_hidden is not None:
+        # 3. SIMPAN MEMORI TURN: Simpan Prompt (Memory 1) dan Respon AI Terakhir (Memory 2)
+        if use_memory:
             for b in range(input_ids.size(0)):
-                self.bank.add_memory(last_ai_hidden[b].detach())
+                self.bank.add_memory(h_prompt[b].detach())
+            if last_ai_hidden is not None:
+                for b in range(input_ids.size(0)):
+                    self.bank.add_memory(last_ai_hidden[b].detach())
 
         # 4. Lifecycle turn step & eviction check
         if use_memory:

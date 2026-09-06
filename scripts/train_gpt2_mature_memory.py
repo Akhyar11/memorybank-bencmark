@@ -173,6 +173,7 @@ def train(args):
                     labels=labels,
                     use_memory=True,
                     persist_memory=False,
+                    prompt_len=prompt_len,
                 )
 
                 loss = out["loss"]

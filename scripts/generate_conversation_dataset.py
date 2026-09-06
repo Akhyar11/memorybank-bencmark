@@ -27,7 +27,7 @@ from typing import List, Dict, Any, Tuple, Optional
 # ---------------------------------------------------------------------------
 
 FIRST_NAMES = [
-    "Dimas", "Rian", "Adit", "Rizky", "Budi", "Bayu", "Fajar", "Gilang", "Hendra", "Ilham",
+    "Akhyar", "Dimas", "Rian", "Adit", "Rizky", "Budi", "Bayu", "Fajar", "Gilang", "Hendra", "Ilham",
     "Joko", "Kevin", "Lukman", "Maulana", "Naufal", "Oki", "Pandu", "Reza", "Satria", "Taufik",
     "Siti", "Nadia", "Alya", "Dinda", "Fira", "Gita", "Hana", "Indah", "Kartika", "Laras",
     "Maya", "Nisa", "Putri", "Rani", "Sari", "Tiara", "Vina", "Winda", "Yulia", "Zahra"

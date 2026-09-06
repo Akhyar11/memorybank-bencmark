@@ -36,19 +36,56 @@ if PROJECT_ROOT not in sys.path:
 from models.gpt2_matrix_memory_model import GPT2MatrixMemoryModel
 
 
-def load_conversations(data_path: str) -> List[List[Tuple[str, str]]]:
-    """Loads multi-turn conversations from a JSONL file."""
-    conversations: List[List[Tuple[str, str]]] = []
-    if not os.path.exists(data_path):
+def load_conversations(data_path: str) -> Tuple[List[List[Tuple[str, str]]], str]:
+    """
+    Loads multi-turn conversations from a JSONL file or single-turn QA from CSV.
+    Automatically resolves relative paths against PROJECT_ROOT to avoid CWD issues.
+    """
+    resolved_path = data_path
+    if not os.path.isabs(resolved_path) and not os.path.exists(resolved_path):
+        candidates = [
+            os.path.join(PROJECT_ROOT, data_path),
+            os.path.join(PROJECT_ROOT, "dataset", os.path.basename(data_path)),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                resolved_path = c
+                break
+
+    if not os.path.exists(resolved_path):
+        print(f"⚠️ PERINGATAN: File '{data_path}' tidak ditemukan di sistem!")
+        print("  Menggunakan fallback dataset minimal (1 percakapan dummy).")
         return [
             [
                 ("Halo, perkenalkan namaku Akhyar.", "Halo Akhyar! Senang berkenalan denganmu. Ada yang bisa dibantu?"),
                 ("Aku bekerja sebagai Machine Learning Engineer.", "Keren sekali! Bidang AI dan Machine Learning sangat menjanjikan."),
                 ("Siapa namaku dan apa pekerjaanku?", "Namamu adalah Akhyar dan kamu bekerja sebagai Machine Learning Engineer."),
             ]
-        ]
+        ], resolved_path
 
-    with open(data_path, "r", encoding="utf-8") as f:
+    conversations: List[List[Tuple[str, str]]] = []
+
+    # Format 1: CSV QA Faktual (misalnya dataset/train.csv dengan 120.000 sampel)
+    if resolved_path.endswith(".csv"):
+        import csv
+        with open(resolved_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                fact = row.get("write_fact_A", "").strip()
+                query = row.get("query_B", "").strip()
+                ans = row.get("expected_output_A", "").strip()
+                if fact and query and ans:
+                    # 2-turn dialog: Turn 1 ingest fakta ke memory, Turn 2 recall jawaban
+                    conv = [
+                        (fact, "Baik, informasi tersebut telah saya catat ke dalam memori."),
+                        (query, f"Jawabannya adalah {ans}."),
+                    ]
+                    conversations.append(conv)
+        print(f"✓ Berhasil memuat {len(conversations):,} sampel dari file CSV: {resolved_path}")
+        return conversations, resolved_path
+
+    # Format 2: JSONL Multi-Turn (misalnya dataset/conversations_train.jsonl)
+    with open(resolved_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -78,12 +115,17 @@ def load_conversations(data_path: str) -> List[List[Tuple[str, str]]]:
                 if conv_turns:
                     conversations.append(conv_turns)
 
-    return conversations if conversations else [
-        [
-            ("Halo, perkenalkan namaku Akhyar.", "Halo Akhyar! Senang berkenalan denganmu. Ada yang bisa dibantu?"),
-            ("Aku bekerja sebagai Machine Learning Engineer.", "Keren sekali!"),
-        ]
-    ]
+    if not conversations:
+        print(f"⚠️ PERINGATAN: Tidak ada giliran dialog valid di '{resolved_path}'. Menggunakan fallback dummy.")
+        return [
+            [
+                ("Halo, perkenalkan namaku Akhyar.", "Halo Akhyar! Senang berkenalan denganmu. Ada yang bisa dibantu?"),
+                ("Aku bekerja sebagai Machine Learning Engineer.", "Keren sekali!"),
+            ]
+        ], resolved_path
+
+    print(f"✓ Berhasil memuat {len(conversations):,} percakapan dari file JSONL: {resolved_path}")
+    return conversations, resolved_path
 
 
 def train(args):
@@ -106,7 +148,7 @@ def train(args):
     ).to(device)
     model.print_trainable_parameters()
 
-    conversations = load_conversations(args.data_path)
+    conversations, resolved_source = load_conversations(args.data_path)
     if args.max_samples > 0:
         conversations = conversations[:args.max_samples]
 
@@ -121,6 +163,7 @@ def train(args):
     history = []
     best_loss = float("inf")
 
+    print(f"Sumber Data      : {resolved_source}")
     print(f"Total percakapan : {len(conversations):,}")
     print(f"Total turn dialog: {total_turns:,}")
     print(f"Epochs           : {args.epochs}")

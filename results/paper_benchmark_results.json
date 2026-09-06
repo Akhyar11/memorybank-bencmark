@@ -1,27 +1,27 @@
 {
   "test_file": "dataset/conversations_test.jsonl",
-  "total_cases_evaluated": 5,
+  "total_cases_evaluated": 100,
   "summary": {
     "no_memory": {
       "name": "No Memory",
       "mean_em": 0.0,
-      "mean_f1": 21.52824442479615,
+      "mean_f1": 15.858698451606578,
       "mean_slots": 0.0,
-      "mean_latency_ms": 14.812982191119854
+      "mean_latency_ms": 13.965643838317945
     },
     "causal_memory": {
       "name": "Differentiable Causal Memory",
-      "mean_em": 20.0,
-      "mean_f1": 75.33333333333334,
-      "mean_slots": 8.4,
-      "mean_latency_ms": 14.692370545276725
+      "mean_em": 34.0,
+      "mean_f1": 73.43636143005213,
+      "mean_slots": 8.72,
+      "mean_latency_ms": 14.529032035418304
     },
     "matrix_memory": {
       "name": "Differentiable Matrix Memory",
       "mean_em": 0.0,
-      "mean_f1": 5.0,
-      "mean_slots": 8.4,
-      "mean_latency_ms": 28.694275799898605
+      "mean_f1": 5.460974901020668,
+      "mean_slots": 8.72,
+      "mean_latency_ms": 25.288704407948433
     }
   },
   "distractor_results": {
@@ -66,16 +66,301 @@
         0.0,
         0.0,
         0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0
       ],
       "f1": [
-        7.692307692307692,
-        20.0,
+        10.526315789473683,
+        18.75,
         20.689655172413794,
         14.814814814814813,
-        44.44444444444445
+        9.75609756097561,
+        12.121212121212123,
+        14.285714285714285,
+        44.44444444444445,
+        18.75,
+        60.0,
+        5.128205128205128,
+        12.903225806451612,
+        6.896551724137931,
+        60.0,
+        17.647058823529413,
+        18.18181818181818,
+        12.121212121212121,
+        0.0,
+        13.793103448275861,
+        11.11111111111111,
+        22.22222222222222,
+        9.09090909090909,
+        20.689655172413794,
+        20.689655172413794,
+        20.689655172413794,
+        5.2631578947368425,
+        20.689655172413794,
+        20.689655172413794,
+        60.0,
+        14.814814814814813,
+        20.689655172413794,
+        15.384615384615383,
+        19.35483870967742,
+        9.75609756097561,
+        15.384615384615385,
+        5.2631578947368425,
+        0.0,
+        60.0,
+        20.689655172413794,
+        15.384615384615383,
+        0.0,
+        0.0,
+        6.451612903225806,
+        0.0,
+        16.666666666666664,
+        20.689655172413794,
+        20.689655172413794,
+        44.44444444444445,
+        0.0,
+        17.64705882352941,
+        0.0,
+        0.0,
+        18.18181818181818,
+        60.0,
+        6.060606060606061,
+        17.64705882352941,
+        6.451612903225806,
+        20.689655172413794,
+        10.256410256410255,
+        6.896551724137931,
+        19.354838709677416,
+        20.689655172413794,
+        22.222222222222218,
+        7.142857142857142,
+        12.903225806451616,
+        0.0,
+        0.0,
+        20.689655172413794,
+        12.5,
+        15.384615384615385,
+        15.0,
+        14.285714285714288,
+        5.405405405405405,
+        17.142857142857142,
+        22.22222222222222,
+        9.75609756097561,
+        6.666666666666667,
+        18.181818181818183,
+        0.0,
+        60.0,
+        5.128205128205128,
+        13.333333333333334,
+        6.896551724137931,
+        0.0,
+        6.896551724137931,
+        20.0,
+        20.0,
+        6.666666666666667,
+        9.523809523809524,
+        0.0,
+        15.0,
+        60.0,
+        6.666666666666667,
+        9.75609756097561,
+        19.35483870967742,
+        12.121212121212123,
+        0.0,
+        6.666666666666667,
+        10.81081081081081,
+        6.0606060606060606
       ],
       "slots": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -83,11 +368,106 @@
         0.0
       ],
       "latency": [
-        18.852803846060013,
-        13.749208599983831,
-        14.172974366617078,
-        13.759728000098091,
-        13.530196142840266
+        19.75027134994889,
+        13.609575566564065,
+        13.901153199913097,
+        13.852818642849993,
+        14.036419400023684,
+        13.951775299938163,
+        13.959135466696656,
+        13.47381257125692,
+        13.87362979997609,
+        13.648810200174921,
+        13.706837200030957,
+        13.627540866582422,
+        13.987837633370267,
+        13.414170699979877,
+        13.722709866730536,
+        13.97020243324126,
+        13.689860699984516,
+        13.87162270002591,
+        13.912442899891175,
+        14.059849966603604,
+        14.375073750064379,
+        13.913846695567887,
+        13.827069799905683,
+        13.939226100046653,
+        13.852050533387228,
+        13.98528416660459,
+        13.870763500017347,
+        13.837290333322017,
+        13.505175600221264,
+        13.873580833387678,
+        13.841543233259776,
+        13.655450166697847,
+        13.666599133284763,
+        14.01023163331653,
+        13.785162678556974,
+        14.040751166733873,
+        14.221656266696908,
+        14.591383500010124,
+        13.87128386668337,
+        13.71225473327892,
+        13.76392053340775,
+        13.94238027581917,
+        13.67425283327369,
+        13.890433099974567,
+        13.820612359995721,
+        14.127328399990802,
+        14.108730466614361,
+        13.537448428646062,
+        13.770597999973688,
+        14.00295476669271,
+        13.78522606670837,
+        13.83309170002273,
+        13.920920766759082,
+        13.39675540002645,
+        13.727246599955834,
+        14.018101766729766,
+        13.734856533240722,
+        13.901088633307761,
+        14.040166566580107,
+        14.020464900022489,
+        13.947889900009613,
+        14.026741900064128,
+        14.043852233347328,
+        13.501315730816433,
+        14.097258099961133,
+        13.748630866636327,
+        13.898060899979708,
+        13.892826733354013,
+        13.746677517137242,
+        13.842419428588723,
+        14.173970833265532,
+        14.061310433316976,
+        14.25150656674911,
+        14.044639900021139,
+        14.359040833369363,
+        14.128420833367272,
+        13.965900068985226,
+        13.99228169999939,
+        13.781560933299868,
+        13.45508480007993,
+        13.764196499929918,
+        13.860539266655298,
+        14.066494199990604,
+        13.891380433293913,
+        14.094184766630253,
+        13.706482833367772,
+        13.730218633281766,
+        14.096571700065397,
+        14.156533399970309,
+        13.973993600059961,
+        14.133276133361505,
+        13.427072700142162,
+        13.696216499981043,
+        14.208427466777115,
+        14.04542216672174,
+        14.26907649996186,
+        14.19357330002337,
+        14.619097999942216,
+        14.276004433365111,
+        13.983498833355648
       ]
     },
     "causal_memory": {
@@ -96,6 +476,101 @@
         0.0,
         0.0,
         0.0,
+        100.0,
+        100.0,
+        100.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        100.0,
+        0.0,
+        100.0,
+        100.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        100.0,
         0.0
       ],
       "f1": [
@@ -103,25 +578,405 @@
         66.66666666666666,
         80.00000000000001,
         50.0,
-        80.00000000000001
+        85.71428571428571,
+        84.61538461538461,
+        85.71428571428571,
+        80.00000000000001,
+        42.857142857142854,
+        100.0,
+        66.66666666666666,
+        80.00000000000001,
+        60.0,
+        100.0,
+        50.0,
+        66.66666666666666,
+        80.00000000000001,
+        71.42857142857143,
+        72.72727272727272,
+        84.61538461538461,
+        84.61538461538461,
+        36.36363636363636,
+        80.00000000000001,
+        80.00000000000001,
+        80.00000000000001,
+        92.85714285714286,
+        80.00000000000001,
+        80.00000000000001,
+        80.00000000000001,
+        54.54545454545454,
+        80.00000000000001,
+        83.33333333333334,
+        66.66666666666666,
+        85.71428571428571,
+        66.66666666666666,
+        92.85714285714286,
+        76.92307692307692,
+        100.0,
+        80.00000000000001,
+        66.66666666666666,
+        44.44444444444444,
+        100.0,
+        80.00000000000001,
+        76.92307692307692,
+        33.33333333333333,
+        80.00000000000001,
+        66.66666666666666,
+        80.00000000000001,
+        61.53846153846153,
+        100.0,
+        66.66666666666666,
+        66.66666666666666,
+        100.0,
+        100.0,
+        40.0,
+        26.666666666666668,
+        60.0,
+        80.00000000000001,
+        64.51612903225806,
+        60.0,
+        28.571428571428577,
+        80.00000000000001,
+        80.00000000000001,
+        80.00000000000001,
+        84.61538461538461,
+        66.66666666666666,
+        100.0,
+        80.00000000000001,
+        75.0,
+        54.54545454545454,
+        86.66666666666667,
+        50.0,
+        92.85714285714286,
+        28.571428571428577,
+        84.61538461538461,
+        60.606060606060595,
+        30.769230769230766,
+        28.571428571428577,
+        66.66666666666666,
+        100.0,
+        66.66666666666666,
+        100.0,
+        60.0,
+        66.66666666666666,
+        60.0,
+        80.00000000000001,
+        100.0,
+        100.0,
+        85.71428571428571,
+        62.5,
+        86.66666666666667,
+        100.0,
+        80.00000000000001,
+        85.71428571428571,
+        35.29411764705882,
+        84.61538461538461,
+        71.42857142857143,
+        72.72727272727272,
+        84.61538461538461,
+        60.0
       ],
       "slots": [
         8.0,
         8.0,
         10.0,
         8.0,
-        8.0
+        8.0,
+        6.0,
+        6.0,
+        8.0,
+        8.0,
+        8.0,
+        6.0,
+        12.0,
+        10.0,
+        8.0,
+        10.0,
+        8.0,
+        12.0,
+        10.0,
+        10.0,
+        8.0,
+        6.0,
+        8.0,
+        8.0,
+        10.0,
+        10.0,
+        6.0,
+        12.0,
+        8.0,
+        6.0,
+        10.0,
+        10.0,
+        8.0,
+        8.0,
+        8.0,
+        12.0,
+        8.0,
+        8.0,
+        10.0,
+        10.0,
+        8.0,
+        10.0,
+        10.0,
+        10.0,
+        10.0,
+        12.0,
+        12.0,
+        8.0,
+        8.0,
+        8.0,
+        12.0,
+        10.0,
+        6.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        6.0,
+        8.0,
+        6.0,
+        8.0,
+        12.0,
+        10.0,
+        10.0,
+        8.0,
+        6.0,
+        6.0,
+        10.0,
+        10.0,
+        10.0,
+        10.0,
+        8.0,
+        8.0,
+        6.0,
+        8.0,
+        6.0,
+        6.0,
+        12.0,
+        10.0,
+        8.0,
+        8.0,
+        8.0,
+        10.0,
+        12.0,
+        8.0,
+        12.0,
+        6.0,
+        6.0,
+        10.0,
+        8.0,
+        10.0,
+        8.0,
+        8.0,
+        12.0,
+        8.0,
+        10.0,
+        8.0,
+        8.0,
+        12.0,
+        8.0,
+        6.0
       ],
       "latency": [
-        15.355621699927724,
-        14.105438454531726,
-        14.561164000042481,
-        15.317265000097299,
-        14.122363571784392
+        15.421695500117494,
+        14.035213000170188,
+        14.14134133341981,
+        15.17224888892896,
+        14.4772369444076,
+        14.314882666642207,
+        14.45926983332255,
+        14.095018714475113,
+        15.50017711148636,
+        14.196315000137675,
+        13.796157166628594,
+        14.225720714291258,
+        14.368806222288791,
+        13.962829555465659,
+        15.241661777609908,
+        14.04749054563581,
+        13.996910999724475,
+        14.11229244452746,
+        15.494596222399396,
+        14.487669055395399,
+        14.557873388993256,
+        15.539005499886116,
+        14.392409444149557,
+        14.351730111229699,
+        15.446597444275135,
+        14.41772439993656,
+        14.442520111414423,
+        14.295093777844967,
+        14.182832000187773,
+        15.2812018891887,
+        14.383245000014236,
+        13.835129749850239,
+        14.079836363552285,
+        14.43130022218813,
+        15.19299100000353,
+        14.315732800059777,
+        14.37943262499175,
+        15.247371222358197,
+        14.235273444177842,
+        13.902764500016929,
+        14.400890599790728,
+        15.172819500003243,
+        14.212662000188304,
+        14.248175124976115,
+        15.256714333291812,
+        14.311395777945613,
+        14.072883999853564,
+        14.399278999917442,
+        14.442652624893526,
+        15.63231391658822,
+        14.23067674977574,
+        13.793332416753401,
+        14.0761969090487,
+        14.179890000377782,
+        13.931058894645263,
+        15.86959288882402,
+        14.181352250034251,
+        14.229523999852567,
+        14.252141174042862,
+        14.825029777663682,
+        15.407765222335001,
+        15.455190666721641,
+        14.294132777851901,
+        14.280665143035419,
+        14.432028666609162,
+        13.956226374830294,
+        14.167501699921559,
+        14.329460777743305,
+        14.194611909095494,
+        15.397203888925207,
+        14.395655190518093,
+        15.4337728886781,
+        14.427807850006502,
+        15.648354333582876,
+        14.510226111168675,
+        14.84556971990969,
+        15.645481300089157,
+        15.573724111163756,
+        13.867610125089413,
+        14.197719000094366,
+        14.018570583478626,
+        14.104337615348275,
+        14.606471222375857,
+        13.979040833267694,
+        14.538965499923506,
+        14.250700999885643,
+        14.107288777773242,
+        14.636390333180316,
+        14.44506861116679,
+        14.405165900097927,
+        14.922737857150855,
+        14.125268125098955,
+        14.473907142798582,
+        14.613700833352697,
+        14.29968287493466,
+        14.60327438892111,
+        14.46032012518117,
+        14.752132888841315,
+        14.587769666630065,
+        14.335520875192742
       ]
     },
     "matrix_memory": {
       "em": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -133,6 +988,101 @@
         0.0,
         25.0,
         0.0,
+        0.0,
+        8.695652173913043,
+        0.0,
+        0.0,
+        22.22222222222222,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.526315789473683,
+        0.0,
+        6.25,
+        25.0,
+        25.0,
+        0.0,
+        28.571428571428577,
+        6.25,
+        80.00000000000001,
+        0.0,
+        25.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        25.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        33.333333333333336,
+        0.0,
+        0.0,
+        0.0,
+        6.25,
+        0.0,
+        0.0,
+        0.0,
+        6.25,
+        28.571428571428577,
+        28.571428571428577,
+        10.526315789473683,
+        0.0,
+        0.0,
+        28.571428571428577,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        14.285714285714285,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        22.222222222222225,
+        80.00000000000001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0
       ],
       "slots": [
@@ -140,14 +1090,204 @@
         8.0,
         10.0,
         8.0,
-        8.0
+        8.0,
+        6.0,
+        6.0,
+        8.0,
+        8.0,
+        8.0,
+        6.0,
+        12.0,
+        10.0,
+        8.0,
+        10.0,
+        8.0,
+        12.0,
+        10.0,
+        10.0,
+        8.0,
+        6.0,
+        8.0,
+        8.0,
+        10.0,
+        10.0,
+        6.0,
+        12.0,
+        8.0,
+        6.0,
+        10.0,
+        10.0,
+        8.0,
+        8.0,
+        8.0,
+        12.0,
+        8.0,
+        8.0,
+        10.0,
+        10.0,
+        8.0,
+        10.0,
+        10.0,
+        10.0,
+        10.0,
+        12.0,
+        12.0,
+        8.0,
+        8.0,
+        8.0,
+        12.0,
+        10.0,
+        6.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        6.0,
+        8.0,
+        6.0,
+        8.0,
+        12.0,
+        10.0,
+        10.0,
+        8.0,
+        6.0,
+        6.0,
+        10.0,
+        10.0,
+        10.0,
+        10.0,
+        8.0,
+        8.0,
+        6.0,
+        8.0,
+        6.0,
+        6.0,
+        12.0,
+        10.0,
+        8.0,
+        8.0,
+        8.0,
+        10.0,
+        12.0,
+        8.0,
+        12.0,
+        6.0,
+        6.0,
+        10.0,
+        8.0,
+        10.0,
+        8.0,
+        8.0,
+        12.0,
+        8.0,
+        10.0,
+        8.0,
+        8.0,
+        12.0,
+        8.0,
+        6.0
       ],
       "latency": [
-        46.12288499993156,
-        22.71840899993549,
-        15.613626000231307,
-        33.97254399897065,
-        25.043915000424022
+        46.21961000157171,
+        23.232684001413872,
+        15.646594750251097,
+        34.94637500261888,
+        21.45207866609174,
+        15.672796923004519,
+        20.07893799964222,
+        25.16212800037465,
+        25.48397250029666,
+        25.973880998208188,
+        22.67516600113595,
+        25.2463840006385,
+        24.398102999839466,
+        23.628801998711424,
+        34.99604100215947,
+        22.67247999770916,
+        21.535726002184674,
+        23.7878890002321,
+        25.626199998441734,
+        15.857117250106967,
+        16.706856800010428,
+        47.4818549992051,
+        14.191811433314191,
+        15.456998999979987,
+        22.116856999673473,
+        34.64430799795082,
+        16.26470999932887,
+        14.139606366613103,
+        14.32187137515939,
+        25.651608499174472,
+        16.541845749998174,
+        21.057740999822272,
+        22.656179000478005,
+        34.16010300134076,
+        33.64597399922786,
+        33.84466399802477,
+        26.12029899682966,
+        34.48559800017392,
+        15.301971249755297,
+        25.147652999294223,
+        22.56387499801349,
+        34.45145300065633,
+        24.25571600178955,
+        22.865725000883685,
+        33.97855000002892,
+        13.911504999972143,
+        22.69422699828283,
+        25.64830399933271,
+        35.47900899866363,
+        57.72982700000284,
+        23.497939997469075,
+        20.936020999215543,
+        22.44761399924755,
+        18.0161339994811,
+        23.64233099797275,
+        31.022610499348957,
+        23.67027699801838,
+        14.175990800019159,
+        33.913741001015296,
+        30.76184800011106,
+        34.614750999026,
+        15.011709866666934,
+        16.37615500051955,
+        16.714608000863034,
+        16.551658300159033,
+        21.32451299985405,
+        23.716256000625435,
+        16.733355000421096,
+        25.95732599729672,
+        33.80687899698387,
+        35.27995500189718,
+        33.94644099898869,
+        15.40939119986433,
+        35.26071300075273,
+        33.29612800007453,
+        49.44063999937498,
+        48.7755729991477,
+        21.235053334142624,
+        21.071775001473725,
+        14.220616749904972,
+        21.191248000832275,
+        24.10939400215284,
+        24.091623003187124,
+        25.964680997276446,
+        23.579895998409484,
+        14.52533287465485,
+        14.323675500236277,
+        24.28412799781654,
+        33.71425599834765,
+        26.422127997648204,
+        14.339795466609456,
+        16.483297666127328,
+        22.352700001647463,
+        34.68068999791285,
+        24.71069600142073,
+        35.2051890004077,
+        21.756770998763386,
+        25.967498997488292,
+        35.07195199927082,
+        23.457813997083576
       ]
     }
   },
@@ -160,9 +1300,9 @@
         "jasa pembuatan website freelance"
       ],
       "no_memory": {
-        "prediction": "Untuk menjalankan usaha sampingan, ada beberapa hal yang perlu diperhatikan. Berikut adalah beberapa langkah-langkah yang dapat dilakukan untuk melakukan ini:",
+        "prediction": "Untuk menjalankan usaha sampingan, ada beberapa hal yang perlu diperhatikan. Berikut adalah langkah-langkahnya:",
         "em": 0.0,
-        "f1": 7.692307692307692
+        "f1": 10.526315789473683
       },
       "causal_memory": {
         "prediction": "Kamu menjalankan jasa pembuatan website freelance.",
@@ -183,9 +1323,9 @@
         "Product Manager"
       ],
       "no_memory": {
-        "prediction": "Pekerjaanmu adalah sebuah pekerjaan yang sangat penting dalam kehidupan sehari-hari, terutama bagi mereka yang bekerja di bidang kesehatan dan pendidikan. Namun, sebagai seorang profesional",
+        "prediction": "Pekerjaanku yang benar adalah pekerjaan yang baik dan bermanfaat bagi orang lain. Namun, sebagai seorang AI, saya tidak dapat memberikan jawaban yang tepat untuk pertanyaan ini",
         "em": 0.0,
-        "f1": 20.0
+        "f1": 18.75
       },
       "causal_memory": {
         "prediction": "Pekerjaanmu yang benar adalah QA Engineer.",
@@ -229,7 +1369,7 @@
         "Nasi Goreng spesial"
       ],
       "no_memory": {
-        "prediction": "Makanan kesukaanku yang kusebutkan tersebut adalah makanan yang lezat dan enak. Berikut ini beberapa contoh makanan favoritku yang bisa kamu nikmati:",
+        "prediction": "Makanan favoritku yang kusebutkan tersebut adalah makanan yang lezat dan lezat. Berikut ini beberapa contoh makanan kesukaanku yang bisa kamu nikmati:",
         "em": 0.0,
         "f1": 14.814814814814813
       },
@@ -240,6 +1380,78 @@
       },
       "matrix_memory": {
         "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000086",
+      "query": "Kamu tahu nggak apa hobi olahragaku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa memberikan informasi tentang jenis kegiatan olahragaku. Namun, saya dapat memberikan beberapa saran untuk membantu Anda dalam membuat sebuah game atau permainan yang menarik dan",
+        "em": 0.0,
+        "f1": 9.75609756097561
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+        "em": 100.0,
+        "f1": 85.71428571428571
+      },
+      "matrix_memory": {
+        "prediction": "Olahraga,",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000156",
+      "query": "Kamu tahu nggak apa nama adik kandungku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Nama adik tiriku adalah \"John\". Kata ini berasal dari bahasa Inggris yang berarti \"bermain\" atau \"melompat\". Oleh karena itu, kata",
+        "em": 0.0,
+        "f1": 12.121212121212123
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+        "em": 100.0,
+        "f1": 84.61538461538461
+      },
+      "matrix_memory": {
+        "prediction": "Senang adalah nama yang memberikan set dari nama yang diberikan.",
+        "em": 0.0,
+        "f1": 8.695652173913043
+      }
+    },
+    {
+      "id": "conv_000403",
+      "query": "Kamu tahu nggak apa hobi olahragaku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa memberikan informasi tentang jenis kegiatan olahraga yang saya sukai. Namun, saya dapat memberikan beberapa saran untuk membantu Anda dalam membuat sebuah game atau permainan yang",
+        "em": 0.0,
+        "f1": 14.285714285714285
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+        "em": 100.0,
+        "f1": 85.71428571428571
+      },
+      "matrix_memory": {
+        "prediction": "Olahraga,",
         "em": 0.0,
         "f1": 0.0
       }
@@ -260,6 +1472,2138 @@
         "prediction": "Kamu tinggal di kota Semarang.",
         "em": 0.0,
         "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000239",
+      "query": "Minuman yang kuminum sambil santai tadi apa ya?",
+      "ground_truth": "Minuman yang kamu nikmati tadi adalah Kopi Espresso.",
+      "entities": [
+        "Kopi Espresso"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang kuminum sambil santai itu adalah minuman yang sangat enak dan menyegarkan. Minuman ini memiliki rasa manis, asam, dan sedikit gula. Namun, untuk",
+        "em": 0.0,
+        "f1": 18.75
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 42.857142857142854
+      },
+      "matrix_memory": {
+        "prediction": "Kopi",
+        "em": 0.0,
+        "f1": 22.22222222222222
+      }
+    },
+    {
+      "id": "conv_000392",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Mochi.",
+      "entities": [
+        "Mochi"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\".",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Mochi.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000956",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Bogor?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bekasi, bukan di Bogor.",
+      "entities": [
+        "Bukan Bogor, tapi Bekasi"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak tahu apa yang harus saya lakukan untuk pergi ke Bogor. Namun, jika Anda ingin mengunjungi Bogor, ada beberapa hal yang perlu dipertimbangkan saat melakukan kunjungan",
+        "em": 0.0,
+        "f1": 5.128205128205128
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bandung.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000898",
+      "query": "Tadi di awal aku bilang tinggal di kota mana ya?",
+      "ground_truth": "Kamu tinggal di kota Bekasi.",
+      "entities": [
+        "Bekasi"
+      ],
+      "no_memory": {
+        "prediction": "Saya akan pergi ke kota yang terletak di tengah-tengah kota. Namun, saya tidak bisa memberikan jawaban yang tepat untuk pertanyaan ini karena saya hanya ingin mengunjungi",
+        "em": 0.0,
+        "f1": 12.903225806451612
+      },
+      "causal_memory": {
+        "prediction": "Kamu tinggal di kota Semarang.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000771",
+      "query": "Ngomong-ngomong di luar topik tadi, kamu masih ingat apa profesiku?",
+      "ground_truth": "Kamu bekerja sebagai UI/UX Designer.",
+      "entities": [
+        "UI/UX Designer"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanku adalah pekerjaan yang sangat penting dalam kehidupan sehari-hari. Namun, sebagai seorang profesional, saya tidak memiliki pengalaman atau pengetahuan tentang bidang ini karena saya",
+        "em": 0.0,
+        "f1": 6.896551724137931
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai QA Engineer.",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000471",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Mochi.",
+      "entities": [
+        "Mochi"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\".",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Mochi.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000402",
+      "query": "Minuman yang kuminum sambil santai tadi apa ya?",
+      "ground_truth": "Minuman yang kamu nikmati tadi adalah Kopi Susu Gula Aren.",
+      "entities": [
+        "Kopi Susu Gula Aren"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang kuminum sambil santai itu adalah minuman yang sangat enak dan menyegarkan. Berikut ini beberapa contoh minuman yang kuminum dengan kuminum sambil santai:",
+        "em": 0.0,
+        "f1": 17.647058823529413
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 50.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000917",
+      "query": "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi.",
+      "ground_truth": "Pekerjaanmu yang benar adalah Data Scientist.",
+      "entities": [
+        "Data Scientist"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanmu adalah sebuah tugas yang sangat penting untuk menjaga kesehatan dan kesejahteraan seseorang secara keseluruhan. Berikut ini adalah beberapa tips yang dapat membantu Anda dalam menjalankan tugasnya",
+        "em": 0.0,
+        "f1": 18.18181818181818
+      },
+      "causal_memory": {
+        "prediction": "Pekerjaanmu yang benar adalah QA Engineer.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000427",
+      "query": "Tadi di awal aku bilang tinggal di kota mana ya?",
+      "ground_truth": "Kamu tinggal di kota Denpasar.",
+      "entities": [
+        "Denpasar"
+      ],
+      "no_memory": {
+        "prediction": "Saya akan pergi ke kota yang terletak di dekat pantai. Namun, saya tidak dapat memberikan jawaban yang tepat untuk pertanyaan ini karena saya hanya ingin mengunjungi pantai saja",
+        "em": 0.0,
+        "f1": 12.121212121212121
+      },
+      "causal_memory": {
+        "prediction": "Kamu tinggal di kota Semarang.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000861",
+      "query": "Sebelum kita ngobrol tadi, aku bilang habis selesai melakukan kegiatan apa?",
+      "ground_truth": "Kamu tadi baru saja selesai bersepeda santai.",
+      "entities": [
+        "bersepeda santai"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, pertama-tama kita perlu memahami terlebih dahulu tentang tujuan dari kegiatan yang ingin dilakukan. Tujuan tersebut adalah untuk mendapatkan informasi yang diperlukan dan",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu tadi baru saja selesai belajar memasak.",
+        "em": 0.0,
+        "f1": 71.42857142857143
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000377",
+      "query": "Minuman yang suka kuminum saat istirahat tadi apa?",
+      "ground_truth": "Minuman favoritmu adalah Kopi Espresso.",
+      "entities": [
+        "Kopi Espresso"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang suka kuminum saat istirahat tersebut adalah minuman berkarbonasi. Minuman ini memiliki rasa manis dan sedikit asam, serta mengandung gula dan vitamin C.",
+        "em": 0.0,
+        "f1": 13.793103448275861
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 72.72727272727272
+      },
+      "matrix_memory": {
+        "prediction": "Emas",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000906",
+      "query": "Kamu tahu nggak apa nama adik kandungku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Nama Adik kandungku adalah \"Adikku\" yang berasal dari kata \"ayah\". Kata ini merujuk pada seseorang yang memiliki kemampuan untuk memahami dan mengelola emosi",
+        "em": 0.0,
+        "f1": 11.11111111111111
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+        "em": 100.0,
+        "f1": 84.61538461538461
+      },
+      "matrix_memory": {
+        "prediction": "Seneropi adalah Kopi Api.",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000570",
+      "query": "Kamu tahu nggak apa nama adik kandungku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Nama Adik kandungku adalah \"Adikku\".",
+        "em": 0.0,
+        "f1": 22.22222222222222
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+        "em": 100.0,
+        "f1": 84.61538461538461
+      },
+      "matrix_memory": {
+        "prediction": "Senang adalah nama yang memberikan Senang.",
+        "em": 0.0,
+        "f1": 10.526315789473683
+      }
+    },
+    {
+      "id": "conv_000415",
+      "query": "Usaha sampingan apa yang sedang kujalankan tadi?",
+      "ground_truth": "Kamu menjalankan studio foto mandiri.",
+      "entities": [
+        "studio foto mandiri"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjalankan usaha sampingan, ada beberapa hal yang perlu diperhatikan. Berikut adalah beberapa langkah-langkah untuk melakukan ini:",
+        "em": 0.0,
+        "f1": 9.09090909090909
+      },
+      "causal_memory": {
+        "prediction": "Kamu menjalankan jasa pembuatan website freelance.",
+        "em": 0.0,
+        "f1": 36.36363636363636
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000375",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Padang.",
+      "entities": [
+        "Padang"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di Indonesia dan memiliki",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Medan.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (Pupet tiket AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC",
+        "em": 0.0,
+        "f1": 6.25
+      }
+    },
+    {
+      "id": "conv_000057",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Denpasar.",
+      "entities": [
+        "Denpasar"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di Indonesia dan memiliki",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (",
+        "em": 0.0,
+        "f1": 25.0
+      }
+    },
+    {
+      "id": "conv_000513",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Banjarmasin.",
+      "entities": [
+        "Banjarmasin"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di daerah perkotaan atau",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (",
+        "em": 0.0,
+        "f1": 25.0
+      }
+    },
+    {
+      "id": "conv_000014",
+      "query": "Kamu tahu nggak apa golongan darahku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang golongan darahmu sebelumnya. Jika boleh tahu, apa golongan darahmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Golongan darahku adalah kelompok orang yang memiliki karakteristik dan sifat-sifat yang berbeda dalam hal darah, nutrisi, dan kesehatan. Mereka biasanya terdiri dari berbagai macam",
+        "em": 0.0,
+        "f1": 5.2631578947368425
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang golongan darahmu sebelumnya. Jika boleh tahu, apa golongan darahmu?",
+        "em": 100.0,
+        "f1": 92.85714285714286
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000498",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Medan.",
+      "entities": [
+        "Medan"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di Indonesia dan memiliki",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang",
+        "em": 0.0,
+        "f1": 28.571428571428577
+      }
+    },
+    {
+      "id": "conv_000429",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Padang.",
+      "entities": [
+        "Padang"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di Indonesia dan memiliki",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (Pupet tiket AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC",
+        "em": 0.0,
+        "f1": 6.25
+      }
+    },
+    {
+      "id": "conv_000121",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Bluey.",
+      "entities": [
+        "Bluey"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\".",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Luna.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Air.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      }
+    },
+    {
+      "id": "conv_000207",
+      "query": "Minuman yang suka kuminum saat istirahat tadi apa?",
+      "ground_truth": "Minuman favoritmu adalah Americano dingin.",
+      "entities": [
+        "Americano dingin"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang suka kuminum saat istirahat tersebut adalah minuman berkarbonasi. Minuman ini mengandung alkohol, gula, dan vitamin C. Selain itu, minuman ini",
+        "em": 0.0,
+        "f1": 14.814814814814813
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 54.54545454545454
+      },
+      "matrix_memory": {
+        "prediction": "Emas",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000889",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Pontianak.",
+      "entities": [
+        "Pontianak"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota tempat tinggal para penduduk dan",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (",
+        "em": 0.0,
+        "f1": 25.0
+      }
+    },
+    {
+      "id": "conv_000820",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Solo?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bandung, bukan di Solo.",
+      "entities": [
+        "Bukan Solo, tapi Bandung"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak tahu pasti kapan saya tinggal di Solo. Namun, jika Anda ingin mengetahui apakah ada informasi yang dapat membantu dalam menentukan waktu dan tempat tinggal seseorang,",
+        "em": 0.0,
+        "f1": 15.384615384615383
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bandung, bukan di Solo.",
+        "em": 0.0,
+        "f1": 83.33333333333334
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000083",
+      "query": "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi.",
+      "ground_truth": "Pekerjaanmu yang benar adalah Frontend Developer.",
+      "entities": [
+        "Frontend Developer"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanmu adalah sebuah pekerjaan yang sangat penting untuk menjaga kesehatan dan kesejahteraan seseorang. Berikut ini beberapa tips yang dapat membantu Anda dalam melakukan tugas tersebut:",
+        "em": 0.0,
+        "f1": 19.35483870967742
+      },
+      "causal_memory": {
+        "prediction": "Pekerjaanmu yang benar adalah QA Engineer.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000581",
+      "query": "Kamu tahu nggak apa hobi olahragaku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa memberikan informasi tentang hobi olahragaku. Namun, saya dapat memberikan beberapa saran untuk membantu Anda dalam membuat sebuah game yang menarik dan menyenangkan bagi para",
+        "em": 0.0,
+        "f1": 9.75609756097561
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+        "em": 100.0,
+        "f1": 85.71428571428571
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000154",
+      "query": "Makanan kesukaanku yang kusebutkan tadi apa ya?",
+      "ground_truth": "Makanan kesukaanmu adalah Soto Betawi.",
+      "entities": [
+        "Soto Betawi"
+      ],
+      "no_memory": {
+        "prediction": "Makanan favoritku yang kusebutkan tersebut adalah makanan yang lezat dan sehat. Berikut ini beberapa contoh makanan kesukaanku yang bisa kamu nikmati:",
+        "em": 0.0,
+        "f1": 15.384615384615385
+      },
+      "causal_memory": {
+        "prediction": "Makanan kesukaanmu adalah Gado-gado.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000166",
+      "query": "Kamu tahu nggak apa golongan darahku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang golongan darahmu sebelumnya. Jika boleh tahu, apa golongan darahmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Golongan darahku adalah kelompok orang yang memiliki sifat-sifat seperti darah, oksigen, dan zat besi. Mereka biasanya terdiri dari beberapa jenis sel darah putih (",
+        "em": 0.0,
+        "f1": 5.2631578947368425
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang golongan darahmu sebelumnya. Jika boleh tahu, apa golongan darahmu?",
+        "em": 100.0,
+        "f1": 92.85714285714286
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000401",
+      "query": "Sebelum kita ngobrol tadi, aku bilang habis selesai melakukan kegiatan apa?",
+      "ground_truth": "Kamu tadi baru saja selesai bersepeda santai.",
+      "entities": [
+        "bersepeda santai"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, pertama-tama kita perlu memahami terlebih dahulu konsep dasar dari sebuah proyek. Dalam proyek tersebut, terdapat beberapa hal yang harus diperhatikan agar",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu tadi baru saja selesai bersepeda.",
+        "em": 0.0,
+        "f1": 76.92307692307692
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000396",
+      "query": "Siapa nama hewan peliharaanku yang kuceritakan tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Simba.",
+      "entities": [
+        "Simba"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\".",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Simba.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000634",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Padang.",
+      "entities": [
+        "Padang"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota tempat tinggal bagi banyak orang",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (",
+        "em": 0.0,
+        "f1": 25.0
+      }
+    },
+    {
+      "id": "conv_000068",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Padang?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bekasi, bukan di Padang.",
+      "entities": [
+        "Bukan Padang, tapi Bekasi"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak tahu pasti kapan saya tinggal di Padang. Namun, jika Anda ingin mengetahui apakah ada informasi yang dapat membantu Anda dalam mencari informasi tentang tempat ini,",
+        "em": 0.0,
+        "f1": 15.384615384615383
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bandung, bukan di Solo.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000282",
+      "query": "Tadi aku bilang mau liburan ke mana akhir tahun ini?",
+      "ground_truth": "Kamu berencana liburan ke Kawah Ijen.",
+      "entities": [
+        "Kawah Ijen"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan tersebut, kita perlu mengetahui bahwa hari itu adalah hari libur yang sangat ditunggu-tunggu. Kita bisa mencari tahu apakah hari itu merupakan hari",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu berencana liburan.",
+        "em": 0.0,
+        "f1": 44.44444444444444
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000840",
+      "query": "Usaha sampingan apa yang sedang kujalankan tadi?",
+      "ground_truth": "Kamu menjalankan jasa pembuatan website freelance.",
+      "entities": [
+        "jasa pembuatan website freelance"
+      ],
+      "no_memory": {
+        "prediction": "Untuk membantu Anda dalam menyelesaikan masalah ini, ada beberapa langkah yang dapat diambil. Berikut adalah beberapa tips untuk membantu Anda dalam melakukan hal tersebut:",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu menjalankan jasa pembuatan website freelance.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000554",
+      "query": "Aku tadi bilang berasal dari kota mana?",
+      "ground_truth": "Kamu berasal dari kota Padang.",
+      "entities": [
+        "Padang"
+      ],
+      "no_memory": {
+        "prediction": "Kota yang dimaksud adalah kota yang terletak di wilayah pegunungan. Kota ini memiliki banyak tempat wisata, seperti taman nasional dan pantai. Namun, ada beberapa hal yang",
+        "em": 0.0,
+        "f1": 6.451612903225806
+      },
+      "causal_memory": {
+        "prediction": "Kamu berasal dari kota Semarang.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000759",
+      "query": "Sebelum kita ngobrol tadi, aku bilang habis selesai melakukan kegiatan apa?",
+      "ground_truth": "Kamu tadi baru saja selesai bermain futsal.",
+      "entities": [
+        "bermain futsal"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, pertama-tama kita perlu memahami terlebih dahulu konsep dasar dari sebuah proyek. Dalam hal ini, kita dapat menggunakan konsep \"pengerjaan",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu tadi baru saja selesai bersepeda.",
+        "em": 0.0,
+        "f1": 76.92307692307692
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000862",
+      "query": "Makanan kesukaanku yang kusebutkan tadi apa ya?",
+      "ground_truth": "Makanan kesukaanmu adalah Sate Ayam Madura.",
+      "entities": [
+        "Sate Ayam Madura"
+      ],
+      "no_memory": {
+        "prediction": "Makanan kesukaanku yang kusebutkan tersebut adalah makanan sehat. Berikut ini beberapa contoh makanan favoritku yang bisa kamu nikmati:",
+        "em": 0.0,
+        "f1": 16.666666666666664
+      },
+      "causal_memory": {
+        "prediction": "Makanan favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 33.33333333333333
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000253",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Solo.",
+      "entities": [
+        "Solo"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di daerah perkotaan dan",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang Semarang",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000269",
+      "query": "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi.",
+      "ground_truth": "Pekerjaanmu yang benar adalah UI/UX Designer.",
+      "entities": [
+        "UI/UX Designer"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanmu adalah pekerjaan yang sangat penting dalam kehidupan sehari-hari, terutama bagi mereka yang bekerja di industri manufaktur dan kesehatan. Namun, sebagai seorang profesional,",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Pekerjaanmu yang benar adalah QA Engineer.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000029",
+      "query": "Di kota mana aku tinggal tadi ya?",
+      "ground_truth": "Kamu tinggal di kota Balikpapan.",
+      "entities": [
+        "Balikpapan"
+      ],
+      "no_memory": {
+        "prediction": "Aku tinggal di sana.",
+        "em": 0.0,
+        "f1": 44.44444444444445
+      },
+      "causal_memory": {
+        "prediction": "Kamu tinggal di kota Semarang.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000804",
+      "query": "Tadi aku bilang mau liburan ke mana akhir tahun ini?",
+      "ground_truth": "Kamu berencana liburan ke Kepulauan Raja Ampat.",
+      "entities": [
+        "Kepulauan Raja Ampat"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan tersebut, kita perlu mengetahui bahwa hari itu adalah hari libur yang sangat penting. Namun, jika kita ingin mengunjungi tempat-tempat wisata seperti taman",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu berencana liburan ke Danau Toba.",
+        "em": 0.0,
+        "f1": 61.53846153846153
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000122",
+      "query": "Minuman yang kuminum sambil santai tadi apa ya?",
+      "ground_truth": "Minuman yang kamu nikmati tadi adalah Air Kelapa muda.",
+      "entities": [
+        "Air Kelapa muda"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang kuminum sambil santai itu adalah minuman yang sangat populer di kalangan anak-anak. Minuman ini memiliki rasa manis dan menyegarkan, serta memberikan sensasi yang",
+        "em": 0.0,
+        "f1": 17.64705882352941
+      },
+      "causal_memory": {
+        "prediction": "Minuman yang kamu nikmati tadi adalah Air Kelapa muda.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000223",
+      "query": "Tadi aku bilang mau liburan ke mana akhir tahun ini?",
+      "ground_truth": "Kamu berencana liburan ke Seoul Korea.",
+      "entities": [
+        "Seoul Korea"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan tersebut, kita perlu mengetahui bahwa hari itu adalah awal tahun baru. Jadi, jika kita ingin mengunjungi tempat-tempat yang berbeda di seluruh dunia",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu berencana liburan ke Danau Toba.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000543",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Denpasar?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Semarang, bukan di Denpasar.",
+      "entities": [
+        "Bukan Denpasar, tapi Semarang"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa lupa untuk membaca buku-buku yang saya baca. Namun, jika Anda ingin mengetahui lebih lanjut tentang Bali, ada beberapa hal yang perlu diperhatikan",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Yogyakarta.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000767",
+      "query": "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi.",
+      "ground_truth": "Pekerjaanmu yang benar adalah QA Engineer.",
+      "entities": [
+        "QA Engineer"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanmu adalah sebuah tugas yang sangat penting untuk menjaga kesehatan dan kesejahteraan seseorang secara keseluruhan. Berikut ini adalah beberapa tips yang dapat membantu Anda dalam menjalankan tugasnya",
+        "em": 0.0,
+        "f1": 18.18181818181818
+      },
+      "causal_memory": {
+        "prediction": "Pekerjaanmu yang benar adalah QA Engineer.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000596",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Milo.",
+      "entities": [
+        "Milo"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\".",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Milo.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "Nama",
+        "em": 0.0,
+        "f1": 33.333333333333336
+      }
+    },
+    {
+      "id": "conv_000162",
+      "query": "Kegiatan apa yang biasa kulakukan saat rehat tadi?",
+      "ground_truth": "Kamu biasa bermain gitar akustik saat rehat.",
+      "entities": [
+        "bermain gitar akustik"
+      ],
+      "no_memory": {
+        "prediction": "Aktivitas yang sering dilakukan ketika rehat adalah bermain game atau permainan. Bermain game dapat membantu meningkatkan kemampuan kognitif dan emosional seseorang, serta memberikan pengalaman belajar yang",
+        "em": 0.0,
+        "f1": 6.060606060606061
+      },
+      "causal_memory": {
+        "prediction": "Kamu biasa bermain gitar akustik, berjalan di atas drum, atau menyeduh teh hangat.",
+        "em": 100.0,
+        "f1": 40.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000881",
+      "query": "Minuman yang kuminum sambil santai tadi apa ya?",
+      "ground_truth": "Minuman yang kamu nikmati tadi adalah Teh Hijau Matcha.",
+      "entities": [
+        "Teh Hijau Matcha"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang kuminum sambil santai itu adalah minuman yang sangat populer di kalangan anak-anak. Minuman ini memiliki rasa manis dan menyegarkan, serta memberikan sensasi yang",
+        "em": 0.0,
+        "f1": 17.64705882352941
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 26.666666666666668
+      },
+      "matrix_memory": {
+        "prediction": "Emas",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000041",
+      "query": "Btw, kamu masih ingat apa profesiku sekarang?",
+      "ground_truth": "Kamu bekerja sebagai UI/UX Designer.",
+      "entities": [
+        "UI/UX Designer"
+      ],
+      "no_memory": {
+        "prediction": "Profesiku sekarang adalah seorang profesional yang bekerja di bidang kesehatan. Namun, karena pekerjaan tersebut tidak selalu berjalan dengan baik dan membutuhkan waktu yang lama untuk diselesaikan,",
+        "em": 0.0,
+        "f1": 6.451612903225806
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai Data Scientist.",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000622",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Pontianak.",
+      "entities": [
+        "Pontianak"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di Indonesia dan memiliki",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang (Pupet tiket AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC",
+        "em": 0.0,
+        "f1": 6.25
+      }
+    },
+    {
+      "id": "conv_000885",
+      "query": "Kamu tahu nggak apa warna mobil favoritku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu apa warna mobil favoritmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Warna mobil favoritku adalah biru. Kuning, kuning, dan merah. Merah merupakan warna yang paling umum digunakan dalam mobil. Biru biasanya berwarna putih atau abu",
+        "em": 0.0,
+        "f1": 10.256410256410255
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu, warna mobil favoritmu adalah R.",
+        "em": 100.0,
+        "f1": 64.51612903225806
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000387",
+      "query": "Ngomong-ngomong di luar topik tadi, kamu masih ingat apa profesiku?",
+      "ground_truth": "Kamu bekerja sebagai Mobile Developer.",
+      "entities": [
+        "Mobile Developer"
+      ],
+      "no_memory": {
+        "prediction": "Sebagai AI language model, saya tidak memiliki kemampuan untuk memberikan jawaban yang akurat dan terperinci. Namun, sebagai gantinya, saya dapat memberikan beberapa tips tentang",
+        "em": 0.0,
+        "f1": 6.896551724137931
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai QA Engineer.",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000305",
+      "query": "Minuman yang kuminum sambil santai tadi apa ya?",
+      "ground_truth": "Minuman yang kamu nikmati tadi adalah Jus Alpukat.",
+      "entities": [
+        "Jus Alpukat"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang kuminum sambil santai itu adalah minuman yang sangat enak dan menyegarkan. Minuman ini biasanya disajikan dengan bahan-bahan seperti gula, vanila, atau",
+        "em": 0.0,
+        "f1": 19.354838709677416
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 28.571428571428577
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000480",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Palembang.",
+      "entities": [
+        "Palembang"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di Indonesia dan memiliki",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang ( SemarangPupet tiket AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC AC",
+        "em": 0.0,
+        "f1": 6.25
+      }
+    },
+    {
+      "id": "conv_000075",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Bekasi.",
+      "entities": [
+        "Bekasi"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota tempat tinggal orang-orang",
+        "em": 0.0,
+        "f1": 22.222222222222218
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang",
+        "em": 0.0,
+        "f1": 28.571428571428577
+      }
+    },
+    {
+      "id": "conv_000760",
+      "query": "Aku tadi bilang berasal dari kota mana?",
+      "ground_truth": "Kamu berasal dari kota Palembang.",
+      "entities": [
+        "Palembang"
+      ],
+      "no_memory": {
+        "prediction": "Kota yang dimaksud adalah kota yang memiliki banyak fasilitas dan industri. Berikut ini adalah beberapa hal yang dapat dipertimbangkan untuk menjawab pertanyaan tersebut:",
+        "em": 0.0,
+        "f1": 7.142857142857142
+      },
+      "causal_memory": {
+        "prediction": "Kamu berasal dari kota Semarang.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang",
+        "em": 0.0,
+        "f1": 28.571428571428577
+      }
+    },
+    {
+      "id": "conv_000702",
+      "query": "Kamu tahu nggak apa nama adik kandungku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Nama adik tiriku adalah \"Alyson\". Kata ini berasal dari bahasa Inggris yang berarti \"bermain\" atau \"melompat\". Jadi, jika",
+        "em": 0.0,
+        "f1": 12.903225806451616
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+        "em": 100.0,
+        "f1": 84.61538461538461
+      },
+      "matrix_memory": {
+        "prediction": "Senang adalah nama yang memberikan Senang.",
+        "em": 0.0,
+        "f1": 10.526315789473683
+      }
+    },
+    {
+      "id": "conv_000832",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Bekasi?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Makassar, bukan di Bekasi.",
+      "entities": [
+        "Bukan Bekasi, tapi Makassar"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa memberikan jawaban yang tepat karena saya tidak memiliki informasi tentang tempat tinggalmu. Namun, jika Anda ingin mengetahui apakah ada informasi tambahan atau informasi lain",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bandung, bukan di Jakarta.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000904",
+      "query": "Sebelum kita ngobrol tadi, aku bilang habis selesai melakukan kegiatan apa?",
+      "ground_truth": "Kamu tadi baru saja selesai belajar memasak kue.",
+      "entities": [
+        "belajar memasak kue"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, pertama-tama kita perlu memahami terlebih dahulu konsep dasar dari sebuah proyek. Dalam hal ini, kita dapat melihat bahwa proyek tersebut adalah",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu tadi baru saja selesai belajar memasak kue.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000699",
+      "query": "Bisa ingatkan aku, kota domisili baruku yang baru kupindah ke mana?",
+      "ground_truth": "Kota domisili barumu adalah Jakarta.",
+      "entities": [
+        "Jakarta"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu memahami terlebih dahulu apa itu kota domisili baruku. Kota domisili baruku adalah kota kecil di daerah perkotaan atau",
+        "em": 0.0,
+        "f1": 20.689655172413794
+      },
+      "causal_memory": {
+        "prediction": "Kota domisili barumu adalah Bandung.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Kota Semarang",
+        "em": 0.0,
+        "f1": 28.571428571428577
+      }
+    },
+    {
+      "id": "conv_000425",
+      "query": "Game apa yang biasa kumainkan bareng temen-temen?",
+      "ground_truth": "Game yang biasa kamu mainkan adalah Mobile Legends.",
+      "entities": [
+        "Mobile Legends"
+      ],
+      "no_memory": {
+        "prediction": "Untuk memainkan game ini, kita perlu memahami terlebih dahulu bagaimana permainan tersebut dimainkan. Berikut adalah beberapa tips untuk dapat membantu dalam bermain game ini:",
+        "em": 0.0,
+        "f1": 12.5
+      },
+      "causal_memory": {
+        "prediction": "Game yang biasa kamu mainkan adalah The Witcher.",
+        "em": 0.0,
+        "f1": 75.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000091",
+      "query": "Makanan kesukaanku yang kusebutkan tadi apa ya?",
+      "ground_truth": "Makanan kesukaanmu adalah Rendang Sapi.",
+      "entities": [
+        "Rendang Sapi"
+      ],
+      "no_memory": {
+        "prediction": "Makanan kesukaanku yang kusebutkan tersebut adalah makanan yang lezat dan enak. Berikut ini beberapa contoh makanan favoritku yang bisa kamu nikmati:",
+        "em": 0.0,
+        "f1": 15.384615384615385
+      },
+      "causal_memory": {
+        "prediction": "Makanan kesukaanmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 54.54545454545454
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000612",
+      "query": "Kamu tahu nggak apa warna mobil favoritku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu apa warna mobil favoritmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu mengetahui warna mobil favoritku. Warna mobil favoritku adalah merah dan biru. Merah berarti bahwa kamu memiliki mobil yang bagus",
+        "em": 0.0,
+        "f1": 15.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu apa warna mobil favoritmu?",
+        "em": 100.0,
+        "f1": 86.66666666666667
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000165",
+      "query": "Minuman yang suka kuminum saat istirahat tadi apa?",
+      "ground_truth": "Minuman favoritmu adalah Air Kelapa muda.",
+      "entities": [
+        "Air Kelapa muda"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang suka kuminum saat istirahat tersebut adalah minuman berkarbonasi. Minuman ini mengandung alkohol, gula, dan vitamin C. Selain itu, minuman ini",
+        "em": 0.0,
+        "f1": 14.285714285714288
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 50.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000667",
+      "query": "Kamu tahu nggak apa golongan darahku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang golongan darahmu sebelumnya. Jika boleh tahu, apa golongan darahmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Golongan darahku adalah kelompok orang yang memiliki karakteristik dan sifat yang berbeda-beda. Mereka biasanya terdiri dari beberapa jenis, seperti darah putih, darah merah,",
+        "em": 0.0,
+        "f1": 5.405405405405405
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang golongan darahmu sebelumnya. Jika boleh tahu, apa golongan darahmu?",
+        "em": 100.0,
+        "f1": 92.85714285714286
+      },
+      "matrix_memory": {
+        "prediction": "(A, C, R, M.",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000023",
+      "query": "Minuman yang kuminum sambil santai tadi apa ya?",
+      "ground_truth": "Minuman yang kamu nikmati tadi adalah Americano dingin.",
+      "entities": [
+        "Americano dingin"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang kuminum sambil santai itu adalah minuman yang sangat enak. Minuman ini memiliki rasa manis dan menyegarkan, serta dapat memberikan sensasi yang menyenangkan bagi orang lain",
+        "em": 0.0,
+        "f1": 17.142857142857142
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 28.571428571428577
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000700",
+      "query": "Kamu tahu nggak apa nama adik kandungku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Nama Adik kandungku adalah \"Adikku\".",
+        "em": 0.0,
+        "f1": 22.22222222222222
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+        "em": 100.0,
+        "f1": 84.61538461538461
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000072",
+      "query": "Kamu tahu nggak apa warna mobil favoritku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu apa warna mobil favoritmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Warna mobil favoritku adalah biru. Namun, ada beberapa hal yang perlu diperhatikan saat membuat desain mobil tersebut agar terlihat menarik dan mudah diingat oleh orang lain.",
+        "em": 0.0,
+        "f1": 9.75609756097561
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu, warna mobil favoritmu adalah warna kota Semarang.",
+        "em": 100.0,
+        "f1": 60.606060606060595
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000786",
+      "query": "Usaha sampingan apa yang sedang kujalankan tadi?",
+      "ground_truth": "Kamu menjalankan jual makanan beku (frozen food).",
+      "entities": [
+        "jual makanan beku (frozen food)"
+      ],
+      "no_memory": {
+        "prediction": "Untuk membantu Anda dalam menjalankan usaha sampingan, ada beberapa hal yang perlu diperhatikan. Berikut adalah beberapa langkah-langkah yang dapat dilakukan untuk melakukan ini:",
+        "em": 0.0,
+        "f1": 6.666666666666667
+      },
+      "causal_memory": {
+        "prediction": "Kamu menjalankan jasa pembuatan website freelance.",
+        "em": 0.0,
+        "f1": 30.769230769230766
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000135",
+      "query": "Minuman yang kuminum sambil santai tadi apa ya?",
+      "ground_truth": "Minuman yang kamu nikmati tadi adalah Americano dingin.",
+      "entities": [
+        "Americano dingin"
+      ],
+      "no_memory": {
+        "prediction": "Minuman yang kuminum sambil santai itu adalah minuman yang sangat populer di kalangan anak-anak. Minuman ini memiliki rasa manis dan menyegarkan, serta dapat memberikan sensasi",
+        "em": 0.0,
+        "f1": 18.181818181818183
+      },
+      "causal_memory": {
+        "prediction": "Minuman favoritmu adalah Kopi Susu Gula.",
+        "em": 0.0,
+        "f1": 28.571428571428577
+      },
+      "matrix_memory": {
+        "prediction": "Emas,",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000229",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Jakarta?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Manado, bukan di Jakarta.",
+      "entities": [
+        "Bukan Jakarta, tapi Manado"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa memberikan jawaban yang tepat karena saya tidak memiliki informasi tentang tempat tinggalku. Namun, jika Anda ingin mengetahui tempat tinggalmu sendiri, berikut adalah",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Semarang, bukan di Solo.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000550",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Luna.",
+      "entities": [
+        "Luna"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\".",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Luna.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "Nama dari sepatu mekanik, memberikan cukup untuk memberi petir.",
+        "em": 0.0,
+        "f1": 14.285714285714285
+      }
+    },
+    {
+      "id": "conv_000625",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Makassar?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Medan, bukan di Makassar.",
+      "entities": [
+        "Bukan Makassar, tapi Medan"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak tahu apa yang harus saya lakukan untuk pergi ke Makassar. Namun, jika Anda ingin mengunjungi Makassar, ada beberapa hal yang perlu dipertimbangkan saat melakukan kunjungan",
+        "em": 0.0,
+        "f1": 5.128205128205128
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Bandung.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000098",
+      "query": "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi.",
+      "ground_truth": "Pekerjaanmu yang benar adalah UI/UX Designer.",
+      "entities": [
+        "UI/UX Designer"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanku adalah sebuah pekerjaan yang sangat penting dalam kehidupan sehari-hari, terutama bagi mereka yang bekerja di industri manufaktur dan logistik. Namun, sebagai seorang profesional",
+        "em": 0.0,
+        "f1": 13.333333333333334
+      },
+      "causal_memory": {
+        "prediction": "Pekerjaanmu yang benar adalah UI/UX Designer.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000598",
+      "query": "Ngomong-ngomong di luar topik tadi, kamu masih ingat apa profesiku?",
+      "ground_truth": "Kamu bekerja sebagai Product Manager.",
+      "entities": [
+        "Product Manager"
+      ],
+      "no_memory": {
+        "prediction": "Sebagai AI language model, saya tidak memiliki kemampuan untuk memberikan jawaban yang akurat dan terperinci. Namun, sebagai gantinya, saya dapat memberikan beberapa tips tentang",
+        "em": 0.0,
+        "f1": 6.896551724137931
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai QA Engineer.",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000924",
+      "query": "Tadi kamu ingat kan kalau aku tinggal di Pontianak?",
+      "ground_truth": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Manado, bukan di Pontianak.",
+      "entities": [
+        "Bukan Pontianak, tapi Manado"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak tahu apa yang dimaksud dengan \"keamanan\" atau \"kemiskinan\". Namun, saya dapat memberikan beberapa saran untuk membantu Anda dalam menjaga keamanan dan",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Bukan, kamu tadi menyebutkan bahwa kamu tinggal di Semarang.",
+        "em": 0.0,
+        "f1": 66.66666666666666
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000407",
+      "query": "Ngomong-ngomong di luar topik tadi, kamu masih ingat apa profesiku?",
+      "ground_truth": "Kamu bekerja sebagai Cloud Architect.",
+      "entities": [
+        "Cloud Architect"
+      ],
+      "no_memory": {
+        "prediction": "Sebagai AI language model, saya tidak memiliki kemampuan untuk memberikan jawaban yang akurat dan terperinci. Namun, sebagai gantinya, saya dapat memberikan beberapa tips atau",
+        "em": 0.0,
+        "f1": 6.896551724137931
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai Data Scientist.",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000364",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Bluey.",
+      "entities": [
+        "Bluey"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\". Kucing merupakan hewan peliharaan yang sering bermain di meja kerja. Kucing biasanya memiliki bulu berwarna merah atau biru, serta warna",
+        "em": 0.0,
+        "f1": 20.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Simba.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "Nama, dari adalah (P.",
+        "em": 0.0,
+        "f1": 22.222222222222225
+      }
+    },
+    {
+      "id": "conv_000470",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Chirpy.",
+      "entities": [
+        "Chirpy"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\". Kucing merupakan hewan peliharaan yang populer dan sering digunakan untuk bermain di meja kerja. Namun, ada beberapa hal yang perlu",
+        "em": 0.0,
+        "f1": 20.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Chirpy.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Air.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      }
+    },
+    {
+      "id": "conv_000467",
+      "query": "Ngomong-ngomong di luar topik tadi, kamu masih ingat apa profesiku?",
+      "ground_truth": "Kamu bekerja sebagai QA Engineer.",
+      "entities": [
+        "QA Engineer"
+      ],
+      "no_memory": {
+        "prediction": "Sebagai AI bahasa alami, saya tidak memiliki kemampuan untuk memberikan jawaban yang akurat dan terperinci. Namun, sebagai gantinya, saya dapat memberikan beberapa tips tentang bagaimana",
+        "em": 0.0,
+        "f1": 6.666666666666667
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai QA Engineer.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000450",
+      "query": "Kamu tahu nggak apa hobi olahragaku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa menjawab pertanyaan ini karena saya tidak memiliki informasi yang cukup untuk memberikan jawaban. Namun, saya dapat membantu Anda dengan beberapa saran tentang cara membuat sebuah",
+        "em": 0.0,
+        "f1": 9.523809523809524
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+        "em": 100.0,
+        "f1": 85.71428571428571
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000848",
+      "query": "Sebelum kita ngobrol tadi, aku bilang habis selesai melakukan kegiatan apa?",
+      "ground_truth": "Kamu tadi baru saja selesai membaca novel fiksi.",
+      "entities": [
+        "membaca novel fiksi"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, pertama-tama kita perlu memahami terlebih dahulu arti dari kata \"happy\" dan \"pick\". Dalam kalimat tersebut, terdapat",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu tadi baru saja selesai bermain game RPG.",
+        "em": 0.0,
+        "f1": 62.5
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000957",
+      "query": "Kamu tahu nggak apa warna mobil favoritku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu apa warna mobil favoritmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, kita perlu mengetahui warna mobil favoritku. Warna mobil favoritku adalah merah dan biru. Merah berarti bahwa kamu memiliki mobil yang bagus",
+        "em": 0.0,
+        "f1": 15.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang warna mobil favoritmu sebelumnya. Boleh tahu apa warna mobil favoritmu?",
+        "em": 100.0,
+        "f1": 86.66666666666667
+      },
+      "matrix_memory": {
+        "prediction": "Emas, tiket AC, sepatu dari tiket AC, sepatu dari tiket AC, sepatu dari tiket AC, sepatu dari tiket AC, sepatu dari tiket AC,",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000236",
+      "query": "Siapa nama hewan peliharaanku yang suka main di meja kerja tadi?",
+      "ground_truth": "Nama hewan peliharaanmu adalah Luna.",
+      "entities": [
+        "Luna"
+      ],
+      "no_memory": {
+        "prediction": "Nama hewan peliharaanku adalah \"kucing\".",
+        "em": 0.0,
+        "f1": 60.0
+      },
+      "causal_memory": {
+        "prediction": "Nama hewan peliharaanmu adalah Luna.",
+        "em": 100.0,
+        "f1": 100.0
+      },
+      "matrix_memory": {
+        "prediction": "Nama,",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000609",
+      "query": "Aku tadi bilang berasal dari kota mana?",
+      "ground_truth": "Kamu berasal dari kota Makassar.",
+      "entities": [
+        "Makassar"
+      ],
+      "no_memory": {
+        "prediction": "Kota yang dimaksud adalah kota yang terletak di daerah pegunungan. Kota ini memiliki banyak tempat wisata, seperti pantai, taman nasional, dan hutan hujan tropis. Namun",
+        "em": 0.0,
+        "f1": 6.666666666666667
+      },
+      "causal_memory": {
+        "prediction": "Kamu berasal dari kota Semarang.",
+        "em": 0.0,
+        "f1": 80.00000000000001
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000812",
+      "query": "Kamu tahu nggak apa hobi olahragaku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Saya tidak bisa memberikan informasi tentang jenis kegiatan olahragaku. Namun, saya dapat memberikan beberapa saran untuk membantu Anda dalam membuat sebuah game atau permainan yang menarik dan",
+        "em": 0.0,
+        "f1": 9.75609756097561
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang olahraga favoritmu sebelumnya. Olahraga apa yang sering kamu lakukan?",
+        "em": 100.0,
+        "f1": 85.71428571428571
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000732",
+      "query": "Tadi pekerjaanku yang benar apa ya? Jangan sampai keliru lagi.",
+      "ground_truth": "Pekerjaanmu yang benar adalah Cloud Architect.",
+      "entities": [
+        "Cloud Architect"
+      ],
+      "no_memory": {
+        "prediction": "Pekerjaanmu adalah sebuah pekerjaan yang sangat penting dalam kehidupan sehari-hari, terutama bagi mereka yang bekerja di bidang teknologi informasi dan komunikasi. Berikut ini adalah beberapa",
+        "em": 0.0,
+        "f1": 19.35483870967742
+      },
+      "causal_memory": {
+        "prediction": "Pekerjaanmu adalah model bahasa mesin yang terinspirasi oleh teknologi machine learning.",
+        "em": 0.0,
+        "f1": 35.29411764705882
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000352",
+      "query": "Kamu tahu nggak apa nama adik kandungku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Nama adik tiriku adalah \"John\". Kata ini berasal dari bahasa Inggris yang berarti \"bermain\" atau \"melompat\". Namun, ada beberapa kata",
+        "em": 0.0,
+        "f1": 12.121212121212123
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+        "em": 100.0,
+        "f1": 84.61538461538461
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000058",
+      "query": "Sebelum kita ngobrol tadi, aku bilang habis selesai melakukan kegiatan apa?",
+      "ground_truth": "Kamu tadi baru saja selesai bermain game RPG.",
+      "entities": [
+        "bermain game RPG"
+      ],
+      "no_memory": {
+        "prediction": "Untuk menjawab pertanyaan ini, pertama-tama kita perlu memahami terlebih dahulu konsep dasar dari sebuah proyek. Dalam proyek tersebut, terdapat beberapa hal yang harus diperhatikan seperti",
+        "em": 0.0,
+        "f1": 0.0
+      },
+      "causal_memory": {
+        "prediction": "Kamu tadi baru saja selesai bersepeda.",
+        "em": 0.0,
+        "f1": 71.42857142857143
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000844",
+      "query": "Ngomong-ngomong di luar topik tadi, kamu masih ingat apa profesiku?",
+      "ground_truth": "Kamu bekerja sebagai Machine Learning Engineer.",
+      "entities": [
+        "Machine Learning Engineer"
+      ],
+      "no_memory": {
+        "prediction": "Sebagai AI language model, saya tidak memiliki kemampuan untuk memberikan jawaban yang akurat dan terperinci. Namun, sebagai gantinya, saya dapat memberikan beberapa tips tentang",
+        "em": 0.0,
+        "f1": 6.666666666666667
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai QA Engineer.",
+        "em": 0.0,
+        "f1": 72.72727272727272
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000698",
+      "query": "Kamu tahu nggak apa nama adik kandungku?",
+      "ground_truth": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+      "entities": [
+        "belum pernah",
+        "belum"
+      ],
+      "no_memory": {
+        "prediction": "Nama Adik kandungku adalah \"Ayah\". Ayahku adalah seorang pria yang memiliki gelar sarjana di bidang ilmu komputer. Ayahnya bernama John Smith, seorang insinyur perangkat",
+        "em": 0.0,
+        "f1": 10.81081081081081
+      },
+      "causal_memory": {
+        "prediction": "Kamu belum pernah menceritakan tentang nama adik kandungmu sebelumnya. Siapa nama adik kandungmu?",
+        "em": 100.0,
+        "f1": 84.61538461538461
+      },
+      "matrix_memory": {
+        "prediction": "",
+        "em": 0.0,
+        "f1": 0.0
+      }
+    },
+    {
+      "id": "conv_000002",
+      "query": "Btw, kamu masih ingat apa profesiku sekarang?",
+      "ground_truth": "Kamu bekerja sebagai Cloud Architect.",
+      "entities": [
+        "Cloud Architect"
+      ],
+      "no_memory": {
+        "prediction": "Profesi saya saat ini adalah sebagai seorang analis data. Saya memiliki banyak pekerjaan yang berkaitan dengan analisis data dan analisis data. Berikut beberapa contoh profesi saya di bidang",
+        "em": 0.0,
+        "f1": 6.0606060606060606
+      },
+      "causal_memory": {
+        "prediction": "Kamu bekerja sebagai Data Scientist.",
+        "em": 0.0,
+        "f1": 60.0
       },
       "matrix_memory": {
         "prediction": "",

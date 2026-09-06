@@ -113,16 +113,20 @@ def load_benchmark_cases(test_file: str, max_cases: int = 20):
                 target_entity = recall_meta.get("ground_truth", "")
                 target_answer = recall_meta.get("answer", target_entity)
 
-                # Skip unknown/abstention cases for factual recall evaluation
-                if target_entity == "UNKNOWN" or not question:
+                if not question:
                     continue
+
+                if target_entity == "UNKNOWN":
+                    entities = ["belum pernah", "belum"]
+                else:
+                    entities = [target_entity] if isinstance(target_entity, str) else list(target_entity)
 
                 cases.append({
                     "id": item.get("id", f"case_{len(cases)+1}"),
                     "topic": item.get("topic", "general"),
                     "history_turns": history_turns,
                     "query": question,
-                    "entities": [target_entity] if isinstance(target_entity, str) else list(target_entity),
+                    "entities": entities,
                     "ground_truth": target_answer,
                 })
                 if max_cases > 0 and len(cases) >= max_cases:

@@ -73,11 +73,11 @@ class GPT2MatrixMemoryModel(nn.Module):
         nn.init.eye_(self.query_encoder.weight)
         self.query_encoder.weight.requires_grad = True
 
-        # 4. Trainable Fusion Layer: z = W_f [h ; m] + b_f
+        # 4. Trainable Cross-GeLU Fusion Layer (Option 3): Delta = GeLU(W_f [h ; m] + b_f), z = h + Delta
         self.fusion_proj = nn.Linear(embed_dim * 2, embed_dim, bias=True)
+        self.fusion_act = nn.GELU()
         with torch.no_grad():
-            self.fusion_proj.weight[:, :embed_dim].copy_(torch.eye(embed_dim))
-            nn.init.normal_(self.fusion_proj.weight[:, embed_dim:], mean=0.0, std=0.02)
+            nn.init.normal_(self.fusion_proj.weight, mean=0.0, std=0.01)
             self.fusion_proj.bias.zero_()
         self.fusion_proj.weight.requires_grad = True
         self.fusion_proj.bias.requires_grad = True
@@ -175,7 +175,8 @@ class GPT2MatrixMemoryModel(nn.Module):
                 m, s_activations = self.matrix_bank.read(q)  # (B, T, D), (B, T, 128)
 
             fused_input = torch.cat([hidden, m], dim=-1)  # (B, T, 2D)
-            z = self.fusion_proj(fused_input)             # (B, T, D)
+            delta = self.fusion_act(self.fusion_proj(fused_input))  # (B, T, D)
+            z = hidden + delta
         else:
             z = hidden
 
@@ -257,7 +258,8 @@ class GPT2MatrixMemoryModel(nn.Module):
             m_turn, _ = self.matrix_bank.read(q)
 
             fused_prompt = torch.cat([h_prompt, m_turn], dim=-1)
-            z_prompt = self.fusion_proj(fused_prompt)
+            delta_prompt = self.fusion_act(self.fusion_proj(fused_prompt))
+            z_prompt = h_prompt + delta_prompt
             next_token_logits = self.gpt2.lm_head(z_prompt)
         else:
             next_token_logits = self.gpt2.lm_head(h_prompt)
@@ -315,7 +317,8 @@ class GPT2MatrixMemoryModel(nn.Module):
             if use_memory:
                 # Fused with turn-level memory representation m_turn
                 fused_t = torch.cat([h_t, m_turn], dim=-1)
-                z_t = self.fusion_proj(fused_t)
+                delta_t = self.fusion_act(self.fusion_proj(fused_t))
+                z_t = h_t + delta_t
                 next_token_logits = self.gpt2.lm_head(z_t)
             else:
                 next_token_logits = self.gpt2.lm_head(h_t)

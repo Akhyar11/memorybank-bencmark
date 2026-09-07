@@ -7,13 +7,17 @@ Enhanced with:
   3. Dynamic Out-of-Distribution (OOD) Entity Synthesizer (~15% novel compound concepts).
   4. Diverse Question Formats (10+ query styles per fact) and Flexible Assistant Answers.
   5. Dynamic Fact Latency (Facts placed at varying turn positions with 2 to 8 distractor intervals).
-  6. Real-World Indonesian Dialogue Distractors (ShareGPT & Evol-Instruct integration).
-  7. Universal Seeder mechanism for 100% reproducible generation.
+  6. Real-World Indonesian Dialogue Distractors (ShareGPT, Evol-Instruct & ChatGPT).
+  7. Native ChatGPT Export Parser & Data Cleaner integrated directly.
+  8. Universal Seeder mechanism for 100% reproducible generation.
 """
 
 import os
 import sys
+import re
 import json
+import glob
+import zipfile
 import random
 import argparse
 from typing import List, Dict, Any, Tuple, Optional
@@ -425,6 +429,13 @@ DEFAULT_EVOL_PATHS = [
     "evol-instruct-indonesian.json",
 ]
 
+DEFAULT_CHATGPT_ZIP_CANDIDATES = [
+    "/home/akhyar/Unduhan/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d.zip",
+    "/kaggle/input/chatgpt-export/chatgpt_export.zip",
+    "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/chatgpt_export.zip",
+    "/kaggle/input/memorybank-benchmark/chatgpt_export.zip",
+]
+
 
 def resolve_dataset_path(provided_path: Optional[str], candidate_paths: List[str]) -> Optional[str]:
     """Resolves dataset path prioritizing provided path, candidate paths, and fallbacks."""
@@ -436,8 +447,186 @@ def resolve_dataset_path(provided_path: Optional[str], candidate_paths: List[str
     return provided_path if provided_path else candidate_paths[0]
 
 
+def find_latest_chatgpt_zip(provided_path: Optional[str] = None) -> Optional[str]:
+    """Auto-detects the latest ChatGPT export ZIP from candidate paths or download folders."""
+    if provided_path and os.path.exists(provided_path):
+        return provided_path
+    for cand in DEFAULT_CHATGPT_ZIP_CANDIDATES:
+        if os.path.exists(cand):
+            return cand
+
+    search_dirs = [
+        os.path.expanduser("~/Unduhan"),
+        os.path.expanduser("~/Downloads"),
+        os.getcwd(),
+        "/kaggle/input",
+    ]
+    for sdir in search_dirs:
+        if os.path.isdir(sdir):
+            zips = glob.glob(os.path.join(sdir, "*.zip"))
+            zips.sort(key=os.path.getmtime, reverse=True)
+            for z in zips:
+                try:
+                    with zipfile.ZipFile(z, "r") as test_z:
+                        names = test_z.namelist()
+                        if any("conversations-" in n or n == "conversations.json" for n in names):
+                            return z
+                except Exception:
+                    continue
+    return None
+
+
+def clean_text_content(raw_text: str) -> str:
+    """Membersihkan teks dari sitasi OpenAI, spasi berlebih, dan karakter non-standar."""
+    text = re.sub(r"【\d+(?::\d+)?†source】", "", raw_text)
+    text = re.sub(r"\r\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+KNOWN_SYSTEM_ERROR_PATTERNS = [
+    r"^An error occurred",
+    r"^I apologize, but I encountered an error",
+    r"^The previous model response was interrupted",
+    r"^This content may violate our content policy",
+    r"^Rate limit reached",
+]
+
+
+def is_system_error_response(text: str) -> bool:
+    """Mendeteksi apakah pesan asisten merupakan pesan error sistem ChatGPT."""
+    for pattern in KNOWN_SYSTEM_ERROR_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
+
+
+def extract_single_chatgpt_conversation(
+    conv_data: Dict[str, Any],
+    min_turns: int = 4,
+    max_chars_per_turn: int = 3000,
+    min_turn_chars: int = 4,
+) -> Optional[Dict[str, Any]]:
+    """Mengekstrak dan menormalisasi satu sesi percakapan dari struktur mapping ChatGPT."""
+    mapping = conv_data.get("mapping", {})
+    current_node = conv_data.get("current_node")
+    if not mapping or not current_node:
+        return None
+
+    curr = current_node
+    raw_nodes = []
+    while curr:
+        node = mapping.get(curr)
+        if not node:
+            break
+        msg = node.get("message")
+        if msg:
+            raw_nodes.append(msg)
+        curr = node.get("parent")
+    raw_nodes.reverse()
+
+    extracted_turns: List[Dict[str, str]] = []
+    for msg in raw_nodes:
+        author = msg.get("author", {})
+        role = author.get("role")
+        if role not in ("user", "assistant"):
+            continue
+
+        content = msg.get("content", {})
+        ctype = content.get("content_type", "")
+        if ctype in ("thoughts", "reasoning_recap"):
+            continue
+
+        parts = content.get("parts", [])
+        text_chunks = []
+        for p in parts:
+            if isinstance(p, str):
+                text_chunks.append(p)
+            elif isinstance(p, dict) and p.get("content_type") == "text":
+                text_chunks.append(p.get("text", ""))
+
+        clean_text = clean_text_content("".join(text_chunks))
+        if not clean_text or len(clean_text) < min_turn_chars:
+            continue
+
+        if role == "assistant" and is_system_error_response(clean_text):
+            return None
+
+        if len(clean_text) > max_chars_per_turn:
+            clean_text = clean_text[:max_chars_per_turn] + "\n... [potongan teks panjang]"
+
+        extracted_turns.append({"role": role, "content": clean_text})
+
+    if not extracted_turns:
+        return None
+
+    normalized_turns: List[Dict[str, str]] = []
+    for t in extracted_turns:
+        if not normalized_turns:
+            if t["role"] == "user":
+                normalized_turns.append(t)
+        else:
+            if t["role"] == normalized_turns[-1]["role"]:
+                normalized_turns[-1]["content"] += "\n\n" + t["content"]
+            else:
+                normalized_turns.append(t)
+
+    if len(normalized_turns) % 2 != 0:
+        normalized_turns = normalized_turns[:-1]
+
+    if len(normalized_turns) < min_turns:
+        return None
+
+    return {
+        "id": conv_data.get("id"),
+        "title": conv_data.get("title", "Obrolan Tanpa Judul"),
+        "topic": "chatgpt_real_consultation",
+        "num_turns": len(normalized_turns),
+        "turns": normalized_turns,
+        "facts": [],
+        "is_ood": False,
+        "source": "chatgpt_export",
+    }
+
+
+def load_clean_chatgpt_conversations(
+    zip_path: str,
+    min_turns: int = 4,
+    max_chars_per_turn: int = 3000,
+) -> List[Dict[str, Any]]:
+    """Mengekstrak dan membersihkan seluruh percakapan multi-turn dari ZIP ekspor ChatGPT."""
+    if not os.path.exists(zip_path):
+        return []
+
+    clean_convs = []
+    try:
+        with zipfile.ZipFile(zip_path, "r") as z:
+            conv_files = [
+                f for f in z.namelist()
+                if (f.startswith("conversations-") and f.endswith(".json")) or f == "conversations.json"
+            ]
+            conv_files.sort()
+            for fname in conv_files:
+                try:
+                    with z.open(fname) as f:
+                        data = json.load(f)
+                        for conv_raw in data:
+                            parsed = extract_single_chatgpt_conversation(
+                                conv_raw,
+                                min_turns=min_turns,
+                                max_chars_per_turn=max_chars_per_turn
+                            )
+                            if parsed:
+                                clean_convs.append(parsed)
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"  ⚠️ Gagal membaca arsip ChatGPT ZIP ({zip_path}): {e}")
+    return clean_convs
+
+
 class ExternalDistractorPool:
-    """Manages real-world Indonesian dialogue pairs from ShareGPT/Evol-Instruct and fallbacks."""
+    """Manages real-world Indonesian dialogue pairs from ShareGPT/Evol-Instruct/ChatGPT and fallbacks."""
     def __init__(
         self,
         evol_path: Optional[str] = None,
@@ -449,7 +638,6 @@ class ExternalDistractorPool:
         self.fallback_pairs: List[Tuple[str, str]] = list(FALLBACK_DISTRACTORS)
         self.evol_pairs: List[Tuple[str, str]] = []
         self.sharegpt_pairs: List[Tuple[str, str]] = []
-        self.all_pairs: List[Tuple[str, str]] = list(FALLBACK_DISTRACTORS)
 
         sharegpt_resolved = resolve_dataset_path(sharegpt_path, DEFAULT_SHAREGPT_PATHS)
         evol_resolved = resolve_dataset_path(evol_path, DEFAULT_EVOL_PATHS)
@@ -614,30 +802,36 @@ def generate_conversation_dataset(
     output_dir: str = "dataset",
     evol_path: Optional[str] = None,
     sharegpt_path: Optional[str] = None,
+    chatgpt_zip: Optional[str] = None,
+    include_chatgpt: bool = True,
     external_distractor_ratio: float = 0.65,
 ) -> Dict[str, Any]:
-    """Generates balanced, diverse, non-templated conversational dataset splits."""
+    """Generates unified conversational dataset blending synthetic memory recall & real ChatGPT episodes."""
     set_seed(seed)
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 76)
-    print("   UNIVERSAL DIVERSE CONVERSATIONAL DATASET GENERATOR (MULTI-PARAPHRASED)")
+    print("   UNIVERSAL CONVERSATIONAL DATASET GENERATOR (SYNTHETIC + CHATGPT EPISODES)")
     print("=" * 76)
-    print(f"  Total Percakapan          : {num_conversations:,}")
-    print(f"  Rentang Turn              : {min_turns} - {max_turns} giliran dialog")
+    print(f"  Target Episode Sintetis   : {num_conversations:,}")
+    print(f"  Rentang Turn Sintetis     : {min_turns} - {max_turns} giliran dialog")
+    print(f"  Sertakan Episode ChatGPT  : {'Ya' if include_chatgpt else 'Tidak'}")
     print(f"  Seed Reproduksibilitas    : {seed}")
     print(f"  Direktori Output          : {os.path.abspath(output_dir)}")
     print("=" * 76)
 
+    # 1. External Distractor Pool (Evol-Instruct & ShareGPT murni sebagai pengisi jeda/distraktor)
+    print("\n[1/4] Memuat Pool Distraktor (Evol-Instruct & ShareGPT)...")
     pool = ExternalDistractorPool(evol_path=evol_path, sharegpt_path=sharegpt_path)
-    all_conversations = []
+
+    # 2. Pembuatan Episode Dialog Memori Sintetis (Personal Recall + Facts)
+    print(f"\n[2/4] Mengenerate {num_conversations:,} Episode Percakapan Memori Sintetis...")
+    synthetic_episodes = []
     ood_count = 0
 
     for idx in range(num_conversations):
-        # Generate persona profile with dynamic seeder
         p = get_random_profile(seed=seed + idx)
         target_t = random.randint(min_turns, max_turns)
-        # Even target turns (user + assistant pairs)
         if target_t % 2 != 0:
             target_t += 1
 
@@ -645,42 +839,96 @@ def generate_conversation_dataset(
         conv["id"] = f"conv_{idx+1:06d}"
         if conv.get("is_ood", False):
             ood_count += 1
-        all_conversations.append(conv)
+        synthetic_episodes.append(conv)
 
-    # Shuffling with locked seed
+    print(f"  ✓ Berhasil membuat {len(synthetic_episodes):,d} episode sintetis ({ood_count} sampel OOD).")
+
+    # 3. Ekstraksi & Pembersihan Episode Dialog Nyata ChatGPT (Multi-Turn Consultation Episodes)
+    chatgpt_episodes = []
+    resolved_chatgpt_zip = None
+
+    if include_chatgpt:
+        resolved_chatgpt_zip = find_latest_chatgpt_zip(chatgpt_zip)
+        if resolved_chatgpt_zip and os.path.exists(resolved_chatgpt_zip):
+            print(f"\n[3/4] Mengekstrak Episode Percakapan Nyata dari ChatGPT ZIP...")
+            raw_chatgpt_convs = load_clean_chatgpt_conversations(
+                zip_path=resolved_chatgpt_zip,
+                min_turns=4,
+                max_chars_per_turn=3000
+            )
+            for idx, c in enumerate(raw_chatgpt_convs):
+                chatgpt_episodes.append({
+                    "id": f"chatgpt_ep_{idx+1:05d}",
+                    "title": c.get("title", "Obrolan Konsultasi Nyata"),
+                    "topic": "chatgpt_real_consultation",
+                    "is_ood": False,
+                    "num_turns": c["num_turns"],
+                    "turns": c["turns"],
+                    "facts": [],
+                    "source": "chatgpt_real_episode",
+                })
+            print(f"  ✓ Berhasil mengekstrak {len(chatgpt_episodes):,d} episode konsultasi bersih dari ChatGPT ({os.path.basename(resolved_chatgpt_zip)})")
+        else:
+            print(f"\n[3/4] ℹ Berkas ZIP ChatGPT tidak ditemukan di sistem. Melanjutkan dengan episode sintetis.")
+    else:
+        print(f"\n[3/4] ℹ Episode ChatGPT dinonaktifkan oleh pengguna.")
+
+    # 4. Pembagian Deterministik Train (80%), Val (10%), Test (10%)
+    print(f"\n[4/4] Membagi Dataset Deterministik & Menggabungkan Episode...")
     random.seed(seed)
-    random.shuffle(all_conversations)
+    random.shuffle(synthetic_episodes)
 
-    # Split 80% Train, 10% Val, 10% Test
-    n_train = int(num_conversations * 0.8)
-    n_val = int(num_conversations * 0.1)
+    synth_n_train = int(len(synthetic_episodes) * 0.8)
+    synth_n_val = int(len(synthetic_episodes) * 0.1)
 
-    train_data = all_conversations[:n_train]
-    val_data = all_conversations[n_train:n_train + n_val]
-    test_data = all_conversations[n_train + n_val:]
+    synth_train = synthetic_episodes[:synth_n_train]
+    synth_val = synthetic_episodes[synth_n_train:synth_n_train + synth_n_val]
+    synth_test = synthetic_episodes[synth_n_train + synth_n_val:]
+
+    cg_train, cg_val, cg_test = [], [], []
+    if chatgpt_episodes:
+        random.seed(seed)
+        random.shuffle(chatgpt_episodes)
+        cg_n_train = int(len(chatgpt_episodes) * 0.8)
+        cg_n_val = int(len(chatgpt_episodes) * 0.1)
+        cg_train = chatgpt_episodes[:cg_n_train]
+        cg_val = chatgpt_episodes[cg_n_train:cg_n_train + cg_n_val]
+        cg_test = chatgpt_episodes[cg_n_train + cg_n_val:]
+
+    train_data = synth_train + cg_train
+    val_data = synth_val + cg_val
+    test_data = synth_test + cg_test
+
+    # Acak urutan episode latihan agar episode sintetis dan episode ChatGPT berselang-seling
+    random.seed(seed)
+    random.shuffle(train_data)
+    random.shuffle(val_data)
 
     def save_jsonl(data: List[Dict[str, Any]], filename: str) -> str:
         filepath = os.path.join(output_dir, filename)
         with open(filepath, "w", encoding="utf-8") as f:
             for item in data:
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
-        print(f"✓ Saved {filename:<26} : {len(data):>5,} dialog ({os.path.getsize(filepath) / 1024:.1f} KB)")
+        print(f"  ✓ Saved {filename:<26} : {len(data):>5,} episode ({os.path.getsize(filepath) / 1024:.1f} KB)")
         return filepath
 
-    print("\n[Exporting JSONL Files...]")
     train_f = save_jsonl(train_data, "conversations_train.jsonl")
     val_f = save_jsonl(val_data, "conversations_val.jsonl")
     test_f = save_jsonl(test_data, "conversations_test.jsonl")
 
+    total_all_episodes = len(synthetic_episodes) + len(chatgpt_episodes)
     meta = {
         "generator": "generate_conversation_dataset.py",
-        "total_conversations": num_conversations,
+        "total_episodes": total_all_episodes,
         "seed": seed,
+        "synthetic_episodes_count": len(synthetic_episodes),
+        "chatgpt_episodes_count": len(chatgpt_episodes),
+        "chatgpt_source": os.path.basename(resolved_chatgpt_zip) if resolved_chatgpt_zip else None,
         "train_size": len(train_data),
         "val_size": len(val_data),
         "test_size": len(test_data),
         "ood_samples_count": ood_count,
-        "ood_ratio": round(ood_count / num_conversations, 4),
+        "ood_ratio": round(ood_count / len(synthetic_episodes), 4) if synthetic_episodes else 0.0,
         "distractor_pool_stats": {
             "sharegpt_pairs": len(pool.sharegpt_pairs),
             "evol_pairs": len(pool.evol_pairs),
@@ -695,15 +943,18 @@ def generate_conversation_dataset(
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
 
-    print(f"\n✓ Dataset selesai dibuat dengan {ood_count} sampel Out-of-Distribution ({ood_count/num_conversations*100:.1f}%)!")
+    print(f"\n✓ Dataset terpadu berhasil dibuat: {len(train_data):,d} Train, {len(val_data):,d} Val, {len(test_data):,d} Test.")
+    if chatgpt_episodes:
+        print(f"  (Komposisi Episode: {len(synthetic_episodes):,d} Memori Personal + {len(chatgpt_episodes):,d} Konsultasi Nyata ChatGPT)")
+    print("=" * 76)
     return meta
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Diverse Multi-Paraphrased Conversational Dataset Generator")
-    parser.add_argument("--num_conversations", type=int, default=1000, help="Total conversations to generate")
-    parser.add_argument("--min_turns", type=int, default=8, help="Min turns per dialogue")
-    parser.add_argument("--max_turns", type=int, default=12, help="Max turns per dialogue")
+    parser = argparse.ArgumentParser(description="Unified Conversational Memory Dataset Generator (Synthetic + ChatGPT Episodes)")
+    parser.add_argument("--num_conversations", type=int, default=1000, help="Jumlah episode sintetis yang digenerate")
+    parser.add_argument("--min_turns", type=int, default=8, help="Min turns per dialog sintetis")
+    parser.add_argument("--max_turns", type=int, default=12, help="Max turns per dialog sintetis")
     parser.add_argument("--seed", type=int, default=42, help="Deterministic random seed")
     parser.add_argument("--output_dir", default="dataset", help="Output directory")
     parser.add_argument(
@@ -718,6 +969,17 @@ if __name__ == "__main__":
         default=None,
         help="Path to sharegpt-indonesian.json (Kaggle or local)"
     )
+    parser.add_argument(
+        "--chatgpt_zip",
+        type=str,
+        default=None,
+        help="Path to ChatGPT export zip file (auto-detected if None)"
+    )
+    parser.add_argument(
+        "--no_chatgpt",
+        action="store_true",
+        help="Jangan sertakan episode percakapan nyata dari ChatGPT"
+    )
     args = parser.parse_args()
 
     generate_conversation_dataset(
@@ -728,4 +990,6 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         evol_path=args.evol_path,
         sharegpt_path=args.sharegpt_path,
+        chatgpt_zip=args.chatgpt_zip,
+        include_chatgpt=not args.no_chatgpt,
     )

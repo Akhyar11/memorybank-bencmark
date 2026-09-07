@@ -1,10 +1,13 @@
 {
   "generator": "generate_conversation_dataset.py",
-  "total_conversations": 1000,
+  "total_episodes": 1582,
   "seed": 42,
-  "train_size": 800,
-  "val_size": 100,
-  "test_size": 100,
+  "synthetic_episodes_count": 1000,
+  "chatgpt_episodes_count": 582,
+  "chatgpt_source": "8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d.zip",
+  "train_size": 1265,
+  "val_size": 158,
+  "test_size": 159,
   "ood_samples_count": 170,
   "ood_ratio": 0.17,
   "distractor_pool_stats": {

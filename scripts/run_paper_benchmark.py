@@ -184,6 +184,7 @@ def run_benchmark(
     model_dir_arg: str = None,
     output_dir: str = "results",
     verbose: bool = False,
+    use_semantic_extractor: bool = False,
 ):
     print("=" * 72)
     print("      ACADEMIC PAPER BENCHMARK SUITE: NEURAL MEMORY BANK")
@@ -250,21 +251,43 @@ def run_benchmark(
     model_matrix.gpt2 = model_causal.gpt2  # Shared backbone
     model_matrix.to(device)
 
-    ckpt_matrix_path = os.path.join(PROJECT_ROOT, "checkpoints", "gpt2_matrix_memory_best.pt")
-    if os.path.exists(ckpt_matrix_path):
+    candidate_matrix_ckpts = [
+        os.path.join(PROJECT_ROOT, "checkpoints", "matrix_adapter_best.pt"),
+        os.path.join(PROJECT_ROOT, "checkpoints", "gpt2_semantic_matrix_best.pt"),
+        os.path.join(PROJECT_ROOT, "checkpoints", "gpt2_matrix_memory_best.pt"),
+    ]
+    ckpt_matrix_path = None
+    for cp in candidate_matrix_ckpts:
+        if os.path.exists(cp):
+            ckpt_matrix_path = cp
+            break
+
+    if ckpt_matrix_path:
         st_m = torch.load(ckpt_matrix_path, map_location="cpu", weights_only=False)
-        if "model_state_dict" in st_m:
-            sd_m = dict(st_m["model_state_dict"])
+        if "adapter_state_dict" in st_m:
+            model_matrix.load_adapter(st_m)
+            print(f"✓ Matrix Memory Adapter (~7MB) loaded: {ckpt_matrix_path}")
         else:
-            sd_m = dict(st_m)
-        if "c_proj.weight" in sd_m and "query_encoder.weight" not in sd_m:
-            sd_m["query_encoder.weight"] = sd_m["c_proj.weight"]
-        model_matrix.load_state_dict(sd_m, strict=False)
+            if "model_state_dict" in st_m:
+                sd_m = dict(st_m["model_state_dict"])
+            else:
+                sd_m = dict(st_m)
+            if "c_proj.weight" in sd_m and "query_encoder.weight" not in sd_m:
+                sd_m["query_encoder.weight"] = sd_m["c_proj.weight"]
+            model_matrix.load_state_dict(sd_m, strict=False)
+            print(f"✓ Matrix Memory Checkpoint loaded: {ckpt_matrix_path}")
         del st_m
         torch.cuda.empty_cache()
-        print(f"✓ Matrix Memory Checkpoint loaded: {ckpt_matrix_path}")
     else:
         print("ℹ Matrix Memory Checkpoint not found; using initialized model weights.")
+
+    if use_semantic_extractor:
+        from models.semantic_extractor import SemanticSentenceExtractor
+        print("Loading SemanticSentenceExtractor (IndoBERT)...")
+        extractor = SemanticSentenceExtractor(extractor_type="indobert", device=device)
+        model_matrix.set_semantic_extractor(extractor)
+        print("✓ SemanticSentenceExtractor attached to Matrix Memory.")
+
     model_matrix.eval()
 
     methods = [
@@ -380,16 +403,20 @@ def run_benchmark(
                 with torch.no_grad():
                     for role, content in history_turns:
                         pfx = "User: " if role.lower() == "user" else "AI: "
-                        enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
-                        t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
-                        h_t = t_out.last_hidden_state[:, -1, :]
-                        model_matrix.matrix_bank.write(h_t)
+                        if model_matrix.semantic_extractor is not None:
+                            model_matrix.write_semantic_text(f"{pfx}{content}")
+                        else:
+                            enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                            t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                            h_t = t_out.last_hidden_state[:, -1, :]
+                            model_matrix.matrix_bank.write(h_t)
                 slots_used = float(model_matrix.matrix_bank.num_memories)
 
                 t0 = time.perf_counter()
                 with torch.no_grad():
                     out_gen = model_matrix.generate(
                         input_ids=enc_query["input_ids"],
+                        query_text=case["query"] if model_matrix.semantic_extractor is not None else None,
                         max_new_tokens=30,
                         temperature=0.1,
                         top_k=20,
@@ -502,23 +529,30 @@ def run_benchmark(
                         with torch.no_grad():
                             for role, content in history_turns:
                                 pfx = "User: " if role.lower() == "user" else "AI: "
-                                enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
-                                t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
-                                h_t = t_out.last_hidden_state[:, -1, :]
-                                model_matrix.matrix_bank.write(h_t)
+                                if model_matrix.semantic_extractor is not None:
+                                    model_matrix.write_semantic_text(f"{pfx}{content}")
+                                else:
+                                    enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                                    t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                                    h_t = t_out.last_hidden_state[:, -1, :]
+                                    model_matrix.matrix_bank.write(h_t)
 
                         # Inject distractor turns
                         for d_text in DISTRACTORS_POOL[:lvl]:
-                            enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
-                            with torch.no_grad():
-                                d_out = model_matrix.gpt2.transformer(enc_d["input_ids"], return_dict=True)
-                                h_d = d_out.last_hidden_state[:, -1, :]
-                                model_matrix.matrix_bank.write(h_d)
+                            if model_matrix.semantic_extractor is not None:
+                                model_matrix.write_semantic_text(f"User: {d_text}")
+                            else:
+                                enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
+                                with torch.no_grad():
+                                    d_out = model_matrix.gpt2.transformer(enc_d["input_ids"], return_dict=True)
+                                    h_d = d_out.last_hidden_state[:, -1, :]
+                                    model_matrix.matrix_bank.write(h_d)
 
                         # Query after distractors
                         with torch.no_grad():
                             out_dgen = model_matrix.generate(
                                 input_ids=enc_query["input_ids"],
+                                query_text=case["query"] if model_matrix.semantic_extractor is not None else None,
                                 max_new_tokens=30,
                                 temperature=0.1,
                                 top_k=20,
@@ -630,6 +664,8 @@ def main():
                         help="Directory to save output json and tex")
     parser.add_argument("--verbose", action="store_true", default=False,
                         help="Print verbose model predictions per case (default: False, progress bar only)")
+    parser.add_argument("--use_semantic_extractor", action="store_true", default=False,
+                        help="Enable IndoBERT semantic extractor for Matrix Memory")
     args = parser.parse_args()
 
     run_benchmark(
@@ -638,6 +674,7 @@ def main():
         model_dir_arg=args.model_dir,
         output_dir=args.output_dir,
         verbose=args.verbose,
+        use_semantic_extractor=args.use_semantic_extractor,
     )
 
 

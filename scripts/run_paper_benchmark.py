@@ -34,6 +34,7 @@ if PROJECT_ROOT not in sys.path:
 from models.gpt2_memory_model import GPT2MemoryModel
 from models.gpt2_matrix_memory_model import GPT2MatrixMemoryModel
 from models.tiny_memory_bank import TinyMemoryConfig
+from models.seed import set_seed
 
 
 # ---------------------------------------------------------------------------
@@ -666,7 +667,11 @@ def main():
                         help="Print verbose model predictions per case (default: False, progress bar only)")
     parser.add_argument("--use_semantic_extractor", action="store_true", default=False,
                         help="Enable IndoBERT semantic extractor for Matrix Memory")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for reproducibility (default: 42)")
     args = parser.parse_args()
+
+    set_seed(args.seed)
 
     run_benchmark(
         test_file=args.test_file,

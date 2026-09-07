@@ -21,6 +21,7 @@ if PROJECT_ROOT not in sys.path:
 
 from models.gpt2_matrix_memory_model import GPT2MatrixMemoryModel
 from models.semantic_extractor import SemanticSentenceExtractor
+from models.seed import set_seed
 
 
 TEST_CASES = [
@@ -66,6 +67,7 @@ def run_test():
     print("      Membandingkan Last-Token Pooling vs Semantic Extractor")
     print("=" * 80)
 
+    set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 

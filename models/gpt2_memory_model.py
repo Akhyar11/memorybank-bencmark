@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from transformers import AutoModelForCausalLM
 
 from models.tiny_memory_bank import MemoryState, TinyMemoryBank, TinyMemoryConfig
+from models.seed import set_seed
 
 
 class GPT2MemoryModel(nn.Module):
@@ -18,10 +19,8 @@ class GPT2MemoryModel(nn.Module):
          - W_c (Query Projection): R^(768 -> 768)
          - W_f (Fusion Projection): R^(1536 -> 768)
       3. Turn Lifecycle:
-         - Prompt arrival: 1 forward pass -> last hidden state (768) saved to memory (Memory 1).
-         - Read: Top-K cosine similarity between C = h_prompt * W_c and Memory Bank.
-         - Generation: token-by-token generation with fused states z = [h_t ; M_bar] * W_f -> LM Head.
-         - Generation complete: final AI token hidden state (768) saved to memory (Memory 2).
+         - Generation: Reads memory using Top-K Cosine Similarity, generates tokens.
+         - After Turn: Exactly 2 memories saved per turn (User prompt + AI response last hidden states).
          - Lifecycle Eviction: memories with reads < 5% of mean(reads) for age >= min_age are evicted.
     """
 
@@ -30,8 +29,11 @@ class GPT2MemoryModel(nn.Module):
         model_name_or_path: str,
         memory_config: Optional[TinyMemoryConfig] = None,
         freeze_backbone: bool = True,
+        seed: Optional[int] = 42,
     ):
         super().__init__()
+        if seed is not None:
+            set_seed(seed)
 
         self.gpt2 = AutoModelForCausalLM.from_pretrained(model_name_or_path)
         self.config = self.gpt2.config

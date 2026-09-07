@@ -21,6 +21,16 @@ import random
 import argparse
 from typing import List, Dict, Any, Tuple, Optional
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+try:
+    from models.seed import set_seed
+except ImportError:
+    def set_seed(s: int = 42):
+        random.seed(s)
+
 
 # ---------------------------------------------------------------------------
 # Rich Vocabulary & Entity Pools (Indonesian)
@@ -1003,7 +1013,7 @@ def generate_conversation_dataset(
     sharegpt_path: Optional[str] = "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/sharegpt-indonesian.json",
     external_distractor_ratio: float = 0.65,
 ) -> Dict[str, Any]:
-    random.seed(seed)
+    set_seed(seed)
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 72)

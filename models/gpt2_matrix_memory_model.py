@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from transformers import AutoModelForCausalLM
 
 from models.matrix_memory_bank import DifferentiableMemoryMatrix
+from models.seed import set_seed
 
 
 class GPT2MatrixMemoryModel(nn.Module):
@@ -44,8 +45,11 @@ class GPT2MatrixMemoryModel(nn.Module):
         scaling: bool = True,
         freeze_backbone: bool = True,
         semantic_extractor: Optional[Any] = None,
+        seed: Optional[int] = 42,
     ):
         super().__init__()
+        if seed is not None:
+            set_seed(seed)
 
         self.gpt2 = AutoModelForCausalLM.from_pretrained(model_name_or_path)
         self.config = self.gpt2.config
@@ -215,7 +219,7 @@ class GPT2MatrixMemoryModel(nn.Module):
         pad_token_id: Optional[int] = None,
         stop_token_ids: Optional[list] = None,
         use_memory: bool = True,
-        write_after_gen: bool = False,
+        write_after_gen: bool = True,
     ) -> torch.Tensor:
         """
         Turn-level Autoregressive Generation with Differentiable Memory Matrix:

@@ -34,6 +34,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from models.gpt2_matrix_memory_model import GPT2MatrixMemoryModel
+from models.seed import set_seed
 
 
 def load_conversations(data_path: str) -> Tuple[List[List[Tuple[str, str]]], str]:
@@ -291,8 +292,10 @@ def main():
     parser.add_argument("--max_samples", type=int, default=-1)
     parser.add_argument("--unfreeze_backbone", action="store_true")
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
 
     args = parser.parse_args()
+    set_seed(args.seed)
     train(args)
 
 

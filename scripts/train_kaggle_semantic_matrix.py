@@ -28,6 +28,7 @@ if PROJECT_ROOT not in sys.path:
 
 from models.gpt2_matrix_memory_model import GPT2MatrixMemoryModel
 from models.semantic_extractor import SemanticSentenceExtractor
+from models.seed import set_seed
 
 
 def load_conversations(file_path: str):
@@ -66,10 +67,13 @@ def main():
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--max_seq_len", type=int, default=256)
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
+    set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    print(f"Random Seed: {args.seed}")
+    print(f"Device     : {device}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     if tokenizer.pad_token is None:

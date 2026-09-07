@@ -15,6 +15,7 @@ if PROJECT_ROOT not in sys.path:
 from models.gpt2_matrix_memory_model import GPT2MatrixMemoryModel
 from models.gpt2_memory_model import GPT2MemoryModel
 from models.tiny_memory_bank import TinyMemoryConfig
+from models.seed import set_seed
 
 
 COUNTERFACTUAL_CASES = [
@@ -62,6 +63,7 @@ def run_counterfactual_test():
     print("   Pembuktian Non-Parametric Memory Retrieval vs Dataset Memorization")
     print("=" * 80)
 
+    set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device : {device}")
 

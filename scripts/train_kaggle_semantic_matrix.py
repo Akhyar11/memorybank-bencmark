@@ -37,13 +37,20 @@ def load_conversations(file_path: str, seed: int = 42):
         candidates = [
             os.path.join(PROJECT_ROOT, file_path),
             os.path.join(PROJECT_ROOT, "dataset", os.path.basename(file_path)),
+            "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d/conversations_train.jsonl",
+            "/kaggle/input/memorybank-benchmark/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d/conversations_train.jsonl",
             "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/conversations_train.jsonl",
             "/kaggle/input/memorybank-benchmark/conversations_train.jsonl",
+            "/kaggle/input/conversations_train.jsonl",
         ]
         for c in candidates:
             if os.path.exists(c):
                 resolved_path = c
                 break
+        if not os.path.exists(resolved_path) and os.path.isdir("/kaggle/input"):
+            found = glob.glob(f"/kaggle/input/**/{os.path.basename(file_path)}", recursive=True)
+            if found:
+                resolved_path = found[0]
 
     if not os.path.exists(resolved_path):
         print(f"ℹ File '{file_path}' tidak ditemukan. Mengenerate dataset otomatis (1,000 percakapan)...")

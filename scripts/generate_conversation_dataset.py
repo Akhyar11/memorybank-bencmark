@@ -429,12 +429,20 @@ DEFAULT_EVOL_PATHS = [
     "evol-instruct-indonesian.json",
 ]
 
-DEFAULT_CHATGPT_ZIP_CANDIDATES = [
+DEFAULT_CHATGPT_CANDIDATES = [
+    "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d",
+    "/kaggle/input/memorybank-benchmark/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d",
+    "/kaggle/input/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d",
+    "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark",
+    "/kaggle/input/memorybank-benchmark",
+    "/kaggle/input/chatgpt-export",
     "/home/akhyar/Unduhan/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d.zip",
+    "/home/akhyar/Unduhan/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d",
     "/kaggle/input/chatgpt-export/chatgpt_export.zip",
     "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/chatgpt_export.zip",
     "/kaggle/input/memorybank-benchmark/chatgpt_export.zip",
 ]
+DEFAULT_CHATGPT_ZIP_CANDIDATES = DEFAULT_CHATGPT_CANDIDATES
 
 
 def resolve_dataset_path(provided_path: Optional[str], candidate_paths: List[str]) -> Optional[str]:
@@ -447,33 +455,81 @@ def resolve_dataset_path(provided_path: Optional[str], candidate_paths: List[str
     return provided_path if provided_path else candidate_paths[0]
 
 
-def find_latest_chatgpt_zip(provided_path: Optional[str] = None) -> Optional[str]:
-    """Auto-detects the latest ChatGPT export ZIP from candidate paths or download folders."""
-    if provided_path and os.path.exists(provided_path):
+def find_chatgpt_json_files(dir_path: str) -> List[str]:
+    """Mencari seluruh berkas JSON percakapan ChatGPT (conversations-*.json atau conversations.json) di folder."""
+    if not os.path.isdir(dir_path):
+        return []
+    direct = glob.glob(os.path.join(dir_path, "conversations-*.json")) + glob.glob(os.path.join(dir_path, "conversations.json"))
+    if direct:
+        return sorted(list(set(direct)))
+    recursive_matches = glob.glob(os.path.join(dir_path, "**", "conversations-*.json"), recursive=True) + \
+                        glob.glob(os.path.join(dir_path, "**", "conversations.json"), recursive=True)
+    return sorted(list(set(recursive_matches)))
+
+
+def is_chatgpt_zip(zip_path: str) -> bool:
+    """Mengecek apakah berkas ZIP berisi percakapan ChatGPT."""
+    if not os.path.isfile(zip_path):
+        return False
+    try:
+        with zipfile.ZipFile(zip_path, "r") as test_z:
+            names = test_z.namelist()
+            return any(
+                (os.path.basename(n).startswith("conversations-") and n.endswith(".json"))
+                or os.path.basename(n) == "conversations.json"
+                for n in names
+            )
+    except Exception:
+        return False
+
+
+def is_valid_chatgpt_source(path: str) -> bool:
+    """Mengecek apakah path merupakan sumber valid ekspor ChatGPT (folder atau berkas zip/json)."""
+    if not path or not os.path.exists(path):
+        return False
+    if os.path.isdir(path):
+        return len(find_chatgpt_json_files(path)) > 0
+    if os.path.isfile(path):
+        if zipfile.is_zipfile(path):
+            return is_chatgpt_zip(path)
+        base = os.path.basename(path)
+        return (base.startswith("conversations-") and base.endswith(".json")) or base == "conversations.json"
+    return False
+
+
+def find_latest_chatgpt_source(provided_path: Optional[str] = None) -> Optional[str]:
+    """Auto-detects the latest ChatGPT export folder or ZIP from candidate paths or download folders."""
+    if provided_path and is_valid_chatgpt_source(provided_path):
         return provided_path
-    for cand in DEFAULT_CHATGPT_ZIP_CANDIDATES:
-        if os.path.exists(cand):
+
+    for cand in DEFAULT_CHATGPT_CANDIDATES:
+        if is_valid_chatgpt_source(cand):
             return cand
 
     search_dirs = [
+        "/kaggle/input",
         os.path.expanduser("~/Unduhan"),
         os.path.expanduser("~/Downloads"),
         os.getcwd(),
-        "/kaggle/input",
     ]
     for sdir in search_dirs:
         if os.path.isdir(sdir):
-            zips = glob.glob(os.path.join(sdir, "*.zip"))
-            zips.sort(key=os.path.getmtime, reverse=True)
+            found_jsons = find_chatgpt_json_files(sdir)
+            if found_jsons:
+                return os.path.dirname(found_jsons[0])
+
+            zips = glob.glob(os.path.join(sdir, "*.zip")) + glob.glob(os.path.join(sdir, "*", "*.zip"))
+            zips.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0, reverse=True)
             for z in zips:
-                try:
-                    with zipfile.ZipFile(z, "r") as test_z:
-                        names = test_z.namelist()
-                        if any("conversations-" in n or n == "conversations.json" for n in names):
-                            return z
-                except Exception:
-                    continue
+                if is_chatgpt_zip(z):
+                    return z
+
     return None
+
+
+def find_latest_chatgpt_zip(provided_path: Optional[str] = None) -> Optional[str]:
+    """Alias kompatibilitas mundur untuk find_latest_chatgpt_source."""
+    return find_latest_chatgpt_source(provided_path)
 
 
 def clean_text_content(raw_text: str) -> str:
@@ -590,38 +646,81 @@ def extract_single_chatgpt_conversation(
 
 
 def load_clean_chatgpt_conversations(
-    zip_path: str,
+    source_path: Optional[str] = None,
     min_turns: int = 4,
     max_chars_per_turn: int = 3000,
+    zip_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Mengekstrak dan membersihkan seluruh percakapan multi-turn dari ZIP ekspor ChatGPT."""
-    if not os.path.exists(zip_path):
+    """Mengekstrak dan membersihkan seluruh percakapan multi-turn dari Folder, ZIP, atau berkas JSON ekspor ChatGPT."""
+    actual_path = source_path or zip_path
+    if not actual_path or not os.path.exists(actual_path):
         return []
 
     clean_convs = []
-    try:
-        with zipfile.ZipFile(zip_path, "r") as z:
-            conv_files = [
-                f for f in z.namelist()
-                if (f.startswith("conversations-") and f.endswith(".json")) or f == "conversations.json"
-            ]
-            conv_files.sort()
-            for fname in conv_files:
-                try:
-                    with z.open(fname) as f:
-                        data = json.load(f)
-                        for conv_raw in data:
-                            parsed = extract_single_chatgpt_conversation(
-                                conv_raw,
-                                min_turns=min_turns,
-                                max_chars_per_turn=max_chars_per_turn
-                            )
-                            if parsed:
-                                clean_convs.append(parsed)
-                except Exception:
-                    continue
-    except Exception as e:
-        print(f"  ⚠️ Gagal membaca arsip ChatGPT ZIP ({zip_path}): {e}")
+
+    # 1. Jika sumber berupa FOLDER / DIREKTORI (misal Kaggle Dataset ter-ekstrak)
+    if os.path.isdir(actual_path):
+        json_files = find_chatgpt_json_files(actual_path)
+        for jf in json_files:
+            try:
+                with open(jf, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for conv_raw in data:
+                        parsed = extract_single_chatgpt_conversation(
+                            conv_raw,
+                            min_turns=min_turns,
+                            max_chars_per_turn=max_chars_per_turn
+                        )
+                        if parsed:
+                            clean_convs.append(parsed)
+            except Exception as e:
+                print(f"  ⚠️ Gagal membaca berkas JSON ChatGPT ({jf}): {e}")
+                continue
+        return clean_convs
+
+    # 2. Jika sumber berupa berkas arsip ZIP
+    if zipfile.is_zipfile(actual_path):
+        try:
+            with zipfile.ZipFile(actual_path, "r") as z:
+                conv_files = [
+                    f for f in z.namelist()
+                    if (os.path.basename(f).startswith("conversations-") and f.endswith(".json")) or os.path.basename(f) == "conversations.json"
+                ]
+                conv_files.sort()
+                for fname in conv_files:
+                    try:
+                        with z.open(fname) as f:
+                            data = json.load(f)
+                            for conv_raw in data:
+                                parsed = extract_single_chatgpt_conversation(
+                                    conv_raw,
+                                    min_turns=min_turns,
+                                    max_chars_per_turn=max_chars_per_turn
+                                )
+                                if parsed:
+                                    clean_convs.append(parsed)
+                    except Exception:
+                        continue
+        except Exception as e:
+            print(f"  ⚠️ Gagal membaca arsip ChatGPT ZIP ({actual_path}): {e}")
+        return clean_convs
+
+    # 3. Jika sumber berupa berkas JSON tunggal
+    if actual_path.endswith(".json"):
+        try:
+            with open(actual_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for conv_raw in data:
+                    parsed = extract_single_chatgpt_conversation(
+                        conv_raw,
+                        min_turns=min_turns,
+                        max_chars_per_turn=max_chars_per_turn
+                    )
+                    if parsed:
+                        clean_convs.append(parsed)
+        except Exception as e:
+            print(f"  ⚠️ Gagal membaca berkas JSON ChatGPT ({actual_path}): {e}")
+
     return clean_convs
 
 
@@ -802,11 +901,13 @@ def generate_conversation_dataset(
     output_dir: str = "dataset",
     evol_path: Optional[str] = None,
     sharegpt_path: Optional[str] = None,
+    chatgpt_source: Optional[str] = None,
     chatgpt_zip: Optional[str] = None,
     include_chatgpt: bool = True,
     external_distractor_ratio: float = 0.65,
 ) -> Dict[str, Any]:
     """Generates unified conversational dataset blending synthetic memory recall & real ChatGPT episodes."""
+    actual_source = chatgpt_source or chatgpt_zip
     set_seed(seed)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -845,14 +946,15 @@ def generate_conversation_dataset(
 
     # 3. Ekstraksi & Pembersihan Episode Dialog Nyata ChatGPT (Multi-Turn Consultation Episodes)
     chatgpt_episodes = []
-    resolved_chatgpt_zip = None
+    resolved_chatgpt_source = None
 
     if include_chatgpt:
-        resolved_chatgpt_zip = find_latest_chatgpt_zip(chatgpt_zip)
-        if resolved_chatgpt_zip and os.path.exists(resolved_chatgpt_zip):
-            print(f"\n[3/4] Mengekstrak Episode Percakapan Nyata dari ChatGPT ZIP...")
+        resolved_chatgpt_source = find_latest_chatgpt_source(actual_source)
+        if resolved_chatgpt_source and os.path.exists(resolved_chatgpt_source):
+            src_type = "Folder" if os.path.isdir(resolved_chatgpt_source) else "ZIP"
+            print(f"\n[3/4] Mengekstrak Episode Percakapan Nyata dari ChatGPT ({src_type}: {resolved_chatgpt_source})...")
             raw_chatgpt_convs = load_clean_chatgpt_conversations(
-                zip_path=resolved_chatgpt_zip,
+                source_path=resolved_chatgpt_source,
                 min_turns=4,
                 max_chars_per_turn=3000
             )
@@ -867,9 +969,9 @@ def generate_conversation_dataset(
                     "facts": [],
                     "source": "chatgpt_real_episode",
                 })
-            print(f"  ✓ Berhasil mengekstrak {len(chatgpt_episodes):,d} episode konsultasi bersih dari ChatGPT ({os.path.basename(resolved_chatgpt_zip)})")
+            print(f"  ✓ Berhasil mengekstrak {len(chatgpt_episodes):,d} episode konsultasi bersih dari ChatGPT ({os.path.basename(resolved_chatgpt_source)})")
         else:
-            print(f"\n[3/4] ℹ Berkas ZIP ChatGPT tidak ditemukan di sistem. Melanjutkan dengan episode sintetis.")
+            print(f"\n[3/4] ℹ Sumber ChatGPT (Folder / ZIP) tidak ditemukan di sistem. Melanjutkan dengan episode sintetis.")
     else:
         print(f"\n[3/4] ℹ Episode ChatGPT dinonaktifkan oleh pengguna.")
 
@@ -923,7 +1025,7 @@ def generate_conversation_dataset(
         "seed": seed,
         "synthetic_episodes_count": len(synthetic_episodes),
         "chatgpt_episodes_count": len(chatgpt_episodes),
-        "chatgpt_source": os.path.basename(resolved_chatgpt_zip) if resolved_chatgpt_zip else None,
+        "chatgpt_source": resolved_chatgpt_source,
         "train_size": len(train_data),
         "val_size": len(val_data),
         "test_size": len(test_data),
@@ -970,10 +1072,12 @@ if __name__ == "__main__":
         help="Path to sharegpt-indonesian.json (Kaggle or local)"
     )
     parser.add_argument(
+        "--chatgpt_source",
         "--chatgpt_zip",
+        dest="chatgpt_source",
         type=str,
         default=None,
-        help="Path to ChatGPT export zip file (auto-detected if None)"
+        help="Path ke folder atau berkas ZIP ekspor ChatGPT (auto-detected jika None)"
     )
     parser.add_argument(
         "--no_chatgpt",
@@ -990,6 +1094,6 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         evol_path=args.evol_path,
         sharegpt_path=args.sharegpt_path,
-        chatgpt_zip=args.chatgpt_zip,
+        chatgpt_source=args.chatgpt_source,
         include_chatgpt=not args.no_chatgpt,
     )

@@ -1,0 +1,19 @@
+{
+  "generator": "prepare_chatgpt_conversations.py",
+  "source_archive": "8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d.zip",
+  "seed": 42,
+  "total_scanned_conversations": 908,
+  "clean_conversations_count": 582,
+  "retention_rate": 0.641,
+  "total_dialogue_turns": 6164,
+  "avg_turns_per_conversation": 10.59,
+  "train_size": 465,
+  "val_size": 58,
+  "test_size": 59,
+  "files": {
+    "all": "dataset/chatgpt_conversations.jsonl",
+    "train": "dataset/chatgpt_train.jsonl",
+    "val": "dataset/chatgpt_val.jsonl",
+    "test": "dataset/chatgpt_test.jsonl"
+  }
+}

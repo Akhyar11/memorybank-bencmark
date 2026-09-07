@@ -1,44 +1,13 @@
 {
   "generator": "generate_conversation_dataset.py",
   "total_conversations": 1000,
+  "seed": 42,
   "train_size": 800,
   "val_size": 100,
   "test_size": 100,
-  "min_turns": 8,
-  "max_turns": 12,
-  "features": [
-    "natural_openings_greetings",
-    "non_templated_intro",
-    "dynamic_fact_turns",
-    "evol_instruct_distractors",
-    "sharegpt_distractors"
-  ],
-  "external_datasets": {
-    "evol_instruct_pool_size": 1889,
-    "sharegpt_pool_size": 1641,
-    "total_external_turns": 3530,
-    "external_distractor_ratio": 0.65
-  },
-  "topic_distribution": {
-    "sharegpt_natural_dialogue_recall": 104,
-    "lifestyle_and_health": 116,
-    "tech_and_career": 94,
-    "negative_confirmation_denial": 110,
-    "memory_update_and_correction": 112,
-    "evol_instruct_reasoning_recall": 128,
-    "unknown_fact_abstention": 123,
-    "user_denial_and_correction": 113,
-    "travel_and_adventure": 100
-  },
-  "topics": [
-    "sharegpt_natural_dialogue_recall",
-    "lifestyle_and_health",
-    "tech_and_career",
-    "negative_confirmation_denial",
-    "memory_update_and_correction",
-    "evol_instruct_reasoning_recall",
-    "unknown_fact_abstention",
-    "user_denial_and_correction",
-    "travel_and_adventure"
-  ]
+  "ood_samples_count": 170,
+  "ood_ratio": 0.17,
+  "train_file": "dataset/conversations_train.jsonl",
+  "val_file": "dataset/conversations_val.jsonl",
+  "test_file": "dataset/conversations_test.jsonl"
 }

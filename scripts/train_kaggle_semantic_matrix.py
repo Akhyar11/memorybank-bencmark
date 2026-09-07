@@ -31,9 +31,32 @@ from models.semantic_extractor import SemanticSentenceExtractor
 from models.seed import set_seed
 
 
-def load_conversations(file_path: str):
+def load_conversations(file_path: str, seed: int = 42):
+    resolved_path = file_path
+    if not os.path.isabs(resolved_path) and not os.path.exists(resolved_path):
+        candidates = [
+            os.path.join(PROJECT_ROOT, file_path),
+            os.path.join(PROJECT_ROOT, "dataset", os.path.basename(file_path)),
+            "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/conversations_train.jsonl",
+            "/kaggle/input/memorybank-benchmark/conversations_train.jsonl",
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                resolved_path = c
+                break
+
+    if not os.path.exists(resolved_path):
+        print(f"ℹ File '{file_path}' tidak ditemukan. Mengenerate dataset otomatis (1,000 percakapan)...")
+        from scripts.generate_conversation_dataset import generate_conversation_dataset
+        ds_meta = generate_conversation_dataset(
+            num_conversations=1000,
+            seed=seed,
+            output_dir=os.path.join(PROJECT_ROOT, "dataset"),
+        )
+        resolved_path = ds_meta.get("train_file", os.path.join(PROJECT_ROOT, "dataset", "conversations_train.jsonl"))
+
     conversations = []
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(resolved_path, "r", encoding="utf-8") as f:
         for line in f:
             if not line.strip():
                 continue
@@ -55,6 +78,8 @@ def load_conversations(file_path: str):
 
             if dialog_pairs:
                 conversations.append(dialog_pairs)
+
+    print(f"✓ Sumber Data Terpakai: {resolved_path}")
     return conversations
 
 
@@ -99,7 +124,7 @@ def main():
     optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=0.01)
 
     print("\n[3/4] Memuat Data Percakapan...")
-    conversations = load_conversations(args.dataset)
+    conversations = load_conversations(args.dataset, seed=args.seed)
     print(f"Total percakapan: {len(conversations):,}")
 
     os.makedirs(args.output_dir, exist_ok=True)

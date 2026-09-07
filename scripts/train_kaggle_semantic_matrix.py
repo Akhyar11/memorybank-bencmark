@@ -172,6 +172,7 @@ def main():
                     labels=labels,
                     use_memory=True,
                     prompt_len=prompt_len,
+                    query_text=user_text if model.semantic_extractor is not None else None,
                 )
 
                 loss = out["loss"]

@@ -141,6 +141,7 @@ class GPT2MatrixMemoryModel(nn.Module):
         labels: Optional[torch.Tensor] = None,
         use_memory: bool = True,
         prompt_len: Optional[int] = None,
+        query_text: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, Any]:
         """
         Forward pass with continuous linear memory read.
@@ -151,6 +152,7 @@ class GPT2MatrixMemoryModel(nn.Module):
             labels: Optional labels of shape (B, T) for NTP loss.
             use_memory: Whether to fuse differentiable memory.
             prompt_len: Boundary index where user prompt ends and assistant response starts.
+            query_text: Optional raw text string for semantic query extraction via semantic_extractor.
         """
         transformer_outputs = self.gpt2.transformer(
             input_ids=input_ids,
@@ -163,7 +165,12 @@ class GPT2MatrixMemoryModel(nn.Module):
 
         s_activations = None
         if use_memory:
-            if prompt_len is not None and 0 < prompt_len < seqlen:
+            if query_text is not None and self.semantic_extractor is not None:
+                # Direct semantic query in the exact same normalized space as stored memory vectors
+                q_sem = self.semantic_extractor.encode(query_text, normalize=True).to(self.gpt2.device)
+                m_prompt, s_activations = self.matrix_bank.read(q_sem)
+                m = m_prompt.unsqueeze(1).expand(bsz, seqlen, d)
+            elif prompt_len is not None and 0 < prompt_len < seqlen:
                 # Turn-level prompt-conditioned query:
                 h_prompt = hidden[:, prompt_len - 1, :]  # (B, D)
                 q_prompt = self.query_encoder(h_prompt)   # (B, D)
@@ -248,8 +255,8 @@ class GPT2MatrixMemoryModel(nn.Module):
         if use_memory:
             # Check if semantic query from raw text is available
             if query_text is not None and self.semantic_extractor is not None:
-                q_sem = self.semantic_extractor.encode(query_text).to(self.gpt2.device)
-                q = self.query_encoder(q_sem)
+                # Direct semantic query in the exact same normalized space as stored memory vectors
+                q = self.semantic_extractor.encode(query_text, normalize=True).to(self.gpt2.device)
             else:
                 # Query encoder forms query q from last prompt token
                 q = self.query_encoder(h_prompt)

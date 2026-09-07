@@ -263,11 +263,15 @@ def run_benchmark(
             ckpt_matrix_path = cp
             break
 
+    auto_use_semantic = use_semantic_extractor
     if ckpt_matrix_path:
         st_m = torch.load(ckpt_matrix_path, map_location="cpu", weights_only=False)
         if "adapter_state_dict" in st_m:
             model_matrix.load_adapter(st_m)
             print(f"✓ Matrix Memory Adapter (~7MB) loaded: {ckpt_matrix_path}")
+            if not auto_use_semantic and "config" in st_m and "bert_name" in st_m.get("config", {}):
+                auto_use_semantic = True
+                print(f"ℹ Auto-detected Semantic Extractor from checkpoint config: {st_m['config']['bert_name']}")
         else:
             if "model_state_dict" in st_m:
                 sd_m = dict(st_m["model_state_dict"])
@@ -282,7 +286,7 @@ def run_benchmark(
     else:
         print("ℹ Matrix Memory Checkpoint not found; using initialized model weights.")
 
-    if use_semantic_extractor:
+    if auto_use_semantic:
         from models.semantic_extractor import SemanticSentenceExtractor
         print("Loading SemanticSentenceExtractor (IndoBERT)...")
         extractor = SemanticSentenceExtractor(extractor_type="indobert", device=device)
@@ -358,9 +362,11 @@ def run_benchmark(
                 full_prompt = "\n".join(context_parts)
 
                 enc_full = tokenizer(full_prompt, return_tensors="pt").to(device)
-                if enc_full["input_ids"].shape[1] > 1000:
-                    enc_full["input_ids"] = enc_full["input_ids"][:, -1000:]
-                    enc_full["attention_mask"] = enc_full["attention_mask"][:, -1000:]
+                max_pos = getattr(model_causal.gpt2.config, "n_positions", 512)
+                safe_prompt_len = max(10, max_pos - 35)
+                if enc_full["input_ids"].shape[1] > safe_prompt_len:
+                    enc_full["input_ids"] = enc_full["input_ids"][:, -safe_prompt_len:]
+                    enc_full["attention_mask"] = enc_full["attention_mask"][:, -safe_prompt_len:]
                 prompt_len_full = enc_full["input_ids"].shape[1]
                 slots_used = 0.0
 
@@ -483,9 +489,11 @@ def run_benchmark(
                         full_d_prompt = "\n".join(d_parts)
 
                         enc_d = tokenizer(full_d_prompt, return_tensors="pt").to(device)
-                        if enc_d["input_ids"].shape[1] > 1000:
-                            enc_d["input_ids"] = enc_d["input_ids"][:, -1000:]
-                            enc_d["attention_mask"] = enc_d["attention_mask"][:, -1000:]
+                        max_pos = getattr(model_causal.gpt2.config, "n_positions", 512)
+                        safe_d_len = max(10, max_pos - 35)
+                        if enc_d["input_ids"].shape[1] > safe_d_len:
+                            enc_d["input_ids"] = enc_d["input_ids"][:, -safe_d_len:]
+                            enc_d["attention_mask"] = enc_d["attention_mask"][:, -safe_d_len:]
                         d_prompt_len = enc_d["input_ids"].shape[1]
 
                         with torch.no_grad():

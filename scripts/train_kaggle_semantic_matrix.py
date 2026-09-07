@@ -160,13 +160,21 @@ def main():
 
         if avg_loss < best_loss:
             best_loss = avg_loss
-            ckpt_file = os.path.join(args.output_dir, "gpt2_semantic_matrix_best.pt")
+            # Simpan HANYA bobot adapter trainable (query_encoder & fusion_proj) -> Ukuran HANYA ~7 MB!
+            adapter_sd = model.get_adapter_state_dict()
+            ckpt_file = os.path.join(args.output_dir, "matrix_adapter_best.pt")
             torch.save({
                 "epoch": epoch,
-                "model_state_dict": model.state_dict(),
+                "adapter_state_dict": adapter_sd,
                 "best_loss": best_loss,
+                "config": {
+                    "capacity": 128,
+                    "scaling": "dim",
+                    "model_name": args.model_name,
+                    "bert_name": args.bert_name,
+                },
             }, ckpt_file)
-            print(f"✓ Checkpoint terbaik disimpan ke: {ckpt_file}")
+            print(f"✓ Checkpoint Adapter Ringan (~7 MB) disimpan ke: {ckpt_file}")
 
     print("\nPelatihan selesai dengan sukses!")
 

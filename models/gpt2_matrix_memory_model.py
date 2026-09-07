@@ -10,7 +10,7 @@ GPT-2 with Differentiable Memory Matrix Bank:
   - Frozen LM Head: logits = W_lm @ z.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -100,6 +100,31 @@ class GPT2MatrixMemoryModel(nn.Module):
             f"({100.0 * trainable / max(1, total):.4f}% trainable)"
         )
         return trainable, total
+
+    def get_adapter_state_dict(self) -> Dict[str, torch.Tensor]:
+        """Extracts only the trainable adapter parameters (query_encoder & fusion_proj). Size: ~7 MB."""
+        return {
+            k: v.cpu().clone()
+            for k, v in self.state_dict().items()
+            if any(k.startswith(pfx) for pfx in ["query_encoder", "fusion_proj"])
+        }
+
+    def load_adapter(self, checkpoint_path_or_dict: Union[str, Dict[str, Any]]):
+        """Loads lightweight adapter weights (~7 MB) onto the frozen backbone."""
+        if isinstance(checkpoint_path_or_dict, str):
+            st = torch.load(checkpoint_path_or_dict, map_location="cpu", weights_only=False)
+        else:
+            st = checkpoint_path_or_dict
+
+        if "adapter_state_dict" in st:
+            sd = st["adapter_state_dict"]
+        elif "model_state_dict" in st:
+            sd = st["model_state_dict"]
+        else:
+            sd = st
+
+        msg = self.load_state_dict(sd, strict=False)
+        print(f"✓ MemoryBank Adapter loaded ({len(sd)} tensors): {msg}")
 
     def reset_memory(self):
         """Clears memory matrix state."""

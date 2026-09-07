@@ -409,25 +409,89 @@ FALLBACK_DISTRACTORS = [
 ]
 
 
+DEFAULT_SHAREGPT_PATHS = [
+    "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/sharegpt-indonesian.json",
+    "/kaggle/input/memorybank-benchmark/sharegpt-indonesian.json",
+    "/kaggle/input/sharegpt-indonesian.json",
+    "/home/akhyar/Dokumen/sharegpt-indonesian.json",
+    "sharegpt-indonesian.json",
+]
+
+DEFAULT_EVOL_PATHS = [
+    "/kaggle/input/datasets/akhyarsafrudin/memorybank-benchmark/evol-instruct-indonesian.json",
+    "/kaggle/input/memorybank-benchmark/evol-instruct-indonesian.json",
+    "/kaggle/input/evol-instruct-indonesian.json",
+    "/home/akhyar/Dokumen/evol-instruct-indonesian.json",
+    "evol-instruct-indonesian.json",
+]
+
+
+def resolve_dataset_path(provided_path: Optional[str], candidate_paths: List[str]) -> Optional[str]:
+    """Resolves dataset path prioritizing provided path, candidate paths, and fallbacks."""
+    if provided_path and os.path.exists(provided_path):
+        return provided_path
+    for p in candidate_paths:
+        if os.path.exists(p):
+            return p
+    return provided_path if provided_path else candidate_paths[0]
+
+
 class ExternalDistractorPool:
-    """Manages real-world Indonesian dialogue pairs from ShareGPT/Evol-Instruct or fallbacks."""
-    def __init__(self, evol_path: Optional[str] = None, sharegpt_path: Optional[str] = None):
+    """Manages real-world Indonesian dialogue pairs from ShareGPT/Evol-Instruct and fallbacks."""
+    def __init__(
+        self,
+        evol_path: Optional[str] = None,
+        sharegpt_path: Optional[str] = None,
+        max_user_chars: int = 250,
+        max_ai_chars: int = 450,
+        max_load_items: int = 15000,
+    ):
+        self.fallback_pairs: List[Tuple[str, str]] = list(FALLBACK_DISTRACTORS)
+        self.evol_pairs: List[Tuple[str, str]] = []
+        self.sharegpt_pairs: List[Tuple[str, str]] = []
         self.all_pairs: List[Tuple[str, str]] = list(FALLBACK_DISTRACTORS)
-        # Attempt to load external files if they exist
-        for p in [evol_path, sharegpt_path]:
-            if p and os.path.exists(p):
-                try:
-                    with open(p, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        for item in data[:500]:
-                            turns = item.get("conversations", [])
-                            if len(turns) >= 2:
-                                u = turns[0].get("value", "").strip()
-                                a = turns[1].get("value", "").strip()
-                                if 15 < len(u) < 250 and 20 < len(a) < 400:
-                                    self.all_pairs.append((u, a))
-                except Exception:
-                    pass
+
+        sharegpt_resolved = resolve_dataset_path(sharegpt_path, DEFAULT_SHAREGPT_PATHS)
+        evol_resolved = resolve_dataset_path(evol_path, DEFAULT_EVOL_PATHS)
+
+        if sharegpt_resolved and os.path.exists(sharegpt_resolved):
+            try:
+                with open(sharegpt_resolved, "r", encoding="utf-8") as f:
+                    sdata = json.load(f)
+                    for item in sdata:
+                        turns = item.get("conversations", [])
+                        for i in range(0, len(turns) - 1, 2):
+                            if turns[i].get("from") == "human" and turns[i+1].get("from") == "gpt":
+                                u = turns[i].get("value", "").strip()
+                                a = turns[i+1].get("value", "").strip()
+                                if 15 <= len(u) <= max_user_chars and 20 <= len(a) <= max_ai_chars:
+                                    self.sharegpt_pairs.append((u, a))
+                print(f"  ✓ Loaded {len(self.sharegpt_pairs):>5d} compact QA pairs from ShareGPT ({sharegpt_resolved})")
+            except Exception as e:
+                print(f"  ⚠️ Gagal membaca ShareGPT ({sharegpt_resolved}): {e}")
+        else:
+            print(f"  ℹ️ ShareGPT path tidak ditemukan di {sharegpt_resolved}")
+
+        if evol_resolved and os.path.exists(evol_resolved):
+            try:
+                with open(evol_resolved, "r", encoding="utf-8") as f:
+                    edata = json.load(f)
+                    for item in edata[:max_load_items]:
+                        turns = item.get("conversations", [])
+                        for i in range(0, len(turns) - 1, 2):
+                            if turns[i].get("from") == "human" and turns[i+1].get("from") == "gpt":
+                                u = turns[i].get("value", "").strip()
+                                a = turns[i+1].get("value", "").strip()
+                                if 15 <= len(u) <= max_user_chars and 20 <= len(a) <= max_ai_chars:
+                                    self.evol_pairs.append((u, a))
+                print(f"  ✓ Loaded {len(self.evol_pairs):>5d} compact QA pairs from Evol-Instruct ({evol_resolved})")
+            except Exception as e:
+                print(f"  ⚠️ Gagal membaca Evol-Instruct ({evol_resolved}): {e}")
+        else:
+            print(f"  ℹ️ Evol-Instruct path tidak ditemukan di {evol_resolved}")
+
+        self.all_pairs = list(FALLBACK_DISTRACTORS) + self.sharegpt_pairs + self.evol_pairs
+        print(f"  ✓ Total External Distractor Pool: {len(self.all_pairs)} giliran dialog tersedia.")
 
     def sample_turn(self) -> Tuple[str, str]:
         return random.choice(self.all_pairs)
@@ -617,6 +681,11 @@ def generate_conversation_dataset(
         "test_size": len(test_data),
         "ood_samples_count": ood_count,
         "ood_ratio": round(ood_count / num_conversations, 4),
+        "distractor_pool_stats": {
+            "sharegpt_pairs": len(pool.sharegpt_pairs),
+            "evol_pairs": len(pool.evol_pairs),
+            "total_distractor_pairs": len(pool.all_pairs),
+        },
         "train_file": train_f,
         "val_file": val_f,
         "test_file": test_f,
@@ -637,6 +706,18 @@ if __name__ == "__main__":
     parser.add_argument("--max_turns", type=int, default=12, help="Max turns per dialogue")
     parser.add_argument("--seed", type=int, default=42, help="Deterministic random seed")
     parser.add_argument("--output_dir", default="dataset", help="Output directory")
+    parser.add_argument(
+        "--evol_path",
+        type=str,
+        default=None,
+        help="Path to evol-instruct-indonesian.json (Kaggle or local)"
+    )
+    parser.add_argument(
+        "--sharegpt_path",
+        type=str,
+        default=None,
+        help="Path to sharegpt-indonesian.json (Kaggle or local)"
+    )
     args = parser.parse_args()
 
     generate_conversation_dataset(
@@ -645,4 +726,6 @@ if __name__ == "__main__":
         max_turns=args.max_turns,
         seed=args.seed,
         output_dir=args.output_dir,
+        evol_path=args.evol_path,
+        sharegpt_path=args.sharegpt_path,
     )

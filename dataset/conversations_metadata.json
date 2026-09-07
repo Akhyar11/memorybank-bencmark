@@ -7,6 +7,11 @@
   "test_size": 100,
   "ood_samples_count": 170,
   "ood_ratio": 0.17,
+  "distractor_pool_stats": {
+    "sharegpt_pairs": 1641,
+    "evol_pairs": 510,
+    "total_distractor_pairs": 2158
+  },
   "train_file": "dataset/conversations_train.jsonl",
   "val_file": "dataset/conversations_val.jsonl",
   "test_file": "dataset/conversations_test.jsonl"

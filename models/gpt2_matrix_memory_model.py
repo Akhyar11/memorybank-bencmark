@@ -43,12 +43,14 @@ class GPT2MatrixMemoryModel(nn.Module):
         capacity: int = 128,
         scaling: bool = True,
         freeze_backbone: bool = True,
+        semantic_extractor: Optional[Any] = None,
     ):
         super().__init__()
 
         self.gpt2 = AutoModelForCausalLM.from_pretrained(model_name_or_path)
         self.config = self.gpt2.config
         embed_dim = self.config.n_embd
+        self.semantic_extractor = semantic_extractor
 
         # 1. Freeze backbone parameters
         if freeze_backbone:
@@ -77,6 +79,17 @@ class GPT2MatrixMemoryModel(nn.Module):
         self.fusion_proj.bias.requires_grad = True
 
         self.last_diagnostics: Dict[str, Any] = {}
+
+    def set_semantic_extractor(self, extractor: Any):
+        """Attaches or updates the semantic extractor module."""
+        self.semantic_extractor = extractor
+
+    def write_semantic_text(self, text: str):
+        """Encodes text using semantic extractor and writes 768-D representation to matrix bank."""
+        if self.semantic_extractor is None:
+            raise ValueError("No semantic_extractor configured in model!")
+        vec = self.semantic_extractor.encode(text)
+        self.matrix_bank.write(vec)
 
     def print_trainable_parameters(self) -> Tuple[int, int]:
         """Prints and returns (trainable_params, total_params)."""
@@ -167,6 +180,7 @@ class GPT2MatrixMemoryModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
+        query_text: Optional[str] = None,
         max_new_tokens: int = 64,
         temperature: float = 0.7,
         top_k: int = 50,
@@ -176,14 +190,14 @@ class GPT2MatrixMemoryModel(nn.Module):
         pad_token_id: Optional[int] = None,
         stop_token_ids: Optional[list] = None,
         use_memory: bool = True,
+        write_after_gen: bool = False,
     ) -> torch.Tensor:
         """
         Turn-level Autoregressive Generation with Differentiable Memory Matrix:
           1. Forward prompt -> extract h_prompt.
-          2. Form query q = W_q(h_prompt).
+          2. Form query q (semantic query via query_text or projection of h_prompt).
           3. Read continuous memory m_turn = (1/sqrt(d)) * (q @ M^T) @ M.
           4. Decode tokens conditioned on [h_t ; m_turn].
-          5. After generation completes, write h_prompt and last_ai_hidden to M.
         """
         del pad_token_id
         stop_ids = set(stop_token_ids or [])
@@ -202,8 +216,14 @@ class GPT2MatrixMemoryModel(nn.Module):
         h_prompt = hidden[:, -1, :]  # (B, D)
 
         if use_memory:
-            # Query encoder forms query q
-            q = self.query_encoder(h_prompt)
+            # Check if semantic query from raw text is available
+            if query_text is not None and self.semantic_extractor is not None:
+                q_sem = self.semantic_extractor.encode(query_text).to(self.gpt2.device)
+                q = self.query_encoder(q_sem)
+            else:
+                # Query encoder forms query q from last prompt token
+                q = self.query_encoder(h_prompt)
+
             # Continuous memory read (no softmax, no top-k)
             m_turn, _ = self.matrix_bank.read(q)
 
@@ -271,8 +291,8 @@ class GPT2MatrixMemoryModel(nn.Module):
             else:
                 next_token_logits = self.gpt2.lm_head(h_t)
 
-        # 3. WRITE TO MEMORY BANK: After turn generation completes
-        if use_memory:
+        # 3. WRITE TO MEMORY BANK: After turn generation completes (optional)
+        if use_memory and write_after_gen:
             for b in range(input_ids.size(0)):
                 self.matrix_bank.write(h_prompt[b])
             if last_ai_hidden is not None:

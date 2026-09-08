@@ -109,6 +109,7 @@ def main():
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--max_seq_len", type=int, default=256)
     parser.add_argument("--recall_loss_weight", type=float, default=4.0, help="Loss multiplier for target recall turns (default: 4.0)")
+    parser.add_argument("--reset_memory_per_conv", action="store_true", default=False, help="Reset memory at the beginning of each conversation (default: False, continuous lifelong rolling memory)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
@@ -148,6 +149,8 @@ def main():
     best_loss = float("inf")
 
     print("\n[4/4] Memulai Pelatihan...")
+    model.reset_memory()
+
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
@@ -157,7 +160,8 @@ def main():
 
         pbar = tqdm(conversations, desc=f"Epoch {epoch}/{args.epochs}", dynamic_ncols=True)
         for conv_turns in pbar:
-            model.reset_memory()
+            if args.reset_memory_per_conv:
+                model.reset_memory()
 
             for user_text, ai_text, is_recall in conv_turns:
                 prompt_str = f"User: {user_text}\nAI:"
@@ -200,10 +204,12 @@ def main():
                 torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
                 optimizer.step()
 
-                # Tulis representasi semantik kalimat ke Matrix Bank
+                # Tulis representasi semantik kalimat ke Matrix Bank (KEDUA bagian: User dan AI)
                 with torch.no_grad():
-                    v_user = extractor.encode(user_text, normalize=True)
+                    v_user = extractor.encode(f"User: {user_text}", normalize=True)
+                    v_ai = extractor.encode(f"AI: {ai_text}", normalize=True)
                     model.matrix_bank.write(v_user)
+                    model.matrix_bank.write(v_ai)
 
                 total_loss += raw_loss
                 steps += 1
@@ -211,11 +217,16 @@ def main():
                     total_recall_loss += raw_loss
                     recall_steps += 1
 
-            model.reset_memory()
+            if args.reset_memory_per_conv:
+                model.reset_memory()
 
             avg_l = total_loss / max(steps, 1)
             avg_rec = total_recall_loss / max(recall_steps, 1) if recall_steps > 0 else 0.0
-            pbar.set_postfix({"Loss": f"{avg_l:.4f}", "RecLoss": f"{avg_rec:.4f}"})
+            pbar.set_postfix({
+                "Loss": f"{avg_l:.4f}",
+                "RecLoss": f"{avg_rec:.4f}",
+                "Slots": model.matrix_bank.num_memories,
+            })
 
         avg_loss = total_loss / max(steps, 1)
         avg_rec_loss = total_recall_loss / max(recall_steps, 1) if recall_steps > 0 else 0.0
@@ -237,6 +248,7 @@ def main():
                     "model_name": args.model_name,
                     "bert_name": args.bert_name,
                     "recall_loss_weight": args.recall_loss_weight,
+                    "reset_memory_per_conv": args.reset_memory_per_conv,
                 },
             }, ckpt_file)
             print(f"✓ Checkpoint Adapter Ringan (~7 MB) disimpan ke: {ckpt_file}")

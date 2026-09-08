@@ -409,15 +409,14 @@ def run_benchmark(
                 model_matrix.reset_memory()
                 with torch.no_grad():
                     for role, content in history_turns:
-                        # Only write user utterances to keep memory slots pristine and match training distribution
-                        if role.lower() == "user":
-                            if model_matrix.semantic_extractor is not None:
-                                model_matrix.write_semantic_text(content)
-                            else:
-                                enc_t = tokenizer(f"User: {content}\n", return_tensors="pt").to(device)
-                                t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
-                                h_t = t_out.last_hidden_state[:, -1, :]
-                                model_matrix.matrix_bank.write(h_t)
+                        pfx = "User: " if role.lower() == "user" else "AI: "
+                        if model_matrix.semantic_extractor is not None:
+                            model_matrix.write_semantic_text(f"{pfx}{content}")
+                        else:
+                            enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                            t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                            h_t = t_out.last_hidden_state[:, -1, :]
+                            model_matrix.matrix_bank.write(h_t)
                 slots_used = float(model_matrix.matrix_bank.num_memories)
 
                 t0 = time.perf_counter()
@@ -538,19 +537,19 @@ def run_benchmark(
                         model_matrix.reset_memory()
                         with torch.no_grad():
                             for role, content in history_turns:
-                                if role.lower() == "user":
-                                    if model_matrix.semantic_extractor is not None:
-                                        model_matrix.write_semantic_text(content)
-                                    else:
-                                        enc_t = tokenizer(f"User: {content}\n", return_tensors="pt").to(device)
-                                        t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
-                                        h_t = t_out.last_hidden_state[:, -1, :]
-                                        model_matrix.matrix_bank.write(h_t)
+                                pfx = "User: " if role.lower() == "user" else "AI: "
+                                if model_matrix.semantic_extractor is not None:
+                                    model_matrix.write_semantic_text(f"{pfx}{content}")
+                                else:
+                                    enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
+                                    t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                                    h_t = t_out.last_hidden_state[:, -1, :]
+                                    model_matrix.matrix_bank.write(h_t)
 
-                        # Inject distractor turns (user inputs only)
+                        # Inject distractor turns
                         for d_text in DISTRACTORS_POOL[:lvl]:
                             if model_matrix.semantic_extractor is not None:
-                                model_matrix.write_semantic_text(d_text)
+                                model_matrix.write_semantic_text(f"User: {d_text}")
                             else:
                                 enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
                                 with torch.no_grad():

@@ -409,14 +409,15 @@ def run_benchmark(
                 model_matrix.reset_memory()
                 with torch.no_grad():
                     for role, content in history_turns:
-                        pfx = "User: " if role.lower() == "user" else "AI: "
-                        if model_matrix.semantic_extractor is not None:
-                            model_matrix.write_semantic_text(f"{pfx}{content}")
-                        else:
-                            enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
-                            t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
-                            h_t = t_out.last_hidden_state[:, -1, :]
-                            model_matrix.matrix_bank.write(h_t)
+                        # Only write user utterances to keep memory slots pristine and match training distribution
+                        if role.lower() == "user":
+                            if model_matrix.semantic_extractor is not None:
+                                model_matrix.write_semantic_text(content)
+                            else:
+                                enc_t = tokenizer(f"User: {content}\n", return_tensors="pt").to(device)
+                                t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                                h_t = t_out.last_hidden_state[:, -1, :]
+                                model_matrix.matrix_bank.write(h_t)
                 slots_used = float(model_matrix.matrix_bank.num_memories)
 
                 t0 = time.perf_counter()
@@ -461,8 +462,8 @@ def run_benchmark(
             "FullCtx_F1": f"{np.mean(results['full_context']['f1']):.1f}%",
         })
 
-        # Evaluate Distractor Resistance for Case 1
-        if case_idx == 0:
+        # Evaluate Distractor Resistance across multiple cases (up to 5 cases)
+        if case_idx < min(5, len(cases)):
             for lvl in distractor_levels:
                 for m_name, m_key in methods:
                     if m_key == "no_memory":
@@ -537,19 +538,19 @@ def run_benchmark(
                         model_matrix.reset_memory()
                         with torch.no_grad():
                             for role, content in history_turns:
-                                pfx = "User: " if role.lower() == "user" else "AI: "
-                                if model_matrix.semantic_extractor is not None:
-                                    model_matrix.write_semantic_text(f"{pfx}{content}")
-                                else:
-                                    enc_t = tokenizer(f"{pfx}{content}\n", return_tensors="pt").to(device)
-                                    t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
-                                    h_t = t_out.last_hidden_state[:, -1, :]
-                                    model_matrix.matrix_bank.write(h_t)
+                                if role.lower() == "user":
+                                    if model_matrix.semantic_extractor is not None:
+                                        model_matrix.write_semantic_text(content)
+                                    else:
+                                        enc_t = tokenizer(f"User: {content}\n", return_tensors="pt").to(device)
+                                        t_out = model_matrix.gpt2.transformer(enc_t["input_ids"], return_dict=True)
+                                        h_t = t_out.last_hidden_state[:, -1, :]
+                                        model_matrix.matrix_bank.write(h_t)
 
-                        # Inject distractor turns
+                        # Inject distractor turns (user inputs only)
                         for d_text in DISTRACTORS_POOL[:lvl]:
                             if model_matrix.semantic_extractor is not None:
-                                model_matrix.write_semantic_text(f"User: {d_text}")
+                                model_matrix.write_semantic_text(d_text)
                             else:
                                 enc_d = tokenizer(f"User: {d_text}\n", return_tensors="pt").to(device)
                                 with torch.no_grad():
@@ -605,9 +606,9 @@ def run_benchmark(
     print(f"{'Method / Architecture':<30} | {'0 Distractors':<14} | {'5 Distractors':<14} | {'10 Distractors':<14}")
     print("-" * 80)
     for m_name, m_key in methods:
-        em_0 = distractor_results[0][m_key][0] if distractor_results[0][m_key] else 0.0
-        em_5 = distractor_results[5][m_key][0] if distractor_results[5][m_key] else 0.0
-        em_10 = distractor_results[10][m_key][0] if distractor_results[10][m_key] else 0.0
+        em_0 = float(np.mean(distractor_results[0][m_key])) if distractor_results[0][m_key] else 0.0
+        em_5 = float(np.mean(distractor_results[5][m_key])) if distractor_results[5][m_key] else 0.0
+        em_10 = float(np.mean(distractor_results[10][m_key])) if distractor_results[10][m_key] else 0.0
         print(f"{m_name:<30} | {em_0:12.1f}% | {em_5:12.1f}% | {em_10:12.1f}%")
     print("=" * 80)
 

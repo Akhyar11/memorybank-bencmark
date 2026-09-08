@@ -290,6 +290,15 @@ STATEMENT_STYLES_SIDE_BIZ = [
 ]
 
 QUERY_TEMPLATES = {
+    "name": [
+        "Kamu masih ingat siapa namaku?",
+        "Siapa namaku yang kusebutkan tadi?",
+        "Tadi aku memperkenalkan diri dengan nama siapa ya?",
+        "Bisa sebutkan siapa namaku tadi?",
+        "Siapa nama panggilanku tadi?",
+        "Coba tebak siapa namaku tadi.",
+        "Jangan sampai lupa, namaku siapa ya?"
+    ],
     "job": [
         "Kamu masih ingat apa profesiku?",
         "Apa pekerjaanku sehari-hari yang kuceritakan tadi?",
@@ -367,6 +376,7 @@ ANSWER_STYLES = {
 def render_answer_text(fact_key: str, val: str) -> str:
     """Generates natural, varied assistant answer strings."""
     templates = [
+        f"Namamu adalah {val}." if fact_key == "name" else
         f"Kamu bekerja sebagai {val}." if fact_key == "job" else
         f"Kamu tinggal di kota {val}." if fact_key == "city" else
         f"Minuman favoritmu adalah {val}." if fact_key == "drink" else

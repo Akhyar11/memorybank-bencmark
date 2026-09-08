@@ -72,6 +72,9 @@ def load_conversations(file_path: str, seed: int = 42):
             if not turns:
                 continue
 
+            target_recall = item.get("target_recall", {})
+            target_question = target_recall.get("question", "").strip() if target_recall else ""
+
             dialog_pairs = []
             u_text = None
             for t in turns:
@@ -80,10 +83,16 @@ def load_conversations(file_path: str, seed: int = 42):
                 if role == "user":
                     u_text = content
                 elif role == "assistant" and u_text is not None:
-                    dialog_pairs.append((u_text, content))
+                    is_recall = False
+                    if target_question and (u_text == target_question or target_question in u_text or u_text in target_question):
+                        is_recall = True
+                    dialog_pairs.append((u_text, content, is_recall))
                     u_text = None
 
             if dialog_pairs:
+                if target_recall and not any(p[2] for p in dialog_pairs):
+                    u_last, a_last, _ = dialog_pairs[-1]
+                    dialog_pairs[-1] = (u_last, a_last, True)
                 conversations.append(dialog_pairs)
 
     print(f"✓ Sumber Data Terpakai: {resolved_path}")
@@ -99,6 +108,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--max_seq_len", type=int, default=256)
+    parser.add_argument("--recall_loss_weight", type=float, default=4.0, help="Loss multiplier for target recall turns (default: 4.0)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
@@ -141,13 +151,15 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
+        total_recall_loss = 0.0
         steps = 0
+        recall_steps = 0
 
         pbar = tqdm(conversations, desc=f"Epoch {epoch}/{args.epochs}", dynamic_ncols=True)
         for conv_turns in pbar:
             model.reset_memory()
 
-            for user_text, ai_text in conv_turns:
+            for user_text, ai_text, is_recall in conv_turns:
                 prompt_str = f"User: {user_text}\nAI:"
                 ai_str = f" {ai_text}\n"
 
@@ -176,8 +188,15 @@ def main():
                 )
 
                 loss = out["loss"]
+                raw_loss = loss.item()
+
+                if is_recall and args.recall_loss_weight > 1.0:
+                    train_loss = loss * args.recall_loss_weight
+                else:
+                    train_loss = loss
+
                 optimizer.zero_grad()
-                loss.backward()
+                train_loss.backward()
                 torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
                 optimizer.step()
 
@@ -186,14 +205,22 @@ def main():
                     v_user = extractor.encode(user_text, normalize=True)
                     model.matrix_bank.write(v_user)
 
-                total_loss += loss.item()
+                total_loss += raw_loss
                 steps += 1
+                if is_recall:
+                    total_recall_loss += raw_loss
+                    recall_steps += 1
 
             model.reset_memory()
 
+            avg_l = total_loss / max(steps, 1)
+            avg_rec = total_recall_loss / max(recall_steps, 1) if recall_steps > 0 else 0.0
+            pbar.set_postfix({"Loss": f"{avg_l:.4f}", "RecLoss": f"{avg_rec:.4f}"})
+
         avg_loss = total_loss / max(steps, 1)
+        avg_rec_loss = total_recall_loss / max(recall_steps, 1) if recall_steps > 0 else 0.0
         ppl = math.exp(min(avg_loss, 20.0))
-        print(f"\nEpoch {epoch} Selesai. Avg Loss: {avg_loss:.4f} | Perplexity: {ppl:.2f}")
+        print(f"\nEpoch {epoch} Selesai. Avg Loss: {avg_loss:.4f} (Recall: {avg_rec_loss:.4f}) | Perplexity: {ppl:.2f}")
 
         if avg_loss < best_loss:
             best_loss = avg_loss
@@ -209,6 +236,7 @@ def main():
                     "scaling": "dim",
                     "model_name": args.model_name,
                     "bert_name": args.bert_name,
+                    "recall_loss_weight": args.recall_loss_weight,
                 },
             }, ckpt_file)
             print(f"✓ Checkpoint Adapter Ringan (~7 MB) disimpan ke: {ckpt_file}")

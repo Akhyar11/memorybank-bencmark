@@ -1,12 +1,13 @@
 """
 models/matrix_memory_bank.py
 ============================
-Differentiable Memory Matrix Engine based on the continuous linear associative design:
+Differentiable Memory Matrix Engine with Softmax Attention:
   - Memory Matrix: M in R^(128 x 768), non-trainable state (requires_grad = False).
-  - Query dot product: s = M @ q  (128-dimensional continuous activations).
-  - Memory reconstruction: m = M^T @ s = (M^T @ M) @ q  (768-dimensional reconstructed vector).
-  - No cosine similarity, no softmax, no argmax/top-k truncation on memory read.
-  - 100% differentiable linear gradient flow: d(m)/d(q) = (1/sqrt(d)) * M^T @ M.
+  - Query dot product: s = (q @ M^T) / sqrt(d)  (activations across memory slots).
+  - Softmax Attention: attn = Softmax(s)  (normalized probability distribution over active slots).
+  - Memory retrieval: m = attn @ M  (768-dimensional retrieved vector, convex combination of memory slots).
+  - In column-vector notation: m = M^T @ Softmax(M @ (W_q @ q)).
+  - 100% differentiable attention gradient flow without vanishing gradients.
 """
 
 import math
@@ -17,7 +18,7 @@ import torch.nn as nn
 
 class DifferentiableMemoryMatrix(nn.Module):
     """
-    Continuous Differentiable Memory Matrix Bank.
+    Continuous Differentiable Memory Matrix Bank with Softmax Attention.
     
     Attributes:
         capacity (int): Maximum number of memory slots (default: 128).
@@ -98,32 +99,47 @@ class DifferentiableMemoryMatrix(nn.Module):
 
     def read(self, query: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Differentiable matrix read via pure continuous matrix multiplication:
-          1. s = query @ M^T          (activations across all 128 slots)
-          2. m = (s @ M) * scale       (reconstructed memory vector in 768-D)
+        Differentiable matrix read via Softmax Attention:
+          1. s = (query @ M^T) * scale_factor     (scores across memory slots)
+          2. Mask inactive slots (if active_count < capacity) with -1e9
+          3. attn = Softmax(s, dim=-1)            (normalized distribution over active slots)
+          4. m = attn @ M                         (convex combination of active slots)
           
         Args:
             query: Query tensor q of shape (..., memory_dim).
             
         Returns:
-            m: Reconstructed memory representation of shape (..., memory_dim).
-            s: Activation scores across all 128 slots of shape (..., capacity).
+            m: Retrieved memory representation of shape (..., memory_dim).
+            attn: Attention distribution across memory slots of shape (..., capacity).
         """
         # Ensure query is on the same device and dtype
         q = query.to(device=self.M.device, dtype=self.M.dtype)
-        
-        # Step 1: Compute continuous activation across all 128 slots simultaneously
-        # s = q @ M^T -> shape (..., capacity)
+
+        # When no memories are stored, return zeros
+        if self._active_count == 0:
+            m = q * 0.0
+            attn = torch.zeros(*q.shape[:-1], self.capacity, device=self.M.device, dtype=self.M.dtype)
+            return m, attn
+
+        # Step 1: Compute scaled dot-product attention scores across slots
         s = torch.matmul(q, self.M.t())
-
-        # Step 2: Linear combination of all memory slots weighted by activations
-        # m = s @ M -> shape (..., memory_dim)
-        m = torch.matmul(s, self.M)
-
         if self.scaling:
-            m = m * self.scale_factor
+            s = s * self.scale_factor
 
-        return m, s
+        # Step 2: Mask inactive empty slots so they do not absorb softmax probability
+        if self._active_count < self.capacity:
+            mask = torch.zeros(self.capacity, device=self.M.device, dtype=torch.bool)
+            mask[self._active_count:] = True
+            s = s.masked_fill(mask, -1e9)
+
+        # Step 3: Softmax over slots
+        attn = torch.softmax(s, dim=-1)
+
+        # Step 4: Weighted combination of memory slots
+        # m = attn @ M -> shape (..., memory_dim)
+        m = torch.matmul(attn, self.M)
+
+        return m, attn
 
     def extra_repr(self) -> str:
         return (

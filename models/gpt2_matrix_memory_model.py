@@ -3,9 +3,9 @@ models/gpt2_matrix_memory_model.py
 ==================================
 GPT-2 with Differentiable Memory Matrix Bank:
   - Frozen GPT-2 Backbone (100% frozen).
-  - Trainable Query Encoder: W_q in R^(768 -> 768).
+  - Trainable Query Encoder: W_q in R^(768 -> 768) applied across all query modes.
   - Non-Trainable Memory Matrix State: M in R^(128 x 768) (requires_grad = False).
-  - Continuous Memory Read: s = q @ M^T, m = (1 / sqrt(d)) * s @ M.
+  - Softmax Attention Memory Read: attn = Softmax((q @ W_q) @ M^T / sqrt(d)), m = attn @ M.
   - Trainable Fusion Layer: W_f in R^(1536 -> 768).
   - Frozen LM Head: logits = W_lm @ z.
 """
@@ -28,13 +28,14 @@ class GPT2MatrixMemoryModel(nn.Module):
       1. Backbone GPT-2 and LM Head are frozen.
       2. Memory Matrix M in R^(128 x 768) is a non-trainable state buffer.
       3. Trainable Parameters:
-         - W_q (Query Encoder): R^(768 -> 768)
+         - W_q (Query Encoder): R^(768 -> 768) applied to all representations before retrieval
          - W_f (Fusion Projection): R^(1536 -> 768)
-      4. Fully continuous, linear differentiable read:
-         q = W_q(h)
-         s = q @ M^T          (128 activations across slots)
-         m = (1/sqrt(d)) * s @ M  (768 reconstructed memory)
-         z = W_f [h ; m] + b_f
+      4. Softmax Attention Differentiable Read:
+         q_proj = W_q(rep)
+         s = (q_proj @ M^T) / sqrt(d)
+         attn = Softmax(s, dim=-1)
+         m = attn @ M
+         z = h + GeLU(W_f [h ; m] + b_f)
          logits = W_lm @ z
     """
 
@@ -166,9 +167,10 @@ class GPT2MatrixMemoryModel(nn.Module):
         s_activations = None
         if use_memory:
             if query_text is not None and self.semantic_extractor is not None:
-                # Direct semantic query in the exact same normalized space as stored memory vectors
+                # Semantic query from raw text projected through W_q into memory query space
                 q_sem = self.semantic_extractor.encode(query_text, normalize=True).to(self.gpt2.device)
-                m_prompt, s_activations = self.matrix_bank.read(q_sem)
+                q = self.query_encoder(q_sem)
+                m_prompt, s_activations = self.matrix_bank.read(q)
                 m = m_prompt.unsqueeze(1).expand(bsz, seqlen, d)
             elif prompt_len is not None and 0 < prompt_len < seqlen:
                 # Turn-level prompt-conditioned query:
@@ -255,13 +257,14 @@ class GPT2MatrixMemoryModel(nn.Module):
         if use_memory:
             # Check if semantic query from raw text is available
             if query_text is not None and self.semantic_extractor is not None:
-                # Direct semantic query in the exact same normalized space as stored memory vectors
-                q = self.semantic_extractor.encode(query_text, normalize=True).to(self.gpt2.device)
+                # Semantic query from raw text projected through W_q into memory query space
+                q_sem = self.semantic_extractor.encode(query_text, normalize=True).to(self.gpt2.device)
+                q = self.query_encoder(q_sem)
             else:
                 # Query encoder forms query q from last prompt token
                 q = self.query_encoder(h_prompt)
 
-            # Continuous memory read (no softmax, no top-k)
+            # Softmax Attention memory read
             m_turn, _ = self.matrix_bank.read(q)
 
             fused_prompt = torch.cat([h_prompt, m_turn], dim=-1)

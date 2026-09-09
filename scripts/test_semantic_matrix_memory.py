@@ -143,9 +143,10 @@ def run_test():
                 v_sem = extractor.encode(t_text, normalize=True)
                 model.matrix_bank.write(v_sem)
 
-            # Query langsung dari teks pertanyaan dengan Semantic Extractor
+            # Query langsung dari teks pertanyaan dengan Semantic Extractor + W_q
             q_sem = extractor.encode(query, normalize=True)
-            _, act_new = model.matrix_bank.read(q_sem)
+            q_proj = model.query_encoder(q_sem)
+            _, act_new = model.matrix_bank.read(q_proj)
             scores_new = act_new[0, :len(all_turns)].tolist()
             best_slot_new = int(torch.argmax(act_new[0, :len(all_turns)]).item())
 

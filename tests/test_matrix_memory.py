@@ -50,35 +50,44 @@ class TestDifferentiableMemoryMatrix:
 
     def test_analytical_gradient_flow_exactness(self):
         """
-        Verifies that PyTorch autograd computes exactly:
-            d(m) / d(q) = (1 / sqrt(d)) * M^T @ M
-        without any distortion, clipping, or vanishing.
+        Verifies that PyTorch autograd computes exactly the analytical gradient
+        of Softmax Attention through active memory slots:
+            m = Softmax((q @ M^T) / sqrt(d)) @ M
+            dL/dq = (1 / sqrt(d)) * [attn * (u - sum(attn * u))] @ M_act
+        where u = v @ M_act^T.
         """
         d = 64
+        num_written = 5
         bank = DifferentiableMemoryMatrix(capacity=16, memory_dim=d, scaling=True)
 
         # Write 5 random memories
-        for _ in range(5):
+        for _ in range(num_written):
             bank.write(torch.randn(d))
 
-        M = bank.M  # (16, d)
         q = torch.randn(1, d, requires_grad=True)
+        m, attn = bank.read(q)  # (1, d), (1, 16)
 
-        m, _ = bank.read(q)  # (1, d)
-
-        # Let L = v . m for a random vector v
+        # Let L = sum(v * m) for a random vector v
         v = torch.randn(1, d)
         L = torch.sum(v * m)
         L.backward()
 
-        # Analytical gradient of L with respect to q:
-        # m = (1/sqrt(d)) * q @ M^T @ M
-        # dL/dq = (1/sqrt(d)) * v @ (M^T @ M)^T = (1/sqrt(d)) * v @ M^T @ M
+        # Analytical gradient derivation for Softmax Attention:
+        # m = attn @ M = attn_act @ M_act
+        # dL/dm = v
+        # u = v @ M_act^T
+        # dL/ds_act = attn_act * (u - sum(attn_act * u))
+        # dL/dq = (1 / sqrt(d)) * (dL/ds_act) @ M_act
+        M_act = bank.M[:num_written]
         scale = 1.0 / math.sqrt(d)
-        expected_grad = scale * torch.matmul(torch.matmul(v, M.t()), M)
+        s_act = torch.matmul(q.detach(), M_act.t()) * scale
+        attn_act = torch.softmax(s_act, dim=-1)
+        u = torch.matmul(v, M_act.t())
+        grad_s = attn_act * (u - torch.sum(attn_act * u, dim=-1, keepdim=True))
+        expected_grad = scale * torch.matmul(grad_s, M_act)
 
         assert q.grad is not None
-        assert torch.allclose(q.grad, expected_grad, atol=1e-5), "Gradient does not match analytical M^T @ M projection!"
+        assert torch.allclose(q.grad, expected_grad, atol=1e-5), "Gradient does not match analytical Softmax Attention gradient!"
 
     def test_fifo_capacity_and_write(self):
         capacity = 8
@@ -153,6 +162,36 @@ class TestGPT2MatrixMemoryModel:
         assert model.fusion_proj.weight.grad is not None
         assert model.query_encoder.weight.grad.norm().item() > 0.0
         assert model.fusion_proj.weight.grad.norm().item() > 0.0
+
+    def test_semantic_query_text_gradient(self, model_fixture):
+        """Verifies W_q receives gradients when query_text is provided with semantic extractor."""
+        import torch.nn.functional as F
+
+        model = model_fixture
+        model.train()
+        model.reset_memory()
+
+        class DummyExtractor:
+            def encode(self, texts, normalize=True):
+                count = len(texts) if isinstance(texts, list) else 1
+                v = torch.randn(count, 768)
+                return F.normalize(v, p=2, dim=-1) if normalize else v
+
+        model.set_semantic_extractor(DummyExtractor())
+        # Write at least 2 memories so softmax attention has multiple slots to differentiate
+        model.matrix_bank.write(torch.randn(768))
+        model.matrix_bank.write(torch.randn(768))
+
+        input_ids = torch.tensor([[50256, 101, 102]])
+        labels = input_ids.clone()
+        model.query_encoder.zero_grad()
+
+        out = model(input_ids, labels=labels, use_memory=True, query_text="Pertanyaan tes memori?")
+        loss = out["loss"]
+        loss.backward()
+
+        assert model.query_encoder.weight.grad is not None
+        assert model.query_encoder.weight.grad.norm().item() > 0.0, "W_q must receive non-zero gradient in semantic query mode!"
 
     def test_generate_and_memory_write(self, model_fixture):
         model = model_fixture

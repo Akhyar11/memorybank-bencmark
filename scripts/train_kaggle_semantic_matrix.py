@@ -110,6 +110,7 @@ def main():
     parser.add_argument("--max_seq_len", type=int, default=256)
     parser.add_argument("--recall_loss_weight", type=float, default=4.0, help="Loss multiplier for target recall turns (default: 4.0)")
     parser.add_argument("--reset_memory_per_conv", action="store_true", default=False, help="Reset memory at the beginning of each conversation (default: False, continuous lifelong rolling memory)")
+    parser.add_argument("--scaling", type=str, default="none", choices=["none", "sqrt", "dim"], help="Scaling factor for memory attention: none (1.0), sqrt (1/sqrt(d)), dim (1/d)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
@@ -117,6 +118,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Random Seed: {args.seed}")
     print(f"Device     : {device}")
+    print(f"Scaling    : {args.scaling}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     if tokenizer.pad_token is None:
@@ -133,7 +135,7 @@ def main():
     model = GPT2MatrixMemoryModel(
         model_name_or_path=args.model_name,
         capacity=128,
-        scaling="dim",
+        scaling=args.scaling,
         freeze_backbone=True,
         semantic_extractor=extractor,
     ).to(device)
@@ -244,7 +246,7 @@ def main():
                 "best_loss": best_loss,
                 "config": {
                     "capacity": 128,
-                    "scaling": "dim",
+                    "scaling": args.scaling,
                     "model_name": args.model_name,
                     "bert_name": args.bert_name,
                     "recall_loss_weight": args.recall_loss_weight,

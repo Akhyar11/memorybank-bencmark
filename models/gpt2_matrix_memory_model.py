@@ -1,16 +1,19 @@
 """
 models/gpt2_matrix_memory_model.py
 ==================================
-GPT-2 with Differentiable Memory Matrix Bank:
-  - Frozen GPT-2 Backbone (100% frozen).
-  - Trainable Query Encoder: W_q in R^(768 -> 768) applied across all query modes.
+GPT-2 with Differentiable Memory Matrix Bank & LoRA Conditioning:
+  - Frozen GPT-2 Backbone with LoRA Adaptation on Self-Attention (c_attn).
+  - Trainable Query Encoder: W_q in R^(768 -> 768).
   - Non-Trainable Memory Matrix State: M in R^(128 x 768) (requires_grad = False).
-  - Softmax Attention Memory Read: attn = Softmax((q @ W_q) @ M^T / sqrt(d)), m = attn @ M.
-  - Trainable Fusion Layer: W_f in R^(1536 -> 768).
+  - Softmax Attention Memory Read: attn = Softmax((q @ W_q) @ M^T / scaling), m = attn @ M.
+  - Trainable Virtual Memory Token Projection: v_mem = W_mem(m) prepended to sequence embeddings.
+  - Deep Attention Conditioning: All 12 transformer layers attend to v_mem via LoRA-adapted c_attn.
+  - Trainable Residual Fusion Layer: W_f in R^(1536 -> 768).
   - Frozen LM Head: logits = W_lm @ z.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,32 +23,81 @@ from models.matrix_memory_bank import DifferentiableMemoryMatrix
 from models.seed import set_seed
 
 
+class LoRAConv1D(nn.Module):
+    """
+    Zero-dependency Native PyTorch LoRA wrapper for HuggingFace Conv1D layers (e.g. GPT-2 c_attn).
+    Original Conv1D computes: x @ weight + bias, where weight is (in_features, out_features).
+    LoRA computes: original_conv1d(x) + (dropout(x) @ lora_A @ lora_B) * (lora_alpha / r).
+    """
+
+    def __init__(
+        self,
+        original_conv1d: nn.Module,
+        r: int = 16,
+        lora_alpha: float = 32.0,
+        lora_dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.conv1d = original_conv1d
+        self.conv1d.weight.requires_grad = False
+        if hasattr(self.conv1d, "bias") and self.conv1d.bias is not None:
+            self.conv1d.bias.requires_grad = False
+
+        in_features = original_conv1d.weight.size(0)   # 768
+        out_features = original_conv1d.weight.size(1)  # 2304
+        self.r = r
+        self.lora_alpha = lora_alpha
+        self.scaling = lora_alpha / r if r > 0 else 1.0
+
+        self.lora_A = nn.Parameter(torch.zeros(in_features, r))
+        self.lora_B = nn.Parameter(torch.zeros(r, out_features))
+        self.dropout = nn.Dropout(p=lora_dropout) if lora_dropout > 0.0 else nn.Identity()
+
+        # Kaiming initialization for A, zero initialization for B
+        # Guarantees that initial forward pass exactly matches original pretrained GPT-2!
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        base_out = self.conv1d(x)
+        lora_out = (self.dropout(x) @ self.lora_A @ self.lora_B) * self.scaling
+        return base_out + lora_out
+
+
 class GPT2MatrixMemoryModel(nn.Module):
     """
-    GPT-2 with Differentiable Memory Matrix.
+    GPT-2 with Differentiable Memory Matrix and LoRA Attention Conditioning.
     
     Architecture:
-      1. Backbone GPT-2 and LM Head are frozen.
-      2. Memory Matrix M in R^(128 x 768) is a non-trainable state buffer.
-      3. Trainable Parameters:
-         - W_q (Query Encoder): R^(768 -> 768) applied to all representations before retrieval
-         - W_f (Fusion Projection): R^(1536 -> 768)
-      4. Softmax Attention Differentiable Read:
-         q_proj = W_q(rep)
-         s = (q_proj @ M^T) / sqrt(d)
-         attn = Softmax(s, dim=-1)
-         m = attn @ M
-         z = h + GeLU(W_f [h ; m] + b_f)
-         logits = W_lm @ z
+      1. Backbone GPT-2 base weights and LM Head are frozen.
+      2. LoRA modules attached to c_attn in all 12 transformer layers.
+      3. Non-trainable Memory Matrix M in R^(128 x 768) is a continuous state buffer.
+      4. Trainable Parameters:
+         - W_q (Query Encoder): R^(768 -> 768)
+         - W_mem (Virtual Memory Token Projection): R^(768 -> 768)
+         - W_f (Residual Fusion Projection): R^(1536 -> 768)
+         - LoRA matrices (lora_A in R^(768 x r), lora_B in R^(r x 2304)) across 12 layers
+      5. Forward Pass:
+         - Query q retrieved from W_q(q_sem) or W_q(h_prompt).
+         - Memory vector m = Softmax(q @ M^T / scaling) @ M.
+         - Memory vector projected to virtual token v_mem = W_mem(m).
+         - v_mem prepended to token embeddings: [v_mem ; token_embeds].
+         - Transformer with LoRA processes sequence; all attention heads attend to v_mem.
+         - Output tokens passed through residual fusion layer: z = h + GeLU(W_f [h ; m] + b_f).
+         - Logits computed via frozen LM head: logits = W_lm @ z.
     """
 
     def __init__(
         self,
         model_name_or_path: str,
         capacity: int = 128,
-        scaling: bool = True,
+        scaling: Union[bool, str] = "none",
         freeze_backbone: bool = True,
         semantic_extractor: Optional[Any] = None,
+        use_lora: bool = True,
+        lora_rank: int = 16,
+        lora_alpha: float = 32.0,
+        lora_dropout: float = 0.0,
         seed: Optional[int] = 42,
     ):
         super().__init__()
@@ -62,19 +114,38 @@ class GPT2MatrixMemoryModel(nn.Module):
             for p in self.gpt2.parameters():
                 p.requires_grad = False
 
-        # 2. Non-trainable Memory Matrix (128 slots x 768-D)
+        # 2. Attach LoRA to GPT-2 Attention blocks (c_attn)
+        self.use_lora = use_lora
+        self.lora_rank = lora_rank
+        if use_lora and lora_rank > 0:
+            for block in self.gpt2.transformer.h:
+                block.attn.c_attn = LoRAConv1D(
+                    block.attn.c_attn,
+                    r=lora_rank,
+                    lora_alpha=lora_alpha,
+                    lora_dropout=lora_dropout,
+                )
+
+        # 3. Non-trainable Memory Matrix (128 slots x 768-D)
         self.matrix_bank = DifferentiableMemoryMatrix(
             capacity=capacity,
             memory_dim=embed_dim,
             scaling=scaling,
         )
 
-        # 3. Trainable Query Encoder: q = W_q(h)
+        # 4. Trainable Query Encoder: q = W_q(h)
         self.query_encoder = nn.Linear(embed_dim, embed_dim, bias=False)
         nn.init.eye_(self.query_encoder.weight)
         self.query_encoder.weight.requires_grad = True
 
-        # 4. Trainable Cross-GeLU Fusion Layer (Option 3): Delta = GeLU(W_f [h ; m] + b_f), z = h + Delta
+        # 5. Trainable Virtual Memory Token Projection: v_mem = W_mem(m)
+        self.memory_token_proj = nn.Linear(embed_dim, embed_dim, bias=True)
+        nn.init.eye_(self.memory_token_proj.weight)
+        nn.init.zeros_(self.memory_token_proj.bias)
+        self.memory_token_proj.weight.requires_grad = True
+        self.memory_token_proj.bias.requires_grad = True
+
+        # 6. Trainable Cross-GeLU Fusion Layer: Delta = GeLU(W_f [h ; m] + b_f), z = h + Delta
         self.fusion_proj = nn.Linear(embed_dim * 2, embed_dim, bias=True)
         self.fusion_act = nn.GELU()
         with torch.no_grad():
@@ -107,15 +178,16 @@ class GPT2MatrixMemoryModel(nn.Module):
         return trainable, total
 
     def get_adapter_state_dict(self) -> Dict[str, torch.Tensor]:
-        """Extracts only the trainable adapter parameters (query_encoder & fusion_proj). Size: ~7 MB."""
+        """Extracts only trainable adapter & LoRA parameters. Size: ~11-12 MB."""
+        target_prefixes = ["query_encoder", "fusion_proj", "memory_token_proj", "lora_A", "lora_B"]
         return {
             k: v.cpu().clone()
             for k, v in self.state_dict().items()
-            if any(k.startswith(pfx) for pfx in ["query_encoder", "fusion_proj"])
+            if any(pfx in k for pfx in target_prefixes)
         }
 
     def load_adapter(self, checkpoint_path_or_dict: Union[str, Dict[str, Any]]):
-        """Loads lightweight adapter weights (~7 MB) onto the frozen backbone."""
+        """Loads lightweight adapter weights (~7-12 MB) onto the backbone."""
         if isinstance(checkpoint_path_or_dict, str):
             st = torch.load(checkpoint_path_or_dict, map_location="cpu", weights_only=False)
         else:
@@ -129,7 +201,7 @@ class GPT2MatrixMemoryModel(nn.Module):
             sd = st
 
         msg = self.load_state_dict(sd, strict=False)
-        print(f"✓ MemoryBank Adapter loaded ({len(sd)} tensors): {msg}")
+        print(f"✓ MemoryBank + LoRA Adapter loaded ({len(sd)} tensors): {msg}")
 
     def reset_memory(self):
         """Clears memory matrix state."""
@@ -145,49 +217,70 @@ class GPT2MatrixMemoryModel(nn.Module):
         query_text: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, Any]:
         """
-        Forward pass with continuous linear memory read.
-        
-        Args:
-            input_ids: Tensor of shape (B, T).
-            attention_mask: Optional attention mask of shape (B, T).
-            labels: Optional labels of shape (B, T) for NTP loss.
-            use_memory: Whether to fuse differentiable memory.
-            prompt_len: Boundary index where user prompt ends and assistant response starts.
-            query_text: Optional raw text string for semantic query extraction via semantic_extractor.
+        Forward pass with continuous linear memory read & virtual memory token conditioning.
         """
-        transformer_outputs = self.gpt2.transformer(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            use_cache=False,
-            return_dict=True,
-        )
-        hidden = transformer_outputs.last_hidden_state  # (B, T, D)
-        bsz, seqlen, d = hidden.shape
-
+        bsz, seqlen = input_ids.shape
+        device = input_ids.device
         s_activations = None
+
         if use_memory:
+            # 1. Read memory m via semantic query or prompt hidden state
             if query_text is not None and self.semantic_extractor is not None:
-                # Semantic query from raw text projected through W_q into memory query space
-                q_sem = self.semantic_extractor.encode(query_text, normalize=True).to(self.gpt2.device)
+                q_sem = self.semantic_extractor.encode(query_text, normalize=True).to(device)
                 q = self.query_encoder(q_sem)
                 m_prompt, s_activations = self.matrix_bank.read(q)
-                m = m_prompt.unsqueeze(1).expand(bsz, seqlen, d)
             elif prompt_len is not None and 0 < prompt_len < seqlen:
-                # Turn-level prompt-conditioned query:
-                h_prompt = hidden[:, prompt_len - 1, :]  # (B, D)
-                q_prompt = self.query_encoder(h_prompt)   # (B, D)
-                m_prompt, s_activations = self.matrix_bank.read(q_prompt)  # (B, D), (B, 128)
-                m = m_prompt.unsqueeze(1).expand(bsz, seqlen, d)
+                with torch.no_grad():
+                    prompt_out = self.gpt2.transformer(
+                        input_ids=input_ids[:, :prompt_len],
+                        use_cache=False,
+                        return_dict=True,
+                    )
+                    h_prompt = prompt_out.last_hidden_state[:, -1, :]
+                q_prompt = self.query_encoder(h_prompt)
+                m_prompt, s_activations = self.matrix_bank.read(q_prompt)
             else:
-                # Full sequence query
-                q = self.query_encoder(hidden)  # (B, T, D)
-                m, s_activations = self.matrix_bank.read(q)  # (B, T, D), (B, T, 128)
+                with torch.no_grad():
+                    h_all = self.gpt2.transformer.wte(input_ids).mean(dim=1)
+                q = self.query_encoder(h_all)
+                m_prompt, s_activations = self.matrix_bank.read(q)
 
+            # 2. Virtual Memory Token Embedding: v_mem in R^(B x 1 x D)
+            v_mem = self.memory_token_proj(m_prompt).unsqueeze(1)  # (B, 1, D)
+
+            # 3. Prepend Virtual Memory Token to Token Embeddings
+            token_embeds = self.gpt2.transformer.wte(input_ids)     # (B, T, D)
+            inputs_embeds = torch.cat([v_mem, token_embeds], dim=1) # (B, T + 1, D)
+
+            if attention_mask is not None:
+                mem_mask = torch.ones((bsz, 1), device=device, dtype=attention_mask.dtype)
+                comb_mask = torch.cat([mem_mask, attention_mask], dim=1)
+            else:
+                comb_mask = None
+
+            # 4. Forward through GPT-2 with LoRA attention
+            transformer_outputs = self.gpt2.transformer(
+                inputs_embeds=inputs_embeds,
+                attention_mask=comb_mask,
+                use_cache=False,
+                return_dict=True,
+            )
+            # Hidden states corresponding to input_ids (drop the memory token at index 0)
+            hidden = transformer_outputs.last_hidden_state[:, 1:, :]  # (B, T, D)
+
+            # 5. Residual Fusion Layer at LM Head
+            m = m_prompt.unsqueeze(1).expand(bsz, seqlen, hidden.size(-1))
             fused_input = torch.cat([hidden, m], dim=-1)  # (B, T, 2D)
             delta = self.fusion_act(self.fusion_proj(fused_input))  # (B, T, D)
             z = hidden + delta
         else:
-            z = hidden
+            transformer_outputs = self.gpt2.transformer(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                use_cache=False,
+                return_dict=True,
+            )
+            z = transformer_outputs.last_hidden_state
 
         logits = self.gpt2.lm_head(z)  # (B, T, V)
 
@@ -232,53 +325,75 @@ class GPT2MatrixMemoryModel(nn.Module):
         write_after_gen: bool = True,
     ) -> torch.Tensor:
         """
-        Turn-level Autoregressive Generation with Differentiable Memory Matrix:
-          1. Forward prompt -> extract h_prompt.
-          2. Form query q (semantic query via query_text or projection of h_prompt).
-          3. Read continuous memory m_turn = (1/sqrt(d)) * (q @ M^T) @ M.
-          4. Decode tokens conditioned on [h_t ; m_turn].
+        Turn-level Autoregressive Generation with Deep Memory Token & LoRA Conditioning:
+          1. Retrieve memory vector m_turn from Memory Matrix Bank.
+          2. Project m_turn to virtual memory token v_mem = W_mem(m_turn).
+          3. Prepend v_mem to input_ids embeddings and forward prompt into KV-cache.
+          4. Decode tokens conditioned on [h_t ; m_turn] and past KV-cache attending to v_mem.
         """
         del pad_token_id
         stop_ids = set(stop_token_ids or [])
         if eos_token_id is not None:
             stop_ids.add(eos_token_id)
 
-        # 1. Forward prompt through transformer
-        prompt_outputs = self.gpt2.transformer(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            use_cache=True,
-            return_dict=True,
-        )
-        past_key_values = prompt_outputs.past_key_values
-        hidden = prompt_outputs.last_hidden_state
-        h_prompt = hidden[:, -1, :]  # (B, D)
+        bsz = input_ids.size(0)
+        device = input_ids.device
 
         if use_memory:
-            # Check if semantic query from raw text is available
+            # 1. Read memory vector m
             if query_text is not None and self.semantic_extractor is not None:
-                # Semantic query from raw text projected through W_q into memory query space
-                q_sem = self.semantic_extractor.encode(query_text, normalize=True).to(self.gpt2.device)
+                q_sem = self.semantic_extractor.encode(query_text, normalize=True).to(device)
                 q = self.query_encoder(q_sem)
             else:
-                # Query encoder forms query q from last prompt token
-                q = self.query_encoder(h_prompt)
+                with torch.no_grad():
+                    temp_out = self.gpt2.transformer(input_ids=input_ids, use_cache=False)
+                    h_last = temp_out.last_hidden_state[:, -1, :]
+                q = self.query_encoder(h_last)
 
-            # Softmax Attention memory read
-            m_turn, _ = self.matrix_bank.read(q)
+            m_turn, _ = self.matrix_bank.read(q)  # (B, D)
+
+            # 2. Virtual Memory Token Embedding
+            v_mem = self.memory_token_proj(m_turn).unsqueeze(1)  # (B, 1, D)
+            token_embeds = self.gpt2.transformer.wte(input_ids)
+            inputs_embeds = torch.cat([v_mem, token_embeds], dim=1)  # (B, T + 1, D)
+
+            if attention_mask is not None:
+                mem_mask = torch.ones((bsz, 1), device=device, dtype=attention_mask.dtype)
+                comb_mask = torch.cat([mem_mask, attention_mask], dim=1)
+            else:
+                comb_mask = None
+
+            prompt_outputs = self.gpt2.transformer(
+                inputs_embeds=inputs_embeds,
+                attention_mask=comb_mask,
+                use_cache=True,
+                return_dict=True,
+            )
+            past_key_values = prompt_outputs.past_key_values
+            hidden = prompt_outputs.last_hidden_state
+            h_prompt = hidden[:, -1, :]  # (B, D)
 
             fused_prompt = torch.cat([h_prompt, m_turn], dim=-1)
             delta_prompt = self.fusion_act(self.fusion_proj(fused_prompt))
             z_prompt = h_prompt + delta_prompt
             next_token_logits = self.gpt2.lm_head(z_prompt)
         else:
+            prompt_outputs = self.gpt2.transformer(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                use_cache=True,
+                return_dict=True,
+            )
+            past_key_values = prompt_outputs.past_key_values
+            hidden = prompt_outputs.last_hidden_state
+            h_prompt = hidden[:, -1, :]
             next_token_logits = self.gpt2.lm_head(h_prompt)
             m_turn = None
 
         generated = input_ids.clone()
         last_ai_hidden = None
 
-        # 2. Token-by-token decoding loop
+        # 3. Token-by-token decoding loop
         for _ in range(max_new_tokens):
             logits = next_token_logits.clone()
 
@@ -324,8 +439,7 @@ class GPT2MatrixMemoryModel(nn.Module):
             h_t = step_out.last_hidden_state[:, -1, :]
             last_ai_hidden = h_t
 
-            if use_memory:
-                # Fused with turn-level memory representation m_turn
+            if use_memory and m_turn is not None:
                 fused_t = torch.cat([h_t, m_turn], dim=-1)
                 delta_t = self.fusion_act(self.fusion_proj(fused_t))
                 z_t = h_t + delta_t
@@ -333,7 +447,7 @@ class GPT2MatrixMemoryModel(nn.Module):
             else:
                 next_token_logits = self.gpt2.lm_head(h_t)
 
-        # 3. WRITE TO MEMORY BANK: After turn generation completes (optional)
+        # 4. WRITE TO MEMORY BANK: After turn generation completes (optional)
         if use_memory and write_after_gen:
             for b in range(input_ids.size(0)):
                 self.matrix_bank.write(h_prompt[b])

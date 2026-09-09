@@ -111,14 +111,19 @@ def main():
     parser.add_argument("--recall_loss_weight", type=float, default=4.0, help="Loss multiplier for target recall turns (default: 4.0)")
     parser.add_argument("--reset_memory_per_conv", action="store_true", default=False, help="Reset memory at the beginning of each conversation (default: False, continuous lifelong rolling memory)")
     parser.add_argument("--scaling", type=str, default="none", choices=["none", "sqrt", "dim"], help="Scaling factor for memory attention: none (1.0), sqrt (1/sqrt(d)), dim (1/d)")
+    parser.add_argument("--use_lora", action="store_true", default=True, help="Enable LoRA adaptation on GPT-2 attention (c_attn) layers (default: True)")
+    parser.add_argument("--no_lora", action="store_false", dest="use_lora", help="Disable LoRA adaptation")
+    parser.add_argument("--lora_rank", type=int, default=16, help="Rank for LoRA adaptation (default: 16)")
+    parser.add_argument("--lora_alpha", type=float, default=32.0, help="Alpha scaling for LoRA (default: 32.0)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Random Seed: {args.seed}")
-    print(f"Device     : {device}")
-    print(f"Scaling    : {args.scaling}")
+    print(f"Random Seed : {args.seed}")
+    print(f"Device      : {device}")
+    print(f"Scaling     : {args.scaling}")
+    print(f"Use LoRA    : {args.use_lora} (rank={args.lora_rank}, alpha={args.lora_alpha})")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     if tokenizer.pad_token is None:
@@ -138,7 +143,11 @@ def main():
         scaling=args.scaling,
         freeze_backbone=True,
         semantic_extractor=extractor,
+        use_lora=args.use_lora,
+        lora_rank=args.lora_rank,
+        lora_alpha=args.lora_alpha,
     ).to(device)
+    model.print_trainable_parameters()
 
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=0.01)
@@ -237,7 +246,7 @@ def main():
 
         if avg_loss < best_loss:
             best_loss = avg_loss
-            # Simpan HANYA bobot adapter trainable (query_encoder & fusion_proj) -> Ukuran HANYA ~7 MB!
+            # Simpan HANYA bobot adapter trainable (query_encoder, memory_token_proj, fusion_proj, LoRA) -> ~11-12 MB!
             adapter_sd = model.get_adapter_state_dict()
             ckpt_file = os.path.join(args.output_dir, "matrix_adapter_best.pt")
             torch.save({
@@ -247,13 +256,16 @@ def main():
                 "config": {
                     "capacity": 128,
                     "scaling": args.scaling,
+                    "use_lora": args.use_lora,
+                    "lora_rank": args.lora_rank,
+                    "lora_alpha": args.lora_alpha,
                     "model_name": args.model_name,
                     "bert_name": args.bert_name,
                     "recall_loss_weight": args.recall_loss_weight,
                     "reset_memory_per_conv": args.reset_memory_per_conv,
                 },
             }, ckpt_file)
-            print(f"✓ Checkpoint Adapter Ringan (~7 MB) disimpan ke: {ckpt_file}")
+            print(f"✓ Checkpoint Adapter + LoRA Ringan (~11-12 MB) disimpan ke: {ckpt_file}")
 
     print("\nPelatihan selesai dengan sukses!")
 

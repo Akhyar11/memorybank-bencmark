@@ -132,27 +132,115 @@ GAMES = [
 ]
 
 FOODS = [
+    # Tradisional Nusantara
     "Nasi Goreng Kampung pedas", "Sate Ayam Madura bumbu kacang", "Rendang Daging Sapi empuk",
     "Mie Ayam Bakso urat", "Gado-gado siram saus kacang", "Soto Betawi kuah santan",
     "Ayam Geprek sambal korek", "Nasi Padang lauk dendeng batokok", "Pempek Palembang kapal selam",
     "Rawon Daging Surabaya kuah kluwek", "Gudeg Jogja komplit krecek", "Coto Makassar daging rempah",
     "Ayam Betutu Bali pedas rempah", "Sop Buntut Sapi bakar", "Mie Aceh kepiting kuah kental",
-    "Nasi Liwet Solo gurih", "Bebek Sinjay sambal mangga muda", "Sate Lilit Ikan Khas Bali"
+    "Nasi Liwet Solo gurih", "Bebek Sinjay sambal mangga muda", "Sate Lilit Ikan Khas Bali",
+    "Nasi Kuning Manado rica cakalang", "Tahu Tek bumbu petis Surabaya", "Lontong Sayur Padang gulai paku",
+    "Bakmi Godhog Jawa kuah kental", "Asinan Sayur Bogor bumbu kacang", "Sup Konro Bakar rempah Makassar",
+    "Bubur Ayam Sukabumi cakwe gurih", "Kwetiau Sapi Goreng Pontianak", "Pecel Lele Lamongan sambal terasi",
+    "Sate Maranggi Purwakarta bumbu kecap", "Ayam Taliwang khas Lombok pedas", "Ikan Bakar Jimbaran bumbu plecing",
+    "Nasi Ulam Betawi serundeng gurih", "Soto Lamongan koya gurih renyah", "Gulai Kepala Ikan Kakap Padang",
+    "Mie Kocok Bandung kikil empuk", "Ketoprak Jakarta bumbu kacang ulek", "Nasi Gandul Pati kuah santan",
+    "Empal Gentong Cirebon kuah kuning", "Sate Padang kuah kental kuning", "Babi Guling khas Gianyar",
+    "Selat Solo daging bistik kuah segar", "Ayam Pop Bukittinggi sambal merah", "Nasi Timbel Parahyangan lalap sambal",
+    # Makanan Modern & Internasional Populer
+    "Dimsum Ayam Udang kukus hangat", "Ramen Kuah Tori Paitan gurih", "Sushi Salmon Roll segar",
+    "Pasta Carbonara krim keju gurih", "Pizza Margherita keju mozarella", "Burger Daging Sapi keju leleh",
+    "Steak Ribeye Daging Sapi panggang", "Salad Sayur Segar dressing wijen sangrai", "Sup Tom Yum Seafood asam pedas",
+    "Bibimbap Sayur Campur mangkuk batu", "Nasi Hainan Ayam Panggang wangi", "Tacos Daging Cincang salsa segar"
 ]
 
 DRINKS = [
+    # Kopi & Teh
     "Kopi Espresso gayo", "Kopi Susu Gula Aren legit", "Teh Hijau Matcha hangat",
     "Americano dingin segar", "Jus Alpukat kocok cokelat", "Teh Earl Grey aromatik",
     "Caffè Latte lembut", "Air Kelapa Muda murni", "Wedang Jahe hangat serai",
     "Es Cendol durian", "Teh Tarik dingin", "Jamu Kunyit Asam segar",
-    "Es Doger tape ketan", "Kopi Tubruk arabika wamena", "Bajigur santan hangat"
+    "Es Doger tape ketan", "Kopi Tubruk arabika wamena", "Bajigur santan hangat",
+    "Kopi V60 seduh manual biji ethiopia", "Cold Brew Arabika floral", "Cappuccino kayu manis hangat",
+    "Teh Melati wangi melati alami", "Teh Oolong pegunungan tinggi", "Jamu Beras Kencur wangi manis",
+    "Bandrek kelapa muda jahe merah", "Es Teler kelapa nangka alpukat", "Jus Mangga Harum Manis kental",
+    "Jus Buah Naga merah segar", "Es Kelapa Jeruk peras murni", "Smoothie Pisang Oat susu almond",
+    "Es Pisang Ijo khas Makassar", "Teh Chamomile penenang malam", "Kombucha Apel Jahe fermentasi",
+    "Kopi Luwak seduh tubruk murni", "Matcha Latte susu gandum (oat milk)", "Es Cincau Hijau santan aren",
+    "Wedang Ronde kacang tanah jahe", "Air Nabeez rendaman kurma manis", "Es Kuwut Bali melon selasih",
+    "Jus Sirsak segar asam manis", "Jus Jambu Biji merah kental", "Infused Water lemon mint segar"
 ]
 
 ALLERGIES_DIETS = [
-    "alergi makanan laut (seafood udang dan kepiting)", "alergi berat pada kacang tanah",
-    "pantangan tidak bisa makan makanan pedas sama sekali", "intoleransi laktosa (susu sapi)",
-    "menjalani pola makan vegetarian murni", "alergi telur ayam negeri",
-    "menghindari makanan tinggi gluten", "alergi buah nanas dan buah asam"
+    # Seafood & Produk Laut
+    "alergi makanan laut (seafood udang dan kepiting)",
+    "alergi kerang dara dan tiram laut",
+    "alergi cumi-cumi dan gurita",
+    "alergi ikan laut bertulang merah (tongkol dan cakalang)",
+    "alergi lobster air tawar dan udang windu",
+    "alergi kepiting rajungan dan kepiting bakau",
+    "alergi rumput laut dan nori olahan",
+    # Kacang & Biji-bijian
+    "alergi berat pada kacang tanah",
+    "alergi kacang almond panggang dan hazelnut",
+    "alergi kacang mete (mente) goreng",
+    "alergi kacang kedelai dan tahu tempe",
+    "alergi biji wijen putih dan minyak wijen",
+    "alergi kacang walnut dan kenari",
+    "alergi kacang pistachio dan kacang pinus",
+    "alergi kacang polong dan lentil",
+    # Telur & Produk Susu
+    "alergi telur ayam negeri",
+    "alergi putih telur ayam kampung",
+    "alergi kuning telur",
+    "alergi telur bebek dan telur puyuh",
+    "intoleransi laktosa (susu sapi murni)",
+    "alergi protein susu sapi (kasein)",
+    "pantangan keju olahan fermentasi",
+    "pantangan yogurt dan kefir olahan susu",
+    "alergi susu kambing dan susu domba",
+    # Daging & Unggas
+    "alergi daging kambing dan domba",
+    "pantangan daging sapi merah",
+    "alergi daging bebek dan entok",
+    # Buah & Sayuran
+    "alergi buah nanas madu dan buah asam",
+    "alergi buah kiwi dan stroberi",
+    "alergi buah durian dan nangka matang",
+    "alergi buah mangga kueni dan getahnya",
+    "alergi buah alpukat mentega",
+    "alergi tomat merah dan terong ungu",
+    "alergi jamur tiram dan jamur kancing",
+    "alergi jamur kuping hitam",
+    "alergi seledri dan daun ketumbar mentah",
+    "alergi bawang putih dan bawang bombai",
+    "alergi buah persik dan buah plum",
+    "alergi buah pisang ambon",
+    "alergi cabai merah dan paprika",
+    # Gluten & Serealia
+    "intoleransi gluten gandum (penyakit celiac)",
+    "alergi tepung terigu dan roti gandum",
+    "pantangan oat giling dan jelai (barley)",
+    "alergi ragi tape dan fermipan roti",
+    "pantangan jagung manis dan maizena",
+    # Pola Diet Khusus & Medis
+    "menjalani pola makan vegetarian murni (tanpa daging)",
+    "pola makan vegan ketat (bebas produk hewani)",
+    "pantangan tidak bisa makan makanan pedas sama sekali",
+    "pantangan cabai rawit pedas level tinggi",
+    "diet ketat rendah garam untuk hipertensi",
+    "pantangan makanan tinggi purin (asam urat akut)",
+    "diet rendah gula murni dan bebas sirup fruktosa (diabetes)",
+    "pantangan penyedap rasa sintetis MSG berlebih",
+    "pola makan pescatarian (hanya ikan dan sayur)",
+    "pantangan makanan bersantan kental (kolesterol tinggi)",
+    "diet bebas minyak gorengan (gangguan lambung/GERD)",
+    "pantangan kafein kopi dan teh hitam pekat",
+    "pantangan makanan olahan berpengawet kalengan",
+    "pantangan cokelat hitam pekat (gangguan asam lambung)",
+    "pantangan makanan fermentasi asam dan cuka makan",
+    "diet rendah kalium untuk kesehatan ginjal",
+    "pantangan makanan berkarbohidrat tinggi (diet keto)"
 ]
 
 PETS = [
@@ -326,42 +414,77 @@ QUERY_TEMPLATES = {
         "Kamu ingat minuman favoritku apa?",
         "Tadi minuman apa yang selalu kuminum pas santai?",
         "Apa minuman kesukaanku yang tadi kusebut?",
-        "Minuman apa yang biasa menemaniku saat rehat tadi ya?"
+        "Minuman apa yang biasa menemaniku saat rehat tadi ya?",
+        "Minuman favorit apa yang tadi sempat kuceritakan?",
+        "Tadi aku bilang suka minum apa pas istirahat kerja?",
+        "Coba sebutkan minuman kesukaanku yang kuberitahu tadi.",
+        "Kamu masih ingat minuman pelepas dahaga favoritku apa?",
+        "Bisa ingatkan minuman kesukaanku tadi apa?"
     ],
     "hobby": [
         "Kegiatan atau hobi apa yang biasa kulakukan saat rehat tadi?",
         "Apa hobi favoritku yang tadi kuceritakan?",
         "Kamu ingat aktivitasku di waktu luang apa?",
-        "Saat santai tadi aku biasanya melakukan hobi apa ya?"
+        "Saat santai tadi aku biasanya melakukan hobi apa ya?",
+        "Hobi apa yang biasa kujalankan di akhir pekan?",
+        "Aktivitas kegemaranku yang kuceritakan tadi apa?",
+        "Coba sebutkan hobi yang sering kulakukan di waktu luang.",
+        "Kamu masih ingat caraku melepas penat dengan hobi apa?"
     ],
     "food": [
         "Makanan kesukaanku yang kusebutkan tadi apa ya?",
         "Apa menu makanan favoritku tadi?",
         "Tadi makanan apa yang paling doyan kusantap?",
-        "Kamu masih ingat kuliner favoritku apa?"
+        "Kamu masih ingat kuliner favoritku apa?",
+        "Hidangan apa yang kuceritakan paling kusukai?",
+        "Menu masakan apa yang tadi kubilang jadi favoritku?",
+        "Tadi aku cerita paling suka menyantap makanan apa ya?",
+        "Makanan apa yang tadi kusebut sebagai menu kesukaanku?",
+        "Ingat tidak, kuliner apa yang tadi kusebut paling nikmat?",
+        "Coba sebutkan menu makanan yang paling kusukai tadi.",
+        "Bisa ingatkan makanan kesukaanku yang sempat kuceritakan?",
+        "Kuliner kesukaan yang sempat kubahas tadi apa ya?"
     ],
     "allergy": [
         "Sebelum kamu rekomendasikan resto, kamu ingat pantangan atau kondisiku apa tadi?",
         "Kondisi alergi atau pantangan makananku apa ya?",
         "Apa kondisi kesehatan terkait makanan yang harus kuwaspadai tadi?",
-        "Kamu ingat pantanganku saat makan tadi apa?"
+        "Kamu ingat pantanganku saat makan tadi apa?",
+        "Pantangan makan apa yang sempat kuceritakan tadi?",
+        "Ada alergi atau pantangan konsumsi tertentu yang pernah kusebutkan?",
+        "Tadi aku bilang punya alergi atau intoleransi terhadap apa ya?",
+        "Tolong ingatkan, aku ada pantangan makanan apa sebelumnya?",
+        "Bisa kamu sebutkan alergi atau batasan diet yang kumiliki tadi?",
+        "Apakah kamu ingat kondisi medis atau alergi makananku?",
+        "Makanan atau bahan apa yang harus kuhindari sesuai obrolan tadi?",
+        "Coba ingat kembali, apa pantangan makanku yang sudah kukatakan?",
+        "Apa yang tidak boleh kumakan karena kondisi fisikku tadi?",
+        "Btw, kamu ingat kan batasan makananku tadi apa?",
+        "Jangan lupa, kondisi alergi apa yang tadi kuberitahu padamu?",
+        "Sebutkan pantangan fisik atau alergi yang tadi sempat kubahas."
     ],
     "pet_name": [
         "Siapa nama hewan peliharaanku yang kuceritakan tadi?",
         "Nama peliharaanku di rumah siapa tadi ya?",
         "Kamu ingat nama hewan peliharaan kesayanganku?",
-        "Siapa nama peliharaanku tadi?"
+        "Siapa nama peliharaanku tadi?",
+        "Peliharaan kesayanganku tadi kuberi nama siapa ya?",
+        "Tadi aku cerita punya hewan peliharaan bernama siapa?",
+        "Bisa sebutkan nama binatang peliharaan di rumahku?"
     ],
     "side_biz": [
         "Usaha sampingan apa yang sedang kurintis tadi?",
         "Bisnis kecil di luar kerja utama yang kujalankan apa tadi ya?",
         "Kamu ingat usaha sampinganku apa?",
-        "Tadi aku cerita lagi jalanin bisnis sampingan apa?"
+        "Tadi aku cerita lagi jalanin bisnis sampingan apa?",
+        "Proyek wirausaha apa yang sedang kujalankan di luar pekerjaan utama?",
+        "Usaha tambahan apa yang sempat kuceritakan tadi?"
     ],
     "game": [
         "Game apa yang biasa kumainkan bareng temen-temen?",
         "Game favorit yang sering kumainkan apa ya tadi?",
-        "Kamu ingat judul game yang biasa kumainkan?"
+        "Kamu ingat judul game yang biasa kumainkan?",
+        "Video game apa yang sering kumainkan saat santai?"
     ]
 }
 
@@ -374,25 +497,73 @@ ANSWER_STYLES = {
 
 
 def render_answer_text(fact_key: str, val: str) -> str:
-    """Generates natural, varied assistant answer strings."""
-    templates = [
-        f"Namamu adalah {val}." if fact_key == "name" else
-        f"Kamu bekerja sebagai {val}." if fact_key == "job" else
-        f"Kamu tinggal di kota {val}." if fact_key == "city" else
-        f"Minuman favoritmu adalah {val}." if fact_key == "drink" else
-        f"Kamu biasa {val}." if fact_key == "hobby" else
-        f"Makanan kesukaanmu adalah {val}." if fact_key == "food" else
-        f"Kamu memiliki kondisi {val}." if fact_key == "allergy" else
-        f"Nama hewan peliharaanmu adalah {val}." if fact_key == "pet_name" else
-        f"Usaha sampinganmu adalah {val}." if fact_key == "side_biz" else
-        f"Game yang biasa kamu mainkan adalah {val}." if fact_key == "game" else
-        f"Tentu ingat, jawabannya adalah {val}."
-    ]
-    # Also add concise natural variants
-    templates.append(f"Tentu masih ingat, {val}.")
-    templates.append(f"{val}, sesuai yang kamu ceritakan tadi.")
-    templates.append(f"Berdasarkan yang kamu sebutkan tadi: {val}.")
-    return random.choice(templates)
+    """Generates natural, varied assistant answer strings with high linguistic entropy."""
+    if fact_key == "name":
+        opts = [
+            f"Namamu adalah {val}.", f"Tentu ingat, kamu bernama {val}.",
+            f"Kamu tadi memperkenalkan diri sebagai {val}.", f"{val}, senang mengobrol denganmu.",
+            f"Panggilanmu adalah {val}.", f"Nama yang kamu sebutkan tadi: {val}."
+        ]
+    elif fact_key == "job":
+        opts = [
+            f"Kamu bekerja sebagai {val}.", f"Profesi yang kamu geluti adalah {val}.",
+            f"Sehari-hari kamu beraktivitas sebagai {val}.", f"Tentu ingat, pekerjaanmu adalah {val}.",
+            f"Berdasarkan ceritamu, kamu adalah seorang {val}.", f"Karier yang kamu jalani: {val}."
+        ]
+    elif fact_key == "city":
+        opts = [
+            f"Kamu tinggal di kota {val}.", f"Domisili tempat tinggalmu berada di {val}.",
+            f"Kamu menetap di {val}.", f"Tentu masih ingat, kotamu adalah {val}.",
+            f"Dari obrolan tadi, kamu bertempat tinggal di {val}.", f"Kota tempatmu beraktivitas adalah {val}."
+        ]
+    elif fact_key == "drink":
+        opts = [
+            f"Minuman favoritmu adalah {val}.", f"Kamu gemar menikmati {val}.",
+            f"Saat istirahat kamu biasa minum {val}.", f"Pilihan minuman kesukaanmu adalah {val}.",
+            f"{val}, minuman yang selalu menemanimu santai.", f"Tentu ingat, favoritmu adalah {val}."
+        ]
+    elif fact_key == "hobby":
+        opts = [
+            f"Kamu biasa meluangkan waktu untuk {val}.", f"Hobi kesukaanmu adalah {val}.",
+            f"Di waktu luang kamu gemar {val}.", f"Aktivitas santai yang kamu sukai yaitu {val}.",
+            f"Tentu ingat, hobimu adalah {val}."
+        ]
+    elif fact_key == "food":
+        opts = [
+            f"Makanan kesukaanmu adalah {val}.", f"Menu favorit yang paling kamu santap adalah {val}.",
+            f"Kuliner kesukaanmu yaitu {val}.", f"Tentu masih ingat, hidangan favoritmu adalah {val}.",
+            f"{val}, sesuai yang kamu ceritakan tadi.", f"Pilihan makanan terbaikmu adalah {val}."
+        ]
+    elif fact_key == "allergy":
+        opts = [
+            f"Kamu memiliki kondisi {val}.", f"Pantangan yang harus kamu waspadai adalah {val}.",
+            f"Kondisi kesehatan yang kamu sebutkan tadi yaitu {val}.", f"Kamu mempunyai pantangan {val}.",
+            f"Tentu ingat, kamu harus berhati-hati terhadap {val}.", f"Berdasarkan yang kamu ceritakan tadi: {val}.",
+            f"Batasan makananmu adalah {val}.", f"{val}, wajib diperhatikan sebelum memilih menu."
+        ]
+    elif fact_key == "pet_name":
+        opts = [
+            f"Nama hewan peliharaanmu adalah {val}.", f"Peliharaan kesayanganmu bernama {val}.",
+            f"Kamu memanggil peliharaanmu dengan nama {val}.", f"Tentu ingat, namanya adalah {val}.",
+            f"{val}, sahabat setiamu di rumah."
+        ]
+    elif fact_key == "side_biz":
+        opts = [
+            f"Usaha sampinganmu adalah {val}.", f"Bisnis kecil yang kamu rintis yaitu {val}.",
+            f"Di luar pekerjaan utama kamu mengelola {val}.", f"Tentu ingat, usaha sampinganmu adalah {val}."
+        ]
+    elif fact_key == "game":
+        opts = [
+            f"Game yang biasa kamu mainkan adalah {val}.", f"Kamu gemar memainkan game {val}.",
+            f"Judul game favoritmu yaitu {val}.", f"Tentu ingat, gamenya adalah {val}."
+        ]
+    else:
+        opts = [f"Tentu ingat, jawabannya adalah {val}.", f"{val}, sesuai yang kamu sebutkan tadi."]
+
+    opts.append(f"{val}.")
+    opts.append(f"Tentu masih ingat, {val}.")
+    opts.append(f"Berdasarkan yang kamu sebutkan tadi: {val}.")
+    return random.choice(opts)
 
 
 # ---------------------------------------------------------------------------
@@ -842,14 +1013,19 @@ def generate_conversation_scenario(
     # 3. Interleaving Distractors
     inject_distractor_turn(turns, pool)
 
-    # 4. Secondary Fact Injection (Drink, Pet, Side Biz, or Hobby)
-    secondary_type = random.choice(["drink", "pet", "side_biz", "food"])
+    # 4. Secondary Fact Injection (Drink, Pet, Side Biz, Food & Allergy)
+    secondary_type = random.choice(["food_allergy", "drink", "pet", "side_biz", "food_allergy", "drink_hobby"])
     f2_turn_idx = len(turns)
 
     if secondary_type == "drink":
         u_f2 = random.choice(STATEMENT_STYLES_DRINK_HOBBY).format(drink=p["drink"], hobby=p["hobby"])
         a_f2 = f"Pilihan yang sangat pas! Menikmati {p['drink']} memang bisa membantu menyegarkan pikiran kembali."
         facts.append({"turn": f2_turn_idx, "key": "drink", "value": p["drink"]})
+    elif secondary_type == "drink_hobby":
+        u_f2 = random.choice(STATEMENT_STYLES_DRINK_HOBBY).format(drink=p["drink"], hobby=p["hobby"])
+        a_f2 = f"Kombinasi yang menyenangkan! Menikmati {p['drink']} sambil {p['hobby']} tentu membuat suasana santai."
+        facts.append({"turn": f2_turn_idx, "key": "drink", "value": p["drink"]})
+        facts.append({"turn": f2_turn_idx, "key": "hobby", "value": p["hobby"]})
     elif secondary_type == "pet":
         u_f2 = random.choice(STATEMENT_STYLES_PET).format(pet_type=p["pet_type"], pet_name=p["pet_name"])
         a_f2 = f"Lucu sekali! Memelihara {p['pet_type']} bernama {p['pet_name']} pasti selalu membawa keceriaan di rumah."
@@ -858,7 +1034,7 @@ def generate_conversation_scenario(
         u_f2 = random.choice(STATEMENT_STYLES_SIDE_BIZ).format(side_biz=p["side_biz"])
         a_f2 = f"Langkah wirausaha yang prospektif! Semoga bisnis {p['side_biz']} yang kamu jalankan semakin maju."
         facts.append({"turn": f2_turn_idx, "key": "side_biz", "value": p["side_biz"]})
-    else:
+    else:  # food_allergy
         u_f2 = random.choice(STATEMENT_STYLES_FOOD_ALLERGY).format(food=p["food"], allergy=p["allergy"])
         a_f2 = f"Catat, {p['name']}! Menyantap {p['food']} memang nikmat, dan sangat tepat selalu waspada terhadap {p['allergy']}."
         facts.append({"turn": f2_turn_idx, "key": "food", "value": p["food"]})
@@ -871,9 +1047,9 @@ def generate_conversation_scenario(
     while len(turns) < (target_turns - 2):
         inject_distractor_turn(turns, pool)
 
-    # 6. Memory Recall Query Turn
-    candidate_keys = [f["key"] for f in facts if f["key"] in QUERY_TEMPLATES]
-    recall_key = random.choice(candidate_keys)
+    # 6. Memory Recall Query Turn (Uniform Category Sampling to eliminate dominant-key bias)
+    available_keys = list(dict.fromkeys(f["key"] for f in facts if f["key"] in QUERY_TEMPLATES))
+    recall_key = random.choice(available_keys)
     query_text = random.choice(QUERY_TEMPLATES[recall_key])
 
     # Find the target ground truth value

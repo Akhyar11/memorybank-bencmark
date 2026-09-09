@@ -174,19 +174,29 @@ def run_benchmark_pipeline(
         tokenizer.pad_token = tokenizer.eos_token
 
     print("Memuat Unified GPT-2 Matrix Memory Model...")
+    scaling = "none"
+    use_lora = True
+    lora_rank = 16
+    adapter_data = None
+    if os.path.exists(checkpoint_path):
+        adapter_data = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        cfg = adapter_data.get("config", {})
+        scaling = cfg.get("scaling", "none")
+        use_lora = cfg.get("use_lora", any("lora" in k for k in adapter_data.get("adapter_state_dict", {})))
+        lora_rank = cfg.get("lora_rank", 16)
+    else:
+        raise FileNotFoundError(f"Checkpoint adapter tidak ditemukan di {checkpoint_path}")
+
     model = GPT2MatrixMemoryModel(
         model_name_or_path=actual_model_path,
         capacity=128,
-        scaling="dim",
+        scaling=scaling,
         freeze_backbone=True,
+        use_lora=use_lora,
+        lora_rank=lora_rank,
     ).to(device)
-
-    if os.path.exists(checkpoint_path):
-        st = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        model.load_adapter(st)
-        print("✓ Sukses memuat bobot adapter.")
-    else:
-        raise FileNotFoundError(f"Checkpoint adapter tidak ditemukan di {checkpoint_path}")
+    model.load_adapter(adapter_data)
+    print("✓ Sukses memuat bobot adapter.")
 
     # 2. Load Semantic Extractor & Shared BERTScore Evaluator
     print("Memuat IndoBERT Semantic Extractor...")
@@ -207,7 +217,7 @@ def run_benchmark_pipeline(
     models_to_test = [
         ("Pure GPT-2 (Zero-shot)", "pure"),
         ("Full-Context GPT-2", "full_context"),
-        ("MemoryBank W_q (scaling='dim')", "mem_dim"),
+        ("MemoryBank W_q (scaling='none')", "mem_none"),
         ("MemoryBank W_q (scaling='sqrt')", "mem_sqrt"),
     ]
 
@@ -309,7 +319,7 @@ def run_benchmark_pipeline(
         # Model 3 & 4: MemoryBank (W_q) dengan scaling='dim' dan 'sqrt'
         # -----------------------------------------------------------------
         for m_name, sc_mode, sc_val in [
-            ("MemoryBank W_q (scaling='dim')", "dim", 1.0 / 768.0),
+            ("MemoryBank W_q (scaling='none')", "none", 1.0),
             ("MemoryBank W_q (scaling='sqrt')", "sqrt", 1.0 / math.sqrt(768.0)),
         ]:
             model.matrix_bank.scaling = sc_mode
@@ -447,18 +457,18 @@ def run_benchmark_pipeline(
         f.write("# Rekomendasi Format Perbandingan untuk Laporan / Paper\n\n")
         f.write(f"Evaluasi dilakukan pada {len(samples)} sampel dialog percakapan test.\n\n")
         f.write(md_table_str)
-        hit3_dim = summary["MemoryBank W_q (scaling='dim')"]["hit3"]
+        hit3_none = summary["MemoryBank W_q (scaling='none')"]["hit3"]
         hit3_sqrt = summary["MemoryBank W_q (scaling='sqrt')"]["hit3"]
-        mrr_dim = summary["MemoryBank W_q (scaling='dim')"]["mrr"]
+        mrr_none = summary["MemoryBank W_q (scaling='none')"]["mrr"]
         mrr_sqrt = summary["MemoryBank W_q (scaling='sqrt')"]["mrr"]
         ent_pure = summary["Pure GPT-2 (Zero-shot)"]["entity_token_recall"]
         ent_fc = summary["Full-Context GPT-2"]["entity_token_recall"]
-        ent_sqrt = summary["MemoryBank W_q (scaling='sqrt')"]["entity_token_recall"]
+        ent_none = summary["MemoryBank W_q (scaling='none')"]["entity_token_recall"]
 
         f.write("\n\n### Detail Metrik Tambahan (Retrieval & Factual Alignment)\n\n")
-        f.write(f"- **Hit@3 Retrieval**: `dim`={hit3_dim}, `sqrt`={hit3_sqrt}\n")
-        f.write(f"- **MRR**: `dim`={mrr_dim}, `sqrt`={mrr_sqrt}\n")
-        f.write(f"- **Entity Token Overlap**: `Pure`={ent_pure}, `Full-Context`={ent_fc}, `MemoryBank(sqrt)`={ent_sqrt}\n")
+        f.write(f"- **Hit@3 Retrieval**: `none`={hit3_none}, `sqrt`={hit3_sqrt}\n")
+        f.write(f"- **MRR**: `none`={mrr_none}, `sqrt`={mrr_sqrt}\n")
+        f.write(f"- **Entity Token Overlap**: `Pure`={ent_pure}, `Full-Context`={ent_fc}, `MemoryBank(none)`={ent_none}\n")
 
     print(f"\n✓ Hasil evaluasi disimpan ke:")
     print(f"   -> JSON     : {json_path}")

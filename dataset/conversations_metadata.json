@@ -4,7 +4,7 @@
   "seed": 42,
   "synthetic_episodes_count": 1000,
   "chatgpt_episodes_count": 582,
-  "chatgpt_source": "8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d.zip",
+  "chatgpt_source": "/home/akhyar/Unduhan/8766716822ea6bbc15133b9fdd644dee89186edc0d9502c9bc5d288d4efae226-2026-09-05-16-08-32-4dc7aafcc52a4a7482a7e83d419d581d.zip",
   "train_size": 1265,
   "val_size": 158,
   "test_size": 159,

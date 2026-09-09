@@ -6,44 +6,44 @@
       "mrr": "-",
       "entity_recall": "0.00%",
       "entity_token_recall": "0.00%",
-      "bert_score_f1": "36.48%",
-      "sentence_cosine": "55.55%",
-      "avg_input_tokens": "16.7",
-      "latency_ms": "375.4 ms"
+      "bert_score_f1": "35.63%",
+      "sentence_cosine": "55.97%",
+      "avg_input_tokens": "13.5",
+      "latency_ms": "400.8 ms"
     },
     "Full-Context GPT-2": {
       "hit1": "-",
       "hit3": "-",
       "mrr": "-",
-      "entity_recall": "13.33%",
-      "entity_token_recall": "13.33%",
-      "bert_score_f1": "37.21%",
-      "sentence_cosine": "55.14%",
-      "avg_input_tokens": "279.4",
-      "latency_ms": "465.2 ms"
+      "entity_recall": "0.00%",
+      "entity_token_recall": "0.00%",
+      "bert_score_f1": "30.77%",
+      "sentence_cosine": "45.01%",
+      "avg_input_tokens": "306.0",
+      "latency_ms": "469.6 ms"
     },
-    "MemoryBank W_q (scaling='dim')": {
+    "MemoryBank W_q (scaling='none')": {
       "hit1": "0.00%",
       "hit3": "0.00%",
-      "mrr": "0.1511",
+      "mrr": "0.2250",
       "entity_recall": "0.00%",
-      "entity_token_recall": "1.67%",
-      "bert_score_f1": "43.34%",
-      "sentence_cosine": "57.71%",
-      "avg_input_tokens": "16.7",
-      "latency_ms": "441.7 ms"
+      "entity_token_recall": "10.00%",
+      "bert_score_f1": "44.52%",
+      "sentence_cosine": "71.11%",
+      "avg_input_tokens": "13.5",
+      "latency_ms": "443.6 ms"
     },
     "MemoryBank W_q (scaling='sqrt')": {
       "hit1": "0.00%",
       "hit3": "0.00%",
-      "mrr": "0.1511",
+      "mrr": "0.2250",
       "entity_recall": "0.00%",
-      "entity_token_recall": "1.67%",
-      "bert_score_f1": "42.91%",
-      "sentence_cosine": "58.55%",
-      "avg_input_tokens": "16.7",
-      "latency_ms": "440.0 ms"
+      "entity_token_recall": "10.00%",
+      "bert_score_f1": "40.33%",
+      "sentence_cosine": "61.81%",
+      "avg_input_tokens": "13.5",
+      "latency_ms": "437.3 ms"
     }
   },
-  "num_samples": 15
+  "num_samples": 2
 }
